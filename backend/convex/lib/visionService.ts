@@ -55,6 +55,14 @@ export function validateVisionResponse(value: unknown, args: VisionRequest): Vis
       !Array.isArray(model.sections) || model.sections.length > 50 || !model.sections.every(s => typeof s === "string")) {
     fail("INVALID_VISION_RESPONSE");
   }
+  // Optional kiosk step evidence (Step 6). Absent on older services; type-checked when present.
+  if ((model.screenKind !== undefined && (typeof model.screenKind !== "string" || model.screenKind.length > 32)) ||
+      (model.isWelcomeScreen !== undefined && typeof model.isWelcomeScreen !== "boolean") ||
+      (model.orderTotal !== undefined && (typeof model.orderTotal !== "string" || model.orderTotal.length > 120)) ||
+      (model.screenSignature !== undefined && (typeof model.screenSignature !== "string" ||
+        !/^scr-[0-9a-f]{16}$/.test(model.screenSignature)))) {
+    fail("INVALID_VISION_RESPONSE");
+  }
   for (const control of model.controls) {
     if (!record(control) || typeof control.id !== "string" || typeof control.label !== "string" ||
         typeof control.type !== "string" || typeof control.legibility !== "string") fail("INVALID_VISION_RESPONSE");

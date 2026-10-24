@@ -66,6 +66,7 @@ final class RecoveryTaskFlowUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["--simulate", "--uitesting", "--ui-task-scenario", scenario]
         app.launch()
+        selectBlindRole(in: app)
         XCTAssertTrue(app.buttons["home.start"].waitForExistence(timeout: 5))
         app.buttons["home.start"].tap()
         XCTAssertTrue(app.buttons["session.end"].waitForExistence(timeout: 5))
@@ -73,13 +74,7 @@ final class RecoveryTaskFlowUITests: XCTestCase {
     }
 
     private func send(_ text: String, in app: XCUIApplication) {
-        let input = app.descendants(matching: .any).matching(identifier: "fixture.input").firstMatch
-        reveal(input, in: app)
-        input.tap()
-        input.typeText(text)
-        let send = app.buttons["fixture.send"]
-        reveal(send, in: app)
-        send.tap()
+        sendSimulatedRequest(text, in: app)
     }
 
     private func answer(_ yes: Bool, in app: XCUIApplication) {
@@ -100,6 +95,10 @@ final class RecoveryTaskFlowUITests: XCTestCase {
     }
 
     private func reveal(_ element: XCUIElement, in app: XCUIApplication) {
+        if app.scrollViews["session.content"].exists && !app.buttons["settings.done"].exists {
+            revealSessionElement(element, in: app)
+            return
+        }
         XCTAssertTrue(element.waitForExistence(timeout: 5))
         let scroll = app.scrollViews["session.content"]
         for _ in 0..<8 {

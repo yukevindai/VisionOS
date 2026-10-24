@@ -7,7 +7,7 @@ Reflex is a native SwiftUI iPhone app with a minimum deployment target of iOS 17
 1. On a fresh clone, prepare the native object model using the commands below, then open `ios/Reflex.xcodeproj` in Xcode. No external project generator needs to be installed.
 2. Select the shared `Reflex` scheme and an iPhone simulator or connected iPhone.
 3. For a physical device, open the Reflex target's **Signing & Capabilities**, enable automatic signing, and select your development team. The project does not include a team ID.
-4. Build and run. Normal assistance now composes the native camera, hand/depth guidance, audio and local object-recognition adapters. The separate Gemini snapshot reader and friend-video demo require service configuration. None of these flows silently substitutes simulation.
+4. Build and run. Normal assistance composes the native camera, hand/depth guidance, audio and Gemini object client. Object recognition, the separate snapshot reader and friend-video demo require service configuration and sign-in. None of these flows silently substitutes simulation.
 
 The sample bundle identifier is `com.example.reflex`. To use a different one, copy `ios/Config/Local.example.xcconfig` to `ios/Config/Local.xcconfig` and change `REFLEX_BUNDLE_ID`. The local file is ignored by git. The project has camera, microphone, speech-recognition and Bluetooth permission descriptions; no provider credentials or real H1 Bluetooth UUIDs are bundled.
 
@@ -19,9 +19,23 @@ python3 ios/Scripts/generate_project.py
 
 The generated `.xcodeproj` is included with the source and opens without running that script on a fresh clone. The script uses only Python's standard library.
 
+## Start a call
+
+Choose the assisted role and tap **Call**. Reflex requests any missing camera,
+microphone and speech-recognition permissions, then starts assistance automatically.
+There is no mandatory setup screen or speech-only Continue button. If access is
+denied, the home screen explains which permission is missing and offers **Open
+Settings**; return and tap Call again after changing access.
+
+Guiding hand and phone position remain optional settings (initial defaults: right
+hand and handheld). Wristband pairing and calibration remain in Settings and do
+not block a voice session. Existing calibration and movement-readiness checks
+still apply. Ending the call or backgrounding the app during a permission request
+cancels startup; a late permission response cannot restart it.
+
 ## Prepare the native object model
 
-The native object path uses the same hash-pinned YOLO11s weights as the R1 prototype, exported to Core ML with non-maximum suppression and the original COCO labels. The compiled binary is ignored by Git. A fresh clone must prepare it before running local object recognition or the bundled-model test.
+The retained local detector and its bundled-model test use the same hash-pinned YOLO11s weights as the R1 prototype, exported to Core ML with non-maximum suppression and the original COCO labels. The compiled binary is ignored by Git. A fresh clone must prepare it before running local object recognition or the bundled-model test.
 
 From the repository root on macOS with Xcode selected and Python 3.12 installed:
 
@@ -37,6 +51,24 @@ python3 ios/Scripts/generate_project.py
 The preparation script downloads the original model named in the teammate's `models.lock.json`, verifies its SHA-256, exports it and invokes `xcrun coremlcompiler`. It writes `Resources/Models/yolo11s.mlmodelc` and records provenance in `Resources/Models/model-manifest.json`. Downloaded weights and exporter artifacts stay under ignored `.runtime/`. No Gemini key or account is needed for this local path.
 
 Read [the model notice](Resources/Models/NOTICE.txt) and [AGPL-3.0 license](Resources/Models/ULTRALYTICS-AGPL-3.0.txt). The repository's MIT license does not relicense the Ultralytics model. Conversion and a synthetic model-loading test do not establish real-device recognition accuracy or latency.
+
+## Conversational speech
+
+Normal native assistance uses Cartesia for priority-4 speech through the authenticated
+Convex `speech:synthesize` action when online configuration and an existing sign-in
+are available. Sign in through the image reader or friend tools first. The phone
+contains no Cartesia key; R3 owns the backend action and its server configuration.
+This demo path does not implement the planned streaming STT/Claude/LiveKit worker.
+
+The shared native scheduler retains all playback and priority authority. Stop,
+hazards, lost-target and movement cues stay local. Missing configuration/sign-in,
+provider errors, simulated responses, invalid audio, and the five-second total
+deadline fall back to the original on-device utterance. Text beyond the backend's
+300 UTF-16-unit limit stays local without truncation. Stop, context changes, mute,
+interruptions, new owner speech and replacement utterances cancel pending synthesis;
+late replies cannot restart it. Decode/playback failure also uses local speech.
+Simulator tests use simulated HTTP replies and do not establish live provider,
+microphone, echo-cancellation, or physical-device acceptance.
 
 ## Explicit simulation
 
@@ -118,9 +150,10 @@ Normal assistance now uses `NativePerceptionGuidanceClient`, `NativeAudioCoordin
 - One rear ARKit session supplies original frames, registered scene depth/confidence and tracking state. Apple Vision observes the selected hand and tracks a target from its exact source frame. Orientation or geometry changes invalidate the old target.
 - The Foundation-only `Guidance` package ports the teammate's measured guidance controller and geometry functions. Its parity fixtures execute the unchanged Python reference and label their inputs **SIMULATED**. Fresh, measured target/fingertip geometry is required for a movement cue; unknown depth, loss, expiry or cancellation stops guidance. Alignment is not proof of a grasp.
 - `NativeAudioCoordinator` owns the native microphone/speech path, local commands and scheduled app speech. Readiness requires the on-device recognition resources and offline Stop path; an unavailable resource produces an explicit failure. Local speech and target recognition do not require a cloud account.
-- Local YOLO11s object recognition supports cup/can (the teammate's COCO `cup` class), bottle and bowl. Multiple matching objects, uncertain detections and unsupported attributes are rejected. Results retain the actual source-frame ID and require current native reacquisition. The adapter does not infer approach, free space, contents, successful contact or a completed grasp.
+- Normal Call sends unrestricted object descriptions to the proposed authenticated R3 `vision:findObject` action through `GeminiObjectEvidenceClient`. Keys, phones and books are examples, not a fixed vocabulary. Missing configuration or sign-in is announced; there is no silent local-detector fallback. R3 still needs to implement/deploy this action; see the [native integration proposal](../docs/R3_GEMINI_OBJECT_INTEGRATION.md).
+- Gemini results retain the original source frame and require current native reacquisition before hand guidance. Missing confidence/safety/location permits identification only. The client does not infer approach, free space, contents, successful contact or a completed grasp. The earlier four-category YOLO adapter remains available for its existing tests but is no longer normal Call’s evidence provider.
 
-Physical guidance remains limited to the implemented hand-reaching path with usable depth. Button/kiosk interpretation, wall-menu conversation, door passage, navigation, Claude/Cartesia orchestration and the complete friend audio/click workflow must not be inferred from the local object demo. The separate Gemini snapshot reader below provides semantic reading, not permission to guide toward a control with unknown safety or confidence.
+Physical guidance remains limited to the implemented hand-reaching path with usable depth. Button/kiosk interpretation, wall-menu conversation, door passage, navigation, Claude/Cartesia orchestration and the complete friend audio/click workflow must not be inferred from object recognition. The separate Gemini snapshot reader below provides semantic reading, not permission to guide toward a control with unknown safety or confidence.
 
 `LiveIntegrationBundle` remains injectable for tests and future agreed adapters. The main boundaries are `PerceptionGuidanceClient`, `SpeechSchedulerClient`, `ConversationClient`, `TargetEvidenceClient`, and `FrameTargetEvidenceClient` for correlated image delivery. Preserve R1 ownership of capture and output scheduling. An optional `LiveBandIntegrationBundle` supplies `HapticLinkConfiguration`, `BandTransport`, `generationSeed` and `configureBandSynchronization` only when H1 provides the actual BLE contract and handshake.
 
@@ -140,11 +173,17 @@ Reflex app
 
 See [the native R1/R3 validation record](Validation/2026-10-24-native-r1-r3.md) for actual current results and remaining checks. No live-device pass is established here. The connected iPhone is on iOS 27.2 beta; the installed Xcode 26.6 developer disk image lacks the required device variant, blocking installation/debug validation in this environment. This tooling failure is separate from simulation and compilation. Camera orientation, depth accuracy, speech interruption, offline Stop, actual object detection and physical reaching still need observed device tests under [native adapter acceptance](Validation/ADAPTER_ACCEPTANCE.md).
 
+## Role-based interface
+
+Every app launch starts with **Blind / Not blind**. Blind opens a large **Call** action, which starts the existing native voice/object-assistance coordinator after any required first-use setup. There is no task grid or friend picker in that path. The live camera uses aspect-fit and semi-transparent native material islands; Stop and End call remain reachable, including with large text. Reduce Transparency switches the islands to opaque surfaces. Settings and separate camera tools remain outside the call.
+
+Not blind opens authenticated shared sessions, invitation redemption, and a watch-only rear-camera viewer. It shows only server-authorized joinable sessions. It never opens this phone's camera or microphone. Missing cloud setup is explicit; hand landmarks, object labels, task state and distances remain unavailable until a real shared telemetry feed exists. Full call audio and automatic friend sharing from the normal Call are not wired yet. The existing owner-video tool provides the separate consented sharing path.
+
 ## Gemini snapshot reader
 
-The separate home-screen scene-reading flow captures an upright snapshot and sends it through the authenticated Convex `vision:readScreen` action to the private Python Gemini service. It reuses the teammate's image preparation, Gemini parser and `Targets` selector. The live HTTP path returns one correlated `ScreenModel`; the portable Python selector remains for CLI/evaluation. The old unauthenticated `/v1/select` HTTP route was removed.
+The separate **Blind → More tools → Read a camera image** flow captures an upright snapshot and sends it through the authenticated Convex `vision:readScreen` action to the private Python Gemini service. It reuses the teammate's image preparation, Gemini parser and `Targets` selector. The live HTTP path returns one correlated `ScreenModel`; the portable Python selector remains for CLI/evaluation. The old unauthenticated `/v1/select` HTTP route was removed.
 
-This flow requires real Auth0/Convex configuration plus the private Gemini service URL/token and Gemini key/model, documented in [backend setup](../backend/README.md). These services are not configured or live-tested in this checkout. Missing configuration fails visibly. Numeric confidence and control safety are not invented when Gemini omits them; a readable target is not automatically eligible for physical guidance. The snapshot reader is separate from local object reaching and from the friend-video flow.
+This flow requires real Auth0/Convex configuration plus the private Gemini service URL/token and Gemini key/model, documented in [backend setup](../backend/README.md). These services are not configured or live-tested in this checkout. Missing configuration fails visibly. Numeric confidence and control safety are not invented when Gemini omits them; a readable target is not automatically eligible for physical guidance. The snapshot reader is separate from the normal Call object client and from the friend-video flow.
 
 ## Repository layout
 
@@ -165,7 +204,7 @@ The [session discovery and media-limit checkpoint](Validation/2026-10-24-discove
 
 ## Real iPhone video demo
 
-Open **Share live video with a friend** from the home screen with simulation off. This separate full-screen flow provides Auth0 sign-in, invitation codes, explicit friend-request approval, per-session sharing consent and End. A user-authorized rear AR camera adapter feeds the existing LiveKit video gates; no second camera runs alongside normal assistance. The viewer is `apps/friend-web`. Neither path changes teammate ScreenModel, Target Selector or Gemini code.
+Open **Blind → More tools → Share live video with a friend** with simulation off. This separate full-screen flow provides Auth0 sign-in, invitation codes, explicit friend-request approval, per-session sharing consent and End. A user-authorized rear AR camera adapter feeds the existing LiveKit video gates; no second camera runs alongside normal assistance. Viewers are the native **Not blind → Shared sessions** route and `apps/friend-web`. Neither path changes teammate ScreenModel, Target Selector or Gemini code.
 
 Use [the setup guide](../docs/LIVE_VIDEO_DEMO_SETUP.md) for the missing Convex/Auth0/LiveKit projects, callback/webhook URLs, ignored local config and physical iPhone instructions. No Gemini/Claude/Cartesia key is needed for this demo. Camera, microphone and provider secrets are not simulated into a live success.
 

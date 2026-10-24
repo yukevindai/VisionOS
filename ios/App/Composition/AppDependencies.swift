@@ -53,7 +53,6 @@ final class AppDependencies: ObservableObject {
         self.defaults = preferenceDefaults
         preferences = UserPreferences(defaults: preferenceDefaults)
         diagnostics = Diagnostics()
-        if ProcessInfo.processInfo.arguments.contains("--simulate") { preferences.setupComplete = true }
         session = Self.compose(simulated: simulated, preferences: preferences, diagnostics: diagnostics,
                                live: live, clock: clock, permissionOverride: permissions, defaults: preferenceDefaults)
     }
@@ -124,7 +123,7 @@ final class AppDependencies: ObservableObject {
     }
 
     private static func nativeIntegration(preferences: UserPreferences, clock: any AppClock) -> LiveIntegrationBundle {
-        let audio = NativeAudioCoordinator(clock: clock)
+        let audio = NativeAudioCoordinator(clock: clock, speechProvider: try? ConvexSpeechClient.live())
         let perception = NativePerceptionGuidanceClient(
             startAudio: { context in try await audio.startInput(context: context) },
             stopAudio: { _ in audio.stopInput() },
@@ -136,7 +135,7 @@ final class AppDependencies: ObservableObject {
             audio?.onEvent?(.init(context: context, eventID: UUID().uuidString, payload: .disconnected))
         }
         return LiveIntegrationBundle(perception: perception, speech: audio, conversation: audio,
-            evidence: OnDeviceTargetEvidenceClient(clock: clock),
+            evidence: GeminiObjectEvidenceClient(reader: try? ConvexObjectClient.live(), clock: clock),
             framePolicy: FrameDeliveryPolicy(minimumIntervalMs: 250, maximumEncodedBytes: 512 * 1_024))
     }
 }

@@ -75,6 +75,7 @@ def main() -> None:
     builds = "\n".join(app_builds + unit_builds + ui_builds)
     config_refs = f"""\
 \t\t{uid('resource:Models')} /* Models */ = {{isa = PBXFileReference; lastKnownFileType = folder; path = Resources/Models; sourceTree = SOURCE_ROOT; }};
+\t\t{uid('resource:Assets')} /* Assets.xcassets */ = {{isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Resources/Assets.xcassets; sourceTree = SOURCE_ROOT; }};
 \t\t{uid('config:Debug.xcconfig')} /* Debug.xcconfig */ = {{isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Config/Debug.xcconfig; sourceTree = SOURCE_ROOT; }};
 \t\t{uid('config:Release.xcconfig')} /* Release.xcconfig */ = {{isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Config/Release.xcconfig; sourceTree = SOURCE_ROOT; }};
 \t\t{uid('config:Local.example.xcconfig')} /* Local.example.xcconfig */ = {{isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Config/Local.example.xcconfig; sourceTree = SOURCE_ROOT; }};
@@ -134,6 +135,7 @@ def main() -> None:
 \t\t{uid('package-build:Guidance')} /* Guidance in Frameworks */ = {{isa = PBXBuildFile; productRef = {dep_guidance}; }};
 \t\t{uid('package-build:Guidance-unit')} /* Guidance in Frameworks */ = {{isa = PBXBuildFile; productRef = {dep_guidance}; }};
 \t\t{uid('resource-build:Models')} /* Models in Resources */ = {{isa = PBXBuildFile; fileRef = {uid('resource:Models')}; }};
+\t\t{uid('resource-build:Assets')} /* Assets in Resources */ = {{isa = PBXBuildFile; fileRef = {uid('resource:Assets')}; }};
 \t\t{uid('package-build:Targets')} /* Targets in Frameworks */ = {{isa = PBXBuildFile; productRef = {dep_interpretation}; }};
 \t\t{uid('package-build:Targets-unit')} /* Targets in Frameworks */ = {{isa = PBXBuildFile; productRef = {dep_interpretation}; }};
 \t\t{uid('package-build:SimpleKeychain')} /* SimpleKeychain in Frameworks */ = {{isa = PBXBuildFile; productRef = {dep_keychain}; }};
@@ -145,7 +147,7 @@ def main() -> None:
 \t\t{uid('package-build:Tasks')} /* Tasks in Frameworks */ = {{isa = PBXBuildFile; productRef = {dep_tasks}; }};
 \t\t{uid('package-build:HapticLink')} /* HapticLink in Frameworks */ = {{isa = PBXBuildFile; productRef = {dep_haptics}; }};
 """
-    source_tree_children = [uid("resource:Models"), uid("group:App"), uid("group:ReflexAppTests"), uid("group:ReflexUITests"), uid("config:Debug.xcconfig"), uid("config:Release.xcconfig"), uid("config:Local.example.xcconfig"), uid("app:Info.plist"), uid("group:Products")]
+    source_tree_children = [uid("resource:Assets"), uid("resource:Models"), uid("group:App"), uid("group:ReflexAppTests"), uid("group:ReflexUITests"), uid("config:Debug.xcconfig"), uid("config:Release.xcconfig"), uid("config:Local.example.xcconfig"), uid("app:Info.plist"), uid("group:Products")]
     product_children = [uid("product:Reflex.app"), uid("product:ReflexAppTests.xctest"), uid("product:ReflexUITests.xctest")]
 
     text = f'''// !$*UTF8*$!
@@ -192,7 +194,7 @@ def main() -> None:
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-\t\t{app_resources} /* Resources */ = {{isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = ({uid('resource-build:Models')}, ); runOnlyForDeploymentPostprocessing = 0; }};
+\t\t{app_resources} /* Resources */ = {{isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = ({uid('resource-build:Models')}, {uid('resource-build:Assets')}, ); runOnlyForDeploymentPostprocessing = 0; }};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -214,8 +216,8 @@ def main() -> None:
 \t\t{uid('project-debug')} /* Debug */ = {{isa = XCBuildConfiguration; buildSettings = {{ALWAYS_SEARCH_USER_PATHS = NO; CLANG_ENABLE_MODULES = YES; CLANG_ENABLE_OBJC_ARC = YES; CLANG_WARN_BOOL_CONVERSION = YES; CLANG_WARN_CONSTANT_CONVERSION = YES; CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR; CLANG_WARN_DOCUMENTATION_COMMENTS = YES; CLANG_WARN_EMPTY_BODY = YES; CLANG_WARN_ENUM_CONVERSION = YES; CLANG_WARN_INFINITE_RECURSION = YES; CLANG_WARN_INT_CONVERSION = YES; CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE; ENABLE_TESTABILITY = YES; GCC_C_LANGUAGE_STANDARD = gnu17; GCC_NO_COMMON_BLOCKS = YES; GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE; IPHONEOS_DEPLOYMENT_TARGET = 17.0; ONLY_ACTIVE_ARCH = YES; SDKROOT = iphoneos; SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG; SWIFT_OPTIMIZATION_LEVEL = "-Onone"; SWIFT_VERSION = 5.0; }}; name = Debug; }};
 \t\t{uid('project-release')} /* Release */ = {{isa = XCBuildConfiguration; buildSettings = {{ALWAYS_SEARCH_USER_PATHS = NO; CLANG_ENABLE_MODULES = YES; CLANG_ENABLE_OBJC_ARC = YES; CLANG_WARN_BOOL_CONVERSION = YES; CLANG_WARN_CONSTANT_CONVERSION = YES; CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR; CLANG_WARN_DOCUMENTATION_COMMENTS = YES; CLANG_WARN_EMPTY_BODY = YES; CLANG_WARN_ENUM_CONVERSION = YES; CLANG_WARN_INFINITE_RECURSION = YES; CLANG_WARN_INT_CONVERSION = YES; CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE; GCC_C_LANGUAGE_STANDARD = gnu17; GCC_NO_COMMON_BLOCKS = YES; IPHONEOS_DEPLOYMENT_TARGET = 17.0; SDKROOT = iphoneos; SWIFT_VERSION = 5.0; }}; name = Release; }};
 
-\t\t{uid('app-debug')} /* Debug */ = {{isa = XCBuildConfiguration; baseConfigurationReference = {uid('config:Debug.xcconfig')}; buildSettings = {{CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 1; ENABLE_TESTABILITY = YES; GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = App/Info.plist; MARKETING_VERSION = 1.0; ONLY_ACTIVE_ARCH = YES; PRODUCT_BUNDLE_IDENTIFIER = "$(REFLEX_BUNDLE_ID)"; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_EMIT_LOC_STRINGS = YES; SWIFT_OPTIMIZATION_LEVEL = "-Onone"; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1"; }}; name = Debug; }};
-\t\t{uid('app-release')} /* Release */ = {{isa = XCBuildConfiguration; baseConfigurationReference = {uid('config:Release.xcconfig')}; buildSettings = {{CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 1; GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = App/Info.plist; MARKETING_VERSION = 1.0; PRODUCT_BUNDLE_IDENTIFIER = "$(REFLEX_BUNDLE_ID)"; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_EMIT_LOC_STRINGS = YES; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1"; }}; name = Release; }};
+\t\t{uid('app-debug')} /* Debug */ = {{isa = XCBuildConfiguration; baseConfigurationReference = {uid('config:Debug.xcconfig')}; buildSettings = {{CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 1; ENABLE_TESTABILITY = YES; GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = App/Info.plist; LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks", ); MARKETING_VERSION = 1.0; ONLY_ACTIVE_ARCH = YES; PRODUCT_BUNDLE_IDENTIFIER = "$(REFLEX_BUNDLE_ID)"; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_EMIT_LOC_STRINGS = YES; SWIFT_OPTIMIZATION_LEVEL = "-Onone"; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1"; }}; name = Debug; }};
+\t\t{uid('app-release')} /* Release */ = {{isa = XCBuildConfiguration; baseConfigurationReference = {uid('config:Release.xcconfig')}; buildSettings = {{CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 1; GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = App/Info.plist; LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks", ); MARKETING_VERSION = 1.0; PRODUCT_BUNDLE_IDENTIFIER = "$(REFLEX_BUNDLE_ID)"; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_EMIT_LOC_STRINGS = YES; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1"; }}; name = Release; }};
 \t\t{uid('unit-debug')} /* Debug */ = {{isa = XCBuildConfiguration; baseConfigurationReference = {uid('config:Debug.xcconfig')}; buildSettings = {{BUNDLE_LOADER = "$(TEST_HOST)"; CODE_SIGN_STYLE = Automatic; ENABLE_TESTABILITY = YES; GENERATE_INFOPLIST_FILE = YES; ONLY_ACTIVE_ARCH = YES; PRODUCT_BUNDLE_IDENTIFIER = "$(REFLEX_BUNDLE_ID).tests"; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_OPTIMIZATION_LEVEL = "-Onone"; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1"; TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Reflex.app/Reflex"; }}; name = Debug; }};
 \t\t{uid('unit-release')} /* Release */ = {{isa = XCBuildConfiguration; baseConfigurationReference = {uid('config:Release.xcconfig')}; buildSettings = {{BUNDLE_LOADER = "$(TEST_HOST)"; CODE_SIGN_STYLE = Automatic; GENERATE_INFOPLIST_FILE = YES; PRODUCT_BUNDLE_IDENTIFIER = "$(REFLEX_BUNDLE_ID).tests"; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1"; TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Reflex.app/Reflex"; }}; name = Release; }};
 \t\t{uid('ui-debug')} /* Debug */ = {{isa = XCBuildConfiguration; baseConfigurationReference = {uid('config:Debug.xcconfig')}; buildSettings = {{CODE_SIGN_STYLE = Automatic; ENABLE_TESTABILITY = YES; GENERATE_INFOPLIST_FILE = YES; ONLY_ACTIVE_ARCH = YES; PRODUCT_BUNDLE_IDENTIFIER = "$(REFLEX_BUNDLE_ID).uitests"; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_OPTIMIZATION_LEVEL = "-Onone"; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1"; TEST_TARGET_NAME = Reflex; }}; name = Debug; }};

@@ -150,7 +150,6 @@ final class FriendAssistanceCoordinatorTests: XCTestCase {
                              stopDuringSpeech: Bool = false) -> Harness {
         let clock = ManualAppClock()
         let preferences = UserPreferences(defaults: UserDefaults(suiteName: UUID().uuidString)!)
-        preferences.setupComplete = true
         let perception = FixturePerception(clock: clock)
         let conversation = FixtureConversation()
         let speech = RecordingSpeechScheduler()

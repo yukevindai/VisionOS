@@ -1,4 +1,5 @@
 import XCTest
+import UIKit
 import Tasks
 @testable import Reflex
 
@@ -35,7 +36,6 @@ final class UITestAppClockTests: XCTestCase {
         let clock = UITestAppClock(automaticallyAdvances: false)
         let dependencies = AppDependencies(simulated: true, clock: clock,
             defaults: UserDefaults(suiteName: UUID().uuidString)!)
-        dependencies.preferences.setupComplete = true
         let session = dependencies.session
         session.start()
         for _ in 0..<80 { await Task.yield() }
@@ -97,6 +97,23 @@ private final class DelayedEvidence: TargetEvidenceClient {
 }
 
 @MainActor
+private final class DeferredPermissionClient: PermissionClient {
+    var state = PermissionState(cameraAuthorization: .notDetermined, microphoneAuthorization: .notDetermined)
+    var requestCount = 0
+    private var completion: CheckedContinuation<PermissionState, Never>?
+    func current() -> PermissionState { state }
+    func request() async -> PermissionState {
+        requestCount += 1
+        return await withCheckedContinuation { completion = $0 }
+    }
+    func complete(_ state: PermissionState = .init(camera: true, microphone: true)) {
+        self.state = state
+        completion?.resume(returning: state)
+        completion = nil
+    }
+}
+
+@MainActor
 final class SessionCoordinatorTests: XCTestCase {
     private struct Harness {
         let session: SessionCoordinator
@@ -106,15 +123,15 @@ final class SessionCoordinatorTests: XCTestCase {
         let speech: FixtureSpeech
     }
     private func makeHarness(evidence: (any TargetEvidenceClient)? = nil, clock: ManualAppClock? = nil,
-                             permission: PermissionState = .init(camera: true, microphone: true), simulated: Bool = true) -> Harness {
+                             permission: PermissionState = .init(camera: true, microphone: true), simulated: Bool = true,
+                             permissionClient: (any PermissionClient)? = nil) -> Harness {
         let clock = clock ?? ManualAppClock()
         let prefs = UserPreferences(defaults: UserDefaults(suiteName: UUID().uuidString)!)
-        prefs.setupComplete = true
         let perception = FixturePerception(clock: clock), speech = FixtureSpeech(audible: false), conversation = FixtureConversation()
         let session = SessionCoordinator(simulated: simulated, preferences: prefs, diagnostics: Diagnostics(capacity: 8),
             bands: BandService(controller: nil, simulated: simulated, clock: clock), clock: clock,
             perception: perception, speech: speech, conversation: conversation,
-            evidence: evidence ?? FixtureEvidence(clock: clock), permissions: FixturePermissionClient(state: permission))
+            evidence: evidence ?? FixtureEvidence(clock: clock), permissions: permissionClient ?? FixturePermissionClient(state: permission))
         return .init(session: session, clock: clock, perception: perception, conversation: conversation, speech: speech)
     }
     private func settle() async { for _ in 0..<80 { await Task.yield() } }
@@ -209,10 +226,99 @@ final class SessionCoordinatorTests: XCTestCase {
     func testDeniedPermissionsDoNotStartAdapters() async {
         let h = makeHarness(permission: .init(camera: false, microphone: true), simulated: false)
         h.session.start(); await settle()
-        XCTAssertTrue(h.session.showSetup)
-        XCTAssertEqual(h.session.phase, .idle)
+        XCTAssertTrue(h.session.message.contains("Camera access is denied"))
+        XCTAssertEqual(h.session.phase, .failed)
         XCTAssertNil(h.perception.context)
     }
+    func testFirstCallStartsWithoutSetupOrWristbands() async {
+        let h = makeHarness(simulated: false)
+        h.session.start(); await settle()
+        XCTAssertEqual(h.session.phase, .active)
+        XCTAssertNotNil(h.perception.context)
+        XCTAssertNil(h.session.preferences.calibratedPairSignature)
+        h.session.stop(.userEnd)
+    }
+
+    func testPermissionGrantContinuesOriginalCallOnlyAfterActivation() async {
+        let permissions = DeferredPermissionClient()
+        let h = makeHarness(simulated: false, permissionClient: permissions)
+        h.session.start(); h.session.start(); await settle()
+        XCTAssertEqual(permissions.requestCount, 1)
+        XCTAssertNil(h.perception.context)
+        h.session.becameInactive()
+        h.clock.advance(60_000)
+        XCTAssertEqual(h.session.phase, .preparing, "Reading a permission prompt must not consume the adapter startup deadline")
+        permissions.complete(); await settle()
+        XCTAssertEqual(h.session.phase, .preparing)
+        XCTAssertNil(h.perception.context)
+        h.session.becameActive(); await settle()
+        XCTAssertEqual(h.session.phase, .active)
+        XCTAssertNotNil(h.perception.context)
+        XCTAssertEqual(permissions.requestCount, 1)
+        h.session.stop(.userEnd)
+    }
+
+    func testImmediateEndDoesNotOpenPermissionPrompts() async {
+        let permissions = DeferredPermissionClient()
+        let h = makeHarness(simulated: false, permissionClient: permissions)
+        h.session.start()
+        h.session.stop(.userEnd)
+        await settle()
+        XCTAssertEqual(permissions.requestCount, 0)
+        XCTAssertFalse(h.session.requestingPermissions)
+        XCTAssertEqual(h.session.phase, .ended)
+        XCTAssertNil(h.perception.context)
+    }
+
+    func testEndingDuringPermissionPromptRejectsLateGrant() async {
+        let permissions = DeferredPermissionClient()
+        let h = makeHarness(simulated: false, permissionClient: permissions)
+        h.session.start(); await settle()
+        h.session.stop(.userEnd)
+        h.session.start()
+        XCTAssertEqual(permissions.requestCount, 1)
+        permissions.complete(); h.session.becameActive(); await settle()
+        XCTAssertEqual(h.session.phase, .ended)
+        XCTAssertNil(h.perception.context)
+        h.session.start(); await settle()
+        XCTAssertEqual(h.session.phase, .active)
+        h.session.stop(.userEnd)
+    }
+
+    func testBackgroundDuringPermissionPromptRequiresAnotherCall() async {
+        let permissions = DeferredPermissionClient()
+        let h = makeHarness(simulated: false, permissionClient: permissions)
+        h.session.start(); await settle()
+        h.session.backgrounded()
+        permissions.complete(); h.session.becameActive(); await settle()
+        XCTAssertEqual(h.session.phase, .ended)
+        XCTAssertNil(h.perception.context)
+        h.session.start(); await settle()
+        XCTAssertEqual(h.session.phase, .active)
+        h.session.stop(.userEnd)
+    }
+
+    func testPermissionDenialShowsFailureWithoutStartingAdapters() async {
+        let permissions = DeferredPermissionClient()
+        let h = makeHarness(simulated: false, permissionClient: permissions)
+        h.session.start(); await settle()
+        permissions.complete(.init(camera: true, microphone: false)); await settle()
+        XCTAssertEqual(h.session.phase, .failed)
+        XCTAssertTrue(h.session.message.contains("Microphone access is denied"))
+        XCTAssertNil(h.perception.context)
+        XCTAssertFalse(h.session.requestingPermissions)
+    }
+
+    func testInactivityStillPausesAnActiveCall() async {
+        let h = makeHarness(simulated: false)
+        h.session.start(); await settle()
+        h.session.becameInactive()
+        XCTAssertEqual(h.session.phase, .paused)
+        h.session.becameActive()
+        XCTAssertEqual(h.session.phase, .paused)
+        h.session.stop(.userEnd)
+    }
+
     func testPhysicalGuidanceIsBlockedWithoutLocalSpokenStopInLiveMode() async {
         let h = makeHarness(simulated: false); h.session.start(); await settle()
         h.session.submitTask(.init(id: "task", kind: .button, query: "Blue button"))
@@ -238,6 +344,98 @@ final class SessionCoordinatorTests: XCTestCase {
         XCTAssertNil(h.session.taskState?.confirmation)
         h.session.stop(.userEnd)
     }
+
+    func testPreviewExpiresWhileListeningWithoutAnActiveTask() async {
+        let h = makeHarness(); h.session.start(); await settle()
+        h.perception.stop(context: h.session.context!)
+        XCTAssertNil(h.session.taskState?.request)
+        let image = syntheticPreview(.red)
+        let now = h.clock.nowMs
+        deliverPreview(image, to: h, capturedAtMs: now - 200, expiresAtMs: now + 500)
+        XCTAssertTrue(h.session.preview === image)
+
+        h.clock.advance(99)
+        XCTAssertTrue(h.session.preview === image)
+        h.clock.advance(1)
+        XCTAssertNil(h.session.preview, "A frozen image must clear at the 300 ms capture-age limit, even without a task.")
+        XCTAssertEqual(h.session.phase, .active)
+        h.session.stop(.userEnd)
+        XCTAssertEqual(h.clock.pendingCount, 0)
+    }
+
+    func testPausedPreviewExpiresAtItsEarlierFrameDeadline() async {
+        let h = makeHarness(); h.session.start(); await settle()
+        h.perception.stop(context: h.session.context!)
+        h.session.stop(.userPause)
+        let image = syntheticPreview(.blue)
+        let now = h.clock.nowMs
+        deliverPreview(image, to: h, capturedAtMs: now, expiresAtMs: now + 20)
+        XCTAssertTrue(h.session.preview === image)
+
+        h.clock.advance(19)
+        XCTAssertTrue(h.session.preview === image)
+        h.clock.advance(1)
+        XCTAssertNil(h.session.preview, "Pausing guidance must not leave the last camera image indefinitely visible.")
+        XCTAssertEqual(h.session.phase, .paused)
+        h.session.stop(.userEnd)
+        XCTAssertEqual(h.clock.pendingCount, 0)
+    }
+
+    func testNewPreviewSurvivesThePreviousFramesExpiry() async {
+        let h = makeHarness(); h.session.start(); await settle()
+        h.perception.stop(context: h.session.context!)
+        let first = syntheticPreview(.red)
+        let second = syntheticPreview(.blue)
+        let start = h.clock.nowMs
+        deliverPreview(first, to: h, capturedAtMs: start, expiresAtMs: start + 100)
+        h.clock.advance(50)
+        deliverPreview(second, to: h, capturedAtMs: h.clock.nowMs, expiresAtMs: start + 300)
+
+        h.clock.advance(50)
+        XCTAssertTrue(h.session.preview === second, "The superseded frame's deadline must not remove the current camera image.")
+        h.clock.advance(199)
+        XCTAssertTrue(h.session.preview === second)
+        h.clock.advance(1)
+        XCTAssertNil(h.session.preview)
+        h.session.stop(.userEnd)
+        XCTAssertEqual(h.clock.pendingCount, 0)
+    }
+
+    func testStopImmediatelyClearsPreviewIncludingRepeatedPause() async {
+        for cause in [SessionStopCause.userPause, .localStop, .trackingLost, .background, .userEnd] {
+            let h = makeHarness(); h.session.start(); await settle()
+            h.perception.stop(context: h.session.context!)
+            let image = syntheticPreview(.red)
+            deliverPreview(image, to: h, capturedAtMs: h.clock.nowMs, expiresAtMs: h.clock.nowMs + 300)
+            XCTAssertNotNil(h.session.preview)
+            h.session.stop(cause)
+            XCTAssertNil(h.session.preview, "Stop cause: \(cause)")
+            if cause == .userPause {
+                deliverPreview(image, to: h, capturedAtMs: h.clock.nowMs, expiresAtMs: h.clock.nowMs + 300)
+                XCTAssertNotNil(h.session.preview)
+                h.session.stop(.userPause)
+                XCTAssertNil(h.session.preview, "A repeated Stop must also clear a fresh image received while paused.")
+            }
+            h.session.stop(.userEnd)
+            XCTAssertEqual(h.clock.pendingCount, 0)
+        }
+    }
+
+    private func syntheticPreview(_ color: UIColor) -> UIImage {
+        // Pixel-backed fixture only; this does not exercise a physical camera.
+        let bounds = CGRect(x: 0, y: 0, width: 4, height: 4)
+        return UIGraphicsImageRenderer(size: bounds.size).image { context in
+            color.setFill()
+            context.fill(bounds)
+        }
+    }
+
+    private func deliverPreview(_ image: UIImage, to h: Harness, capturedAtMs: Int64, expiresAtMs: Int64) {
+        h.perception.onFrame?(.init(context: h.session.context!, frameID: UUID().uuidString,
+            capturedAtMs: capturedAtMs, expiresAtMs: expiresAtMs, geometryID: h.perception.camera.geometryID,
+            transform: .identity, preview: image, encodedImage: nil, trackingNormal: true, depthUsable: true))
+    }
+
     func testRepeatedSessionsCleanUpTimersAndUseFreshIdentities() async {
         let h = makeHarness(); var ids = Set<String>()
         for _ in 0..<10 {

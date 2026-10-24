@@ -77,7 +77,7 @@ The CLI/evaluation result has five parts:
 
 `GEMINI_MODEL` is required and has no default. The client calls exactly that model once per photo and never retries on, or falls back to, another model. Check the chosen model's availability and pricing for the key before the live run.
 
-For models supporting reasoning levels, optional `GEMINI_THINKING_LEVEL` accepts `low`, `medium`, or `high`. An empty setting omits the field. The current local setup selects `gemini-3.8-flash` and `low`; this does not change the five-second deadline. Keys stay in ignored server configuration and are redacted by their actual value, independent of their format.
+For models supporting reasoning levels, optional `GEMINI_THINKING_LEVEL` accepts `low`, `medium`, or `high`. An empty setting omits the field. The example configuration selects `gemini-3.8-flash` and `high`; this does not change the five-second deadline. Keys stay in ignored server configuration and are redacted by their actual value, independent of their format.
 
 The interactive region is preferred. The prompt asks for the pressable surface (the physical button or the whole touchscreen card) and excludes printed labels and braille plates. If an untyped (`other`) element and a typed control share a label, the selector picks the typed control. Two typed controls with the same label remain `AMBIGUOUS`.
 
@@ -176,3 +176,18 @@ Follow [the end-to-end setup guide](../docs/LIVE_VIDEO_DEMO_SETUP.md) to create 
 `assistance.helperStatus({sessionId,epoch,connectionId,leaseVersion,nonce})` returns `closed`, `reserved`, or `connected` only for the authenticated helper's current accepted and unexpired slot. Open states include current room name/SID/generation, authorization version, provider-confirmed owner identity/SID and at most 15 seconds of remaining duration; connected also includes the helper participant SID. Clients anchor this to request-send monotonic time. It neither renews nor grants a lease. The viewer subscribes to the exact verified owner camera only after connected status matches its own provider SID.
 
 Current backend suite: **92 tests across 10 files**, plus typecheck and offline codegen passed. The two added status-query tests cover reserved/connected identity scope, expiry/revocation and no lease renewal. This is still local simulated-service validation. See [the video-demo validation record](../ios/Validation/2026-10-24-live-video-demo.md).
+
+## Windows live camera experiment
+
+See [LIVE_CAMERA.md](LIVE_CAMERA.md) for PathOn connection instructions, on-demand capture,
+frozen target overlays, desktop ROI fallback and recorded transform metadata. Start from the
+outer workspace with `powershell -NoProfile -ExecutionPolicy Bypass -File .\VisionOS\backend\start-live-camera.ps1`.
+This desktop experiment has no movement/audio/haptic outputs and does not replace native R1.
+
+## Continuous live 2D tracking
+
+[Windows tracking instructions](LIVE_TRACKING.md) describe the new **Find & Track** tool:
+`powershell -NoProfile -ExecutionPolicy Bypass -File .\VisionOS\backend\start-live-tracking.ps1`.
+It matches Gemini's historical reference to current camera frames before drawing a live box,
+hides lost/stale targets, and bounds automatic re-identification requests. The frozen camera
+program remains available unchanged. This is a visual test, not native R1 or movement guidance.

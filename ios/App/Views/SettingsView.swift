@@ -68,10 +68,10 @@ private struct SettingsContents: View {
             Section("Preferences") {
                 Picker("Guiding hand", selection: $preferences.guidingHand) {
                     ForEach(UserPreferences.Hand.allCases, id: \.self) { Text($0.rawValue.capitalized).tag($0) }
-                }.pickerStyle(.inline).disabled(session.phase.canEnd)
+                }.pickerStyle(.inline).disabled(session.phase.canEnd && session.phase != .failed)
                 Picker("Phone position", selection: $preferences.phonePosition) {
                     ForEach(UserPreferences.PhonePosition.allCases, id: \.self) { Text($0.label).tag($0) }
-                }.pickerStyle(.inline).disabled(session.phase.canEnd)
+                }.pickerStyle(.inline).disabled(session.phase.canEnd && session.phase != .failed)
                 Toggle("Show captions", isOn: $preferences.captions)
             }
             Section("Wristbands") {
@@ -83,7 +83,7 @@ private struct SettingsContents: View {
             Section("Simulation") {
                 Toggle("Use simulated assistance", isOn: Binding(get: { dependencies.simulated }, set: dependencies.setSimulation))
                     .accessibilityIdentifier("settings.simulation")
-                    .disabled(session.phase.canEnd)
+                    .disabled(session.phase.canEnd && session.phase != .failed)
                 Text("Simulation uses sample scenes and typed requests. No physical camera or wristband guidance is active. End the current session before changing modes.")
             }
             Section("Availability") {
