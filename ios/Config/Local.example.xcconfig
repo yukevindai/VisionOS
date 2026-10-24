@@ -1,0 +1,3 @@
+// Copy this file to Local.xcconfig to customize the bundle identifier.
+// Local.xcconfig is ignored by git and is included by Debug and Release.
+REFLEX_BUNDLE_ID = com.yourorganization.reflex

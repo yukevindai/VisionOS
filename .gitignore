@@ -1,0 +1,24 @@
+# Xcode local state
+DerivedData/
+*.xcuserstate
+xcuserdata/
+*.xccheckout
+*.moved-aside
+*.xcscmblueprint
+
+# Local signing and machine-specific configuration
+ios/Config/Local.xcconfig
+*.mobileprovision
+*.provisionprofile
+*.p12
+
+# Swift package and build artifacts
+.build/
+.swiftpm/
+
+# Local session continuity; retained on disk, never committed
+/ios/R2_RELAY.md
+/ios/R2_HANDOFF.md
+
+# macOS file metadata
+.DS_Store

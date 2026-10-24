@@ -1,0 +1,2 @@
+REFLEX_BUNDLE_ID = com.example.reflex
+#include? "Local.xcconfig"
