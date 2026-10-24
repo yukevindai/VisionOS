@@ -15,30 +15,32 @@ struct AssistanceSessionView: View {
         GeometryReader { geometry in
             ZStack {
                 cameraBackground(size: geometry.size)
-                ScrollView {
-                    VStack(spacing: 16) {
-                        statusIsland
-                        if preferences.captions, !session.caption.isEmpty {
-                            Text(session.caption)
-                                .font(.title3)
-                                .fixedSize(horizontal: false, vertical: true)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .textSelection(.enabled)
-                                .padding(16)
-                                .cameraIsland()
-                                .accessibilityIdentifier("session.caption")
+                VStack(spacing: 0) {
+                    ScrollView {
+                        VStack(spacing: 16) {
+                            statusIsland
+                            if preferences.captions, !session.caption.isEmpty {
+                                Text(session.caption)
+                                    .font(.title3)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .textSelection(.enabled)
+                                    .padding(16)
+                                    .cameraIsland()
+                                    .accessibilityIdentifier("session.caption")
+                            }
+                            confirmation
+                            if session.simulated { fixtureControls }
                         }
-                        confirmation
-                        if session.simulated { fixtureControls }
+                        .frame(maxWidth: 650)
+                        .padding(.horizontal, 24)
+                        .padding(.top, 16)
+                        .padding(.bottom, 12)
+                        .frame(maxWidth: .infinity)
                     }
-                    .frame(maxWidth: 650)
-                    .padding(.horizontal, 24)
-                    .padding(.top, 16)
-                    .padding(.bottom, 12)
-                    .frame(maxWidth: .infinity)
-                }
-                .accessibilityIdentifier("session.content")
-                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    .accessibilityIdentifier("session.content")
+                    .clipped()
+                    .contentShape(Rectangle())
                     controlsIsland
                         .frame(maxWidth: 650)
                         .padding(.horizontal, 24)
