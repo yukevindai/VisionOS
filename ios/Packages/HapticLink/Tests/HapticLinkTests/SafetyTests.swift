@@ -413,4 +413,76 @@ final class SafetyTests: XCTestCase {
         XCTAssertTrue(commands.filter { $0.0 == h.right }.allSatisfy { $0.1.patternID == 0 })
         XCTAssertFalse(h.controller.hasEligibleOutput)
     }
+    @MainActor func testSynchronizationCannotRollbackPreviouslyAcceptedFloorBeforeFirstOutput() async throws {
+        let h = try Harness(synchronized: false)
+        func proof(_ generation: UInt16) -> GenerationSynchronizationProof {
+            GenerationSynchronizationProof(source: .simulatedFixture,
+                challengeID: h.controller.synchronizationChallengeID,
+                peripheralIDs: [.left: h.left, .right: h.right], generation: generation,
+                nextSequences: [.left: 0, .right: 0])
+        }
+        try h.controller.acceptSynchronization(proof(10))
+        XCTAssertThrowsError(try h.controller.acceptSynchronization(proof(1)))
+        XCTAssertThrowsError(try h.controller.beginGeneration(h.context))
+        try h.controller.beginGeneration(try HapticContext(sessionID: "s", taskID: "t", generation: 10))
+    }
+
+    @MainActor func testCalibrationModeCannotChangeWithinActiveGeneration() async throws {
+        let h = try Harness()
+        _ = h.controller.submit(h.release())
+        XCTAssertThrowsError(try h.controller.beginGeneration(h.context, calibration: true))
+        XCTAssertFalse(h.controller.isCalibrating)
+        _ = h.controller.allStop(reason: "start_calibration")
+        let calibration = try HapticContext(sessionID: "s", taskID: "calibration", generation: 2)
+        try h.controller.beginGeneration(calibration, calibration: true)
+        XCTAssertThrowsError(try h.controller.beginGeneration(calibration, calibration: false))
+        XCTAssertTrue(h.controller.isCalibrating)
+    }
+
+    @MainActor func testStopDeliveredDuringFirstBandWritePreventsSecondBandAndHeartbeat() async throws {
+        let h = try Harness()
+        h.transport.afterWrite = { data in
+            if Array(data)[5] == 3 { _ = h.controller.allStop(reason: "stop_during_transport_write") }
+        }
+        let result = h.controller.submit(h.release(pattern: 3, sides: [.left, .right]))
+        if case .rejected = result {} else { XCTFail("Stopped release must not be reported as sent") }
+        let left = try h.transport.commands().filter { $0.0 == h.left }.map(\.1)
+        XCTAssertEqual(left.map(\.patternID), [3, 0])
+        XCTAssertEqual(left.map(\.sequence), [0, 1])
+        XCTAssertTrue(try h.transport.commands().filter { $0.0 == h.right }.allSatisfy { $0.1.patternID == 0 })
+        XCTAssertFalse(h.controller.hasEligibleOutput)
+        let count = h.transport.writes.count
+        h.clock.advance(0.201); h.controller.tick()
+        XCTAssertEqual(h.transport.writes.count, count)
+    }
+
+    @MainActor func testStopDeliveredDuringHeartbeatPreventsOtherWristKeepalive() async throws {
+        let h = try Harness()
+        _ = h.controller.submit(h.release(pattern: 3, sides: [.left, .right]))
+        h.transport.afterWrite = { data in
+            if Array(data)[5] == 255 { _ = h.controller.allStop(reason: "stop_during_heartbeat") }
+        }
+        h.clock.advance(0.201); h.controller.tick()
+        let commands = try h.transport.commands()
+        XCTAssertEqual(commands.filter { $0.0 == h.left }.map { $0.1.patternID }, [3, 255, 0])
+        XCTAssertEqual(commands.filter { $0.0 == h.right }.map { $0.1.patternID }, [3, 0])
+        XCTAssertFalse(h.controller.hasEligibleOutput)
+        XCTAssertNil(h.controller.context)
+    }
+
+    @MainActor func testStopDuringDirectionChangeStopPreventsNewMovement() async throws {
+        let h = try Harness()
+        _ = h.controller.submit(h.release(pattern: 1))
+        h.transport.afterWrite = { data in
+            if Array(data)[5] == 0 { _ = h.controller.allStop(reason: "stop_during_direction_change") }
+        }
+        let result = h.controller.submit(h.release(pattern: 2, sides: [.right]))
+        if case .rejected = result {} else { XCTFail("Stopped direction change must not be reported as sent") }
+        let commands = try h.transport.commands()
+        XCTAssertEqual(commands.filter { $0.0 == h.left }.map { $0.1.patternID }, [1, 0])
+        XCTAssertTrue(commands.filter { $0.0 == h.right }.allSatisfy { $0.1.patternID == 0 })
+        XCTAssertFalse(h.controller.hasEligibleOutput)
+        XCTAssertNil(h.controller.context)
+    }
+
 }

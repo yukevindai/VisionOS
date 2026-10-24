@@ -2,6 +2,14 @@ import XCTest
 @testable import HapticLink
 
 final class ProtocolTests: XCTestCase {
+#if canImport(CoreBluetooth)
+    func testReconnectPolicyRejectsDelayThatCannotConvertToNanoseconds() throws {
+        XCTAssertThrowsError(try BandReconnectPolicy(retryDelay: .greatestFiniteMagnitude))
+        XCTAssertThrowsError(try BandReconnectPolicy(retryDelay: Double(UInt64.max) / 1_000_000_000))
+        XCTAssertNoThrow(try BandReconnectPolicy(retryDelay: 0.125))
+    }
+#endif
+
     func testExactTenByteLittleEndianCommandAndRoundTrip() throws {
         let command = try HapticCommand(version: 3, sequence: 0x1234, generation: 0xabcd,
                                         patternID: 6, intensity: 88, rateHz: 9, ttlMs: 600)

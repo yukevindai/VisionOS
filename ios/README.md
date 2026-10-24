@@ -58,7 +58,7 @@ xcodebuild \
   build
 ```
 
-The project and scheme were accepted by `xcodebuild -list` with both local packages resolved. The final validation passed 36 Tasks tests, 34 HapticLink tests, 25 app unit tests, and 3 UI tests. Debug simulator and unsigned Release device builds passed. See [the validation record](Validation/2026-10-23.md) and [the repository ownership guide](../docs/REPOSITORY_STRUCTURE.md). Physical camera, microphone, Bluetooth, wristband timing, and H1 failsafe checks have not been run as part of this setup guide; simulator success does not establish hardware behavior.
+The project and scheme were accepted by `xcodebuild -list` with both local packages resolved. The latest validation passed 40 Tasks tests, 40 HapticLink tests, 32 app unit tests, and 3 UI tests. Debug simulator compilation and the unsigned Release device build passed. See [the continuation validation record](Validation/2026-10-23-r2-continuation.md), [the initial validation record](Validation/2026-10-23.md), and [the repository ownership guide](../docs/REPOSITORY_STRUCTURE.md). Physical camera, microphone, Bluetooth, wristband timing, and H1 failsafe checks have not been run as part of this setup guide; simulator success does not establish hardware behavior.
 
 ## Connect live adapters
 

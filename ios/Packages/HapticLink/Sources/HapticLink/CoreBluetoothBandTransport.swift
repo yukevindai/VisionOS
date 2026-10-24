@@ -17,8 +17,9 @@ public struct BandReconnectPolicy: Equatable, Sendable {
     public let connectionTimeout: TimeInterval
     public init(maximumRetries: Int = 3, retryDelay: TimeInterval = 1, connectionTimeout: TimeInterval = 10) throws {
         guard (0...3).contains(maximumRetries), retryDelay.isFinite, retryDelay >= 0,
+              retryDelay * 1_000_000_000 < Double(UInt64.max),
               connectionTimeout.isFinite, connectionTimeout > 0, connectionTimeout <= 120 else {
-            throw HapticLinkError.invalidConfiguration("Reconnect is bounded to 3 retries and a finite connection deadline")
+            throw HapticLinkError.invalidConfiguration("Reconnect requires at most 3 retries, a representable nanosecond delay and a finite connection deadline")
         }
         self.maximumRetries = maximumRetries; self.retryDelay = retryDelay; self.connectionTimeout = connectionTimeout
     }

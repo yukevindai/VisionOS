@@ -40,7 +40,7 @@ final class KioskAndMenuTests: XCTestCase {
             h.send(.choice(h.engine.state.screen!.controls[0].label), source: .user); h.acquire(); h.onTarget()
             let observation = VerificationEvidence(targetID: targetID, actionRequestID: h.engine.state.pendingRequest!.requestID,
                                                    kind: .screenTransition, provenance: .implementedVisualVerifier,
-                                                   beforeFrameID: "old-\(index)", afterFrameID: "new-\(index)", beforeMs: 99, afterMs: 100)
+                                                   beforeFrameID: "old-\(index)", afterFrameID: "next-\(index)-frame", beforeMs: 99, afterMs: 100)
             h.send(.screen(screen("next-\(index)", observation: observation)), source: .r3)
             XCTAssertEqual(h.engine.state.phase, .choosing)
             XCTAssertEqual(h.engine.state.lastVerification, .observed)
@@ -67,6 +67,21 @@ final class KioskAndMenuTests: XCTestCase {
         h.send(.screen(.init(id: "s", frameID: "f", title: "s", controls: [unknown])), source: .r3)
         h.send(.choice("Continue"), source: .user)
         XCTAssertEqual(h.engine.state.result?.error, .paymentBoundary)
+    }
+
+    func testKioskTransitionFromUnrelatedFrameRequiresExplicitConfirmation() {
+        var h = Harness(); h.start(.kiosk); h.send(.screen(screen()), source: .r3)
+        h.send(.choice("Tea"), source: .user); h.acquire(); h.onTarget()
+        let observation = VerificationEvidence(targetID: "menu-0", actionRequestID: h.engine.state.pendingRequest!.requestID,
+                                               kind: .screenTransition, provenance: .implementedVisualVerifier,
+                                               beforeFrameID: "menu-frame", afterFrameID: "unrelated-frame", beforeMs: 99, afterMs: 100)
+        let effects = h.send(.screen(screen("drinks", observation: observation)), source: .r3)
+        XCTAssertEqual(h.engine.state.phase, .awaitingConfirmation)
+        XCTAssertEqual(h.engine.state.lastVerification, .unverified)
+        XCTAssertFalse(effects.contains { if case .awaitChoice = $0 { return true }; return false })
+        h.confirm()
+        XCTAssertEqual(h.engine.state.phase, .choosing)
+        XCTAssertEqual(h.engine.state.lastVerification, .userConfirmed)
     }
 
     func testScreenChangeMidGuidanceStopsAndRejectsOldCoordinates() {

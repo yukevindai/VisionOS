@@ -32,7 +32,11 @@ public struct TaskEngine: Sendable {
     }
 
     public mutating func reduce(_ event: TaskEvent, nowMs: Int64) -> [TaskEffect] {
-        guard nowMs >= lastNow, nowMs >= 0 else { return [.rejected(.stale)] }
+        guard nowMs >= lastNow, nowMs >= 0 else {
+            // Cancellation remains available even when the caller's clock is invalid.
+            if case .stop(let reason) = event { return stop(reason) }
+            return [.rejected(.stale)]
+        }
         lastNow = nowMs
         switch event {
         case .start(let request): return start(request, now: nowMs)
@@ -276,14 +280,14 @@ public struct TaskEngine: Sendable {
         return [.reacquire(makeRequest(now: now), target: target)]
     }
 
-    private func physicalFailure(_ evidence: PhysicalEvidence, mode: GuidanceMode, now: Int64) -> StopReason? {
+    private func physicalFailure(_ evidence: PhysicalEvidence, mode: GuidanceMode, now: Int64, requiresHand: Bool = true) -> StopReason? {
         guard evidence.targetID == state.target?.id, !evidence.frameID.isEmpty,
               evidence.observedAtMs >= 0, evidence.observedAtMs <= now,
               now - evidence.observedAtMs <= configuration.freshnessMs else { return .trackingLost }
         if evidence.hazardPresent || evidence.suspectedStep { return .hazard }
         if !evidence.trackingNormal || !evidence.outputReady { return .trackingLost }
         if !evidence.targetVisible { return .targetLost }
-        if mode == .hand && !evidence.handVisible { return .handLost }
+        if mode == .hand && requiresHand && !evidence.handVisible { return .handLost }
         if mode == .approach {
             guard evidence.depthUsable, evidence.freeSpaceObserved, let distance = evidence.distanceM,
                   distance.isFinite, distance >= 0, distance <= 5 else { return .hazard }
@@ -294,11 +298,12 @@ public struct TaskEngine: Sendable {
     private mutating func acquired(_ evidence: PhysicalEvidence, now: Int64) -> [TaskEffect] {
         guard let target = state.target else { return [.rejected(.wrongTarget)] }
         let mode: GuidanceMode = (state.request?.kind == .approach || (target.requiresApproach && !approachCompleted)) ? .approach : .hand
-        if let error = physicalFailure(evidence, mode: mode, now: now) { return stop(error) }
+        let automaticDoor = state.request?.kind == .door && state.selectedDoorAction == .automatic
+        if let error = physicalFailure(evidence, mode: mode, now: now, requiresHand: !automaticDoor) { return stop(error) }
         if resumeConfirmationNeeded {
             return ask(.resumeGuidance, "Tracking is ready. Would you like to resume guidance?", now: now)
         }
-        if state.request?.kind == .door, state.selectedDoorAction == .automatic {
+        if automaticDoor && mode == .hand {
             return requestAction(now: now)
         }
         state.phase = mode == .approach ? .approaching : .guiding
@@ -480,7 +485,8 @@ public struct TaskEngine: Sendable {
             if let expected = oldTarget.expectedDestination, expected != screen.id, screen.id != previousScreenID {
                 return recoverBack(screen, now: now)
             }
-            if let evidence = screen.transitionEvidence, validVerification(evidence, now: now), screen.id != previousScreenID {
+            if let evidence = screen.transitionEvidence, evidence.afterFrameID == screen.frameID,
+               validVerification(evidence, now: now), screen.id != previousScreenID {
                 return actionSucceeded(.observed, now: now)
             }
             return askActionConfirmation(now: now)

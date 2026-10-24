@@ -141,6 +141,7 @@ import Foundation
             }
         }
         // A same-process rollback cannot be made safe by relabeling it a new handshake.
+        if let floor = synchronizedFloor, proof.generation < floor { throw HapticLinkError.generationNotSynchronized }
         if let floor = stoppedFloor, proof.generation <= floor { throw HapticLinkError.generationNotSynchronized }
         for (side, previous) in nextSequences {
             if let supplied = proof.nextSequences[side], UInt32(supplied) < previous {
@@ -160,8 +161,8 @@ import Foundation
             throw HapticLinkError.generationNotSynchronized
         }
         if let current = self.context {
-            guard context == current else {
-                throw HapticLinkError.invalidRelease("Stop the current generation before changing task context")
+            guard context == current, calibration == isCalibrating else {
+                throw HapticLinkError.invalidRelease("Stop the current generation before changing task context or calibration mode")
             }
         }
         guard context.generation < UInt16.max else { throw HapticLinkError.generationExhausted }
@@ -223,10 +224,12 @@ import Foundation
         let sides = activeOutputs.keys.sorted { $0.rawValue < $1.rawValue }
         guard sides.allSatisfy({ ready($0) && transport.canWrite(pairings[$0]!.peripheralID) }) else { return }
         for side in sides {
+            guard isSynchronized, context?.generation == generation, activeOutputs[side] != nil else { return }
             guard send(contract.heartbeat, generation: generation, side: side, reserveStop: true) else {
                 pauseForSafety("heartbeat_sequence_or_transport_failure"); return
             }
         }
+        guard context?.generation == generation else { return }
         lastHeartbeat = now
     }
 
@@ -285,6 +288,7 @@ import Foundation
         flushStops()
         guard pendingStops.isEmpty else { return }
         for side in release.commands.keys.sorted(by: { $0.rawValue < $1.rawValue }) {
+            guard isSynchronized, context == release.context, pendingRelease?.id == release.id else { return }
             let now = clock.now
             guard now < release.expiresAt, now - release.evidenceTime <= evidenceMaxAge else {
                 pendingRelease = nil; pauseForSafety("release_expired_during_dispatch"); return
@@ -299,6 +303,9 @@ import Foundation
             guard send(bounded, generation: release.context.generation, side: side, reserveStop: true) else {
                 pendingRelease = nil; pauseForSafety("movement_transport_failure"); return
             }
+            // A transport may synchronously report a fault or Stop from write().
+            // That cancellation must win before retaining output or writing the other wrist.
+            guard isSynchronized, context == release.context, pendingRelease?.id == release.id else { return }
             activeOutputs[side] = ActiveOutput(expiresAt: now + Double(ttl) / 1000, movement: movement)
         }
         lastDispatchedReleaseID = release.id
@@ -325,11 +332,11 @@ import Foundation
               !reserveStop || next < UInt32(UInt16.max),
               let command = try? HapticCommand(version: contract.protocolVersion, sequence: UInt16(next),
                                                generation: generation, patternID: parameters.patternID,
-                                               intensity: parameters.intensity, rateHz: parameters.rateHz, ttlMs: parameters.ttlMs),
-              transport.write(command.data, to: id) else { return false }
+                                               intensity: parameters.intensity, rateHz: parameters.rateHz, ttlMs: parameters.ttlMs) else { return false }
+        // Reserve before crossing the transport boundary: an inline Stop must get a new sequence.
         nextSequences[side] = next + 1 // UInt32 tracks exhaustion; no UInt16 wrapping.
         if parameters.patternID != 0 { sentStops.removeValue(forKey: side) }
-        return true
+        return transport.write(command.data, to: id)
     }
 
     private func ready(_ side: BandSide) -> Bool {

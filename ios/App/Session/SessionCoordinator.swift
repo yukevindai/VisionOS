@@ -126,6 +126,7 @@ final class SessionCoordinator: ObservableObject {
         guard let context else { return }
         phase = .preparing; activity = .preparing; message = "Preparing assistance."
         hazardActive = false; microphoneMuted = false; seenConversationEvents.removeAll(); caption = ""
+        lastFrame = nil; pendingFrame = nil; preview = nil; lastFrameDispatchMs = nil
         capabilities = SessionCapabilities(); capabilities.leftBand = bands.leftStatus; capabilities.rightBand = bands.rightStatus
         capabilities.perception = .preparing; capabilities.conversation = .preparing
         bands.discover()
@@ -148,6 +149,7 @@ final class SessionCoordinator: ObservableObject {
                 self.capabilities.offlineStop = ready.supportsOfflineStop ? .ready : .unavailable("Offline spoken Stop is not integrated. Use Pause or End.")
                 try await conversation.start(context: context, audioInput: ready.audioInput)
                 guard self.startupEpoch == epoch, self.phase == .preparing, !Task.isCancelled else { return }
+                conversation.setMicrophoneMuted(self.microphoneMuted)
                 self.capabilities.conversation = self.simulated ? .simulated : .ready
                 self.startupDeadline?.cancel(); self.startupDeadline = nil
                 self.phase = .active; self.activity = .listening
@@ -195,6 +197,7 @@ final class SessionCoordinator: ObservableObject {
         synchronizeContext()
         cancelPendingWork()
         calibrationIndex = nil; calibrationTaskID = nil
+        caption = ""
         bands.allStop(reason: cause.rawValue)
         if let old {
             perception.cancelGuidance(context: old); evidence.cancel(context: old)
@@ -222,7 +225,8 @@ final class SessionCoordinator: ObservableObject {
         refreshPermissions()
         guard simulated || permissionState.ready else { message = permissionState.explanation; return }
         guard canResume, !hazardActive, let frame = lastFrame,
-              frame.trackingNormal, clock.nowMs - frame.capturedAtMs <= 300,
+              frame.trackingNormal, frame.capturedAtMs <= clock.nowMs,
+              frame.expiresAtMs > clock.nowMs, clock.nowMs - frame.capturedAtMs <= 300,
               frame.context == context, capabilities.perception.usable, capabilities.conversation.usable else {
             if phase == .paused { message = "Fresh tracking and working audio are required. Reposition the phone, then choose Resume." }
             return
@@ -254,7 +258,14 @@ final class SessionCoordinator: ObservableObject {
         case .resume: resume()
         case .end: stop(.userEnd)
         case .cancelTask: stop(.cancelTask)
-        case .repeatLast: if let context, !caption.isEmpty { speech.speak(caption, priority: 4, context: context) }
+        case .repeatLast:
+            guard phase == .active, let context else { return }
+            if let request = engine?.state.pendingRequest,
+               engine?.state.phase == .choosing || engine?.state.phase == .discussingMenu {
+                receiveResponse(request, source: .user, response: .menuCommand(.repeatOptions))
+            } else if !caption.isEmpty {
+                speech.speak(caption, priority: 4, context: context)
+            }
         }
     }
     func backgrounded() { if phase == .active || phase == .preparing || phase == .recovering || calibrationIndex != nil { stop(.background) } }
@@ -348,8 +359,9 @@ private extension SessionCoordinator {
         sharedAudioInput = nil
     }
     func beginRecovery() {
-        guard phase == .active else { return }
+        guard phase == .active || phase == .paused else { return }
         stop(.providerFailure)
+        capabilities.conversation = .unavailable("Conversation disconnected")
         guard sharedAudioInput != nil else { message = "Connection unavailable. End and start again."; return }
         phase = .recovering; activity = .reconnecting
         capabilities.conversation = .preparing; message = "Reconnecting. Physical assistance remains stopped."
@@ -380,6 +392,7 @@ private extension SessionCoordinator {
                 do {
                     try await conversation.start(context: context, audioInput: input)
                     guard !Task.isCancelled, let self, self.phase == .recovering, self.recoveryToken == token else { return }
+                    conversation.setMicrophoneMuted(self.microphoneMuted)
                     self.recoveryDeadline?.cancel(); self.recoveryDeadline = nil
                     self.recoveryWork = nil; self.phase = .paused; self.activity = .paused
                     self.capabilities.conversation = self.simulated ? .simulated : .ready
@@ -527,7 +540,7 @@ private extension SessionCoordinator {
     }
     func receiveFrame(_ frame: FrameSnapshot) {
         guard [.preparing, .active, .paused, .recovering].contains(phase),
-              frame.context == context, frame.transform.isValid, frame.capturedAtMs <= clock.nowMs,
+              frame.context == context, frame.transform.isValid, frame.capturedAtMs >= 0, frame.capturedAtMs <= clock.nowMs,
               frame.expiresAtMs > clock.nowMs, clock.nowMs - frame.capturedAtMs <= 300,
               camera == nil || frame.geometryID == camera?.geometryID else { return }
         lastFrame = frame; preview = frame.preview
@@ -562,7 +575,7 @@ private extension SessionCoordinator {
         frameWatchdog?.cancel()
         frameWatchdog = clock.schedule(afterMs: 100) { [weak self] in
             guard let self, self.phase == .active else { return }
-            if self.hasActiveTask && (self.lastFrame == nil || self.clock.nowMs - (self.lastFrame?.capturedAtMs ?? 0) > 300) {
+            if self.hasActiveTask && (self.lastFrame == nil || self.clock.nowMs >= (self.lastFrame?.expiresAtMs ?? 0) || self.clock.nowMs - (self.lastFrame?.capturedAtMs ?? 0) > 300) {
                 self.stop(.trackingLost)
             }
             if self.phase == .active { self.armFrameWatchdog() }
@@ -612,6 +625,10 @@ extension SessionCoordinator {
         guard simulated || bands.isReady else {
             calibrationMessage = "Connect and synchronize both confirmed bands before calibration."; return
         }
+        guard !hazardActive, !microphoneMuted, capabilities.conversation.usable,
+              simulated || capabilities.offlineStop.usable else {
+            calibrationMessage = "Calibration requires working spoken Stop, an unmuted microphone, and no active hazard."; return
+        }
         stop(.calibration)
         calibrationIndex = 0
         playCalibration()
@@ -620,6 +637,7 @@ extension SessionCoordinator {
         guard let index = calibrationIndex, let oldContext = context else { return }
         guard oldContext.generation < UInt64.max - 1 else { stop(.generationExhausted); return }
         bands.allStop(reason: "calibration_replay")
+        speech.cancel(context: oldContext)
         // Calibration cancels the prior physical task. Each playback gets a fresh generation.
         engine = TaskEngine(sessionID: oldContext.sessionID, initialGeneration: oldContext.generation + 1,
                             guidingHand: preferences.guidingHand == .left ? .left : .right)

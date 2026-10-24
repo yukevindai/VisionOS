@@ -118,6 +118,24 @@ final class TaskEngineTests: XCTestCase {
         XCTAssertNil(h.engine.state.result)
     }
 
+    func testStopCancelsGuidanceDespiteClockRegressionWithoutRewindingClock() {
+        for invalidTime: Int64 in [99, -1] {
+            var h = Harness(); h.start(); h.resolve(); h.acquire()
+            let pending = h.engine.state.pendingRequest!
+            let effects = h.engine.reduce(.stop(.userPause), nowMs: invalidTime)
+            XCTAssertEqual(h.engine.state.phase, .paused)
+            XCTAssertNil(h.engine.state.pendingRequest)
+            XCTAssertEqual(h.engine.state.context.generation, pending.task.generation + 1)
+            XCTAssertTrue(effects.contains(.cancelWork(pending.task)))
+            XCTAssertTrue(effects.contains(.allStop(h.engine.state.context)))
+            XCTAssertFalse(h.engine.isGuidanceDispatchAllowed(context: pending,
+                           evidence: TaskFixtures.physical(nowMs: h.now), nowMs: h.now))
+            XCTAssertEqual(h.engine.reduce(.resume, nowMs: 99), [.rejected(.stale)])
+            XCTAssertEqual(h.send(.guidance(mode: .hand, targetID: "simulated-button", status: .onTarget,
+                                          evidence: TaskFixtures.physical(nowMs: h.now)), context: pending), [.rejected(.wrongContext)])
+        }
+    }
+
     func testDuplicateAndRequestCorrelation() {
         var h = Harness(); h.start(); h.resolve(); h.acquire()
         let pending = h.engine.state.pendingRequest!
@@ -265,6 +283,38 @@ final class TaskEngineTests: XCTestCase {
         XCTAssertEqual(h.confirm(.yes), [.rejected(.malformed)])
         h.confirm(.doorAction(.pull)); XCTAssertEqual(h.engine.state.phase, .reacquiring)
         XCTAssertEqual(h.engine.state.selectedDoorAction, .pull)
+    }
+
+    func testAutomaticDoorCompletesRequiredApproachBeforeVerifyingWithoutHandGuidance() {
+        var h = Harness(); h.start(.door)
+        h.resolve(TaskFixtures.target(kind: .door, requiresApproach: true, doorAction: .automatic))
+        let approach = h.acquire(TaskFixtures.physical(nowMs: h.now, handVisible: false))
+        XCTAssertEqual(h.engine.state.phase, .approaching)
+        XCTAssertTrue(approach.contains { if case .requestGuidance(_, .approach, _, _) = $0 { return true }; return false })
+        XCTAssertFalse(approach.contains { if case .requestVerification = $0 { return true }; return false })
+        h.onTarget(.approach)
+        let opening = h.acquire(TaskFixtures.physical(nowMs: h.now, handVisible: false))
+        XCTAssertEqual(h.engine.state.phase, .verifying)
+        XCTAssertTrue(opening.contains { if case .requestVerification(_, .openDoor, _) = $0 { return true }; return false })
+        XCTAssertFalse(opening.contains { if case .requestGuidance = $0 { return true }; return false })
+        h.send(.verification(.observed(h.observation(.doorOpening))))
+        XCTAssertEqual(h.engine.state.phase, .awaitingPassage)
+        XCTAssertNil(h.engine.state.result)
+        h.send(.passageAuthorized(TaskFixtures.physical(nowMs: h.now, handVisible: false)))
+        XCTAssertEqual(h.engine.state.result?.verification, .observed)
+    }
+
+    func testAutomaticDoorStillRequiresFreshSafeTargetEvidence() {
+        for evidence in [TaskFixtures.physical(nowMs: 0, handVisible: false),
+                         TaskFixtures.physical(nowMs: 500, handVisible: false, targetVisible: false),
+                         TaskFixtures.physical(nowMs: 500, handVisible: false, hazardPresent: true)] {
+            var h = Harness(); h.now = 500; h.start(.door)
+            h.resolve(TaskFixtures.target(kind: .door, doorAction: .automatic))
+            let effects = h.acquire(evidence)
+            XCTAssertEqual(h.engine.state.phase, .paused)
+            XCTAssertTrue(effects.contains { if case .allStop = $0 { return true }; return false })
+            XCTAssertFalse(effects.contains { if case .requestVerification = $0 { return true }; return false })
+        }
     }
 
     func testDoorBlockedAndUnknownPathPauseWithoutRetry() {

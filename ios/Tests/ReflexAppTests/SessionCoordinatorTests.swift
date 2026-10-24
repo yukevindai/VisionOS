@@ -279,4 +279,101 @@ final class SessionCoordinatorTests: XCTestCase {
         h.session.stop(.userEnd)
     }
 
+    func testDisconnectWhilePausedRequiresRecoveryBeforeResume() async {
+        let h = makeHarness(); h.session.start(); await settle()
+        h.session.stop(.userPause)
+        h.conversation.holdStart = true
+        h.conversation.emit(.disconnected)
+        XCTAssertEqual(h.session.phase, .recovering)
+        XCTAssertFalse(h.session.capabilities.conversation.usable)
+        h.clock.advance(250); await settle()
+        h.session.resume()
+        XCTAssertEqual(h.session.phase, .recovering)
+        h.conversation.releaseHeldStart(); await settle()
+        XCTAssertEqual(h.session.phase, .paused)
+        h.clock.advance(100); h.session.resume()
+        XCTAssertEqual(h.session.phase, .active)
+        h.session.stop(.userEnd)
+    }
+
+    func testNewSessionResetsTransportMute() async {
+        let h = makeHarness(); h.session.start(); await settle()
+        h.session.setMuted(true)
+        XCTAssertTrue(h.conversation.muted)
+        h.session.stop(.userEnd)
+        h.session.start(); await settle()
+        XCTAssertEqual(h.session.phase, .active)
+        XCTAssertFalse(h.session.microphoneMuted)
+        XCTAssertFalse(h.conversation.muted)
+        h.session.stop(.userEnd)
+    }
+
+    func testReconnectRestoresMuteWhenTransportResetsItsAudioState() async {
+        let h = makeHarness(); h.session.start(); await settle()
+        h.session.setMuted(true)
+        h.conversation.holdStart = true
+        h.conversation.emit(.disconnected)
+        h.clock.advance(250); await settle()
+        h.conversation.setMicrophoneMuted(false)
+        h.conversation.releaseHeldStart(); await settle()
+        XCTAssertEqual(h.session.phase, .paused)
+        XCTAssertTrue(h.session.microphoneMuted)
+        XCTAssertTrue(h.conversation.muted)
+        h.session.resume()
+        XCTAssertEqual(h.session.phase, .paused)
+        h.session.stop(.userEnd)
+    }
+
+    func testResumeRejectsExpiredFrameWithinAgeLimit() async {
+        let h = makeHarness(); h.session.start(); await settle()
+        h.session.stop(.userPause)
+        let now = h.clock.nowMs
+        h.perception.onFrame?(.init(context: h.session.context!, frameID: "short-lived",
+            capturedAtMs: now, expiresAtMs: now + 1, geometryID: h.perception.camera.geometryID,
+            transform: .identity, preview: nil, encodedImage: nil, trackingNormal: true, depthUsable: true))
+        h.clock.advance(2)
+        h.session.resume()
+        XCTAssertEqual(h.session.phase, .paused)
+        h.perception.emitFrame()
+        h.session.resume()
+        XCTAssertEqual(h.session.phase, .active)
+        h.session.stop(.userEnd)
+    }
+
+    func testCalibrationCannotRestartOutputDuringHazardOrMute() async {
+        let h = makeHarness(); h.session.start(); await settle()
+        h.perception.inject(.hazard)
+        h.session.beginCalibration()
+        XCTAssertNil(h.session.calibrationIndex)
+        h.perception.recover()
+        h.session.setMuted(true)
+        h.session.beginCalibration()
+        XCTAssertNil(h.session.calibrationIndex)
+        h.session.setMuted(false)
+        h.session.beginCalibration()
+        XCTAssertEqual(h.session.calibrationIndex, 0)
+        h.session.stop(.userEnd)
+    }
+
+    func testRepeatDoesNotReplayInstructionsWhilePaused() async {
+        let h = makeHarness(); h.session.start(); await settle()
+        h.session.stop(.userPause)
+        h.speech.onCaption?(h.session.context!, "Move left")
+        let count = h.speech.spoken.count
+        h.session.command(.repeatLast)
+        XCTAssertEqual(h.speech.spoken.count, count)
+        h.session.stop(.userEnd)
+    }
+
+    func testRepeatMenuOptionsUsesPendingTaskInsteadOfUnrelatedCaption() async {
+        let h = makeHarness(); h.session.start(); await settle()
+        h.session.submitFixtureText("order at kiosk"); await settle()
+        XCTAssertEqual(h.session.taskState?.phase, .choosing)
+        h.speech.onCaption?(h.session.context!, "Unrelated conversation")
+        h.session.command(.repeatLast)
+        XCTAssertTrue(h.speech.spoken.last?.contains("Tea") == true)
+        XCTAssertEqual(h.session.taskState?.phase, .choosing)
+        h.session.stop(.userEnd)
+    }
+
 }
