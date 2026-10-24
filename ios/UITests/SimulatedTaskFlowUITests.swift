@@ -130,13 +130,7 @@ final class SimulatedTaskFlowUITests: XCTestCase {
     }
 
     private func send(_ text: String, in app: XCUIApplication) {
-        let input = app.descendants(matching: .any).matching(identifier: "fixture.input").firstMatch
-        reveal(input, in: app)
-        input.tap()
-        input.typeText(text)
-        let send = app.buttons["fixture.send"]
-        reveal(send, in: app)
-        send.tap()
+        sendSimulatedRequest(text, in: app)
     }
 
     private func answer(_ yes: Bool, in app: XCUIApplication) {
@@ -168,6 +162,10 @@ final class SimulatedTaskFlowUITests: XCTestCase {
     }
 
     private func reveal(_ element: XCUIElement, in app: XCUIApplication) {
+        if app.scrollViews["session.content"].exists && !app.buttons["settings.done"].exists {
+            revealSessionElement(element, in: app)
+            return
+        }
         let sessionScroll = app.scrollViews["session.content"]
         let scroll = sessionScroll.exists ? sessionScroll : app.collectionViews.firstMatch
         for _ in 0..<8 {
@@ -182,7 +180,7 @@ final class SimulatedTaskFlowUITests: XCTestCase {
     }
 
     private func openDiagnostics(_ app: XCUIApplication) {
-        app.buttons["home.settings"].tap()
+        openSettings(in: app)
         let diagnostics = app.buttons["Integration diagnostics"]
         reveal(diagnostics, in: app); diagnostics.tap()
     }
