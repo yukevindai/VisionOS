@@ -9,7 +9,7 @@ struct HomeView: View {
     @State private var settingsPresented = false
     @State private var toolsPresented = false
     @AccessibilityFocusState private var callFocused: Bool
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @ScaledMetric(relativeTo: .largeTitle) private var callTitleSize = 48
 
     private var sessionVisible: Bool { session.phase.canEnd && session.phase != .failed }
 
@@ -27,7 +27,8 @@ struct HomeView: View {
                     }
                 }
             }
-            .background(AssistanceColors.canvas.ignoresSafeArea())
+            .background((role == .assisted ? Color.black : AssistanceColors.canvas).ignoresSafeArea())
+            .toolbarColorScheme(role == .assisted ? .dark : nil, for: .navigationBar)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(sessionVisible || role == nil ? .hidden : .visible, for: .navigationBar)
             .toolbar {
@@ -69,65 +70,59 @@ struct HomeView: View {
     }
 
     private var rolePicker: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                brand
-                Text("How will you use Reflex?")
-                    .font(.largeTitle.bold())
-                    .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityAddTraits(.isHeader)
-                Text("Choose the experience that works for you.")
-                    .font(.title3).foregroundStyle(AssistanceColors.secondaryText)
-                roleChoice("Blind", explanation: "Get voice guidance for everyday tasks.", primary: true) {
-                    role = .assisted
+        GeometryReader { geometry in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    brand
+                    Text("Choose your view")
+                        .font(.title.bold())
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityAddTraits(.isHeader)
+                    roleChoice("Blind", explanation: "Get voice guidance for everyday tasks.",
+                               primary: true, height: geometry.size.height * 0.56) {
+                        role = .assisted
+                    }
+                    roleChoice("Not blind", explanation: "Join a shared session and help someone.",
+                               primary: false, height: geometry.size.height * 0.17) {
+                        role = .helper
+                    }
                 }
-                roleChoice("Not blind", explanation: "Join a shared session and help someone.", primary: false) {
-                    role = .helper
-                }
+                .padding(20)
+                .frame(maxWidth: 650, minHeight: geometry.size.height, alignment: .center)
+                .frame(maxWidth: .infinity)
             }
-            .padding(24)
-            .frame(maxWidth: 650, alignment: .leading)
-            .frame(maxWidth: .infinity)
         }
         .accessibilityIdentifier("role.selection")
     }
 
     private func roleChoice(_ title: String, explanation: String, primary: Bool,
-                            action: @escaping () -> Void) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Button(action: action) {
-                Text(title)
-                    .font(.title.bold())
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, minHeight: 88)
-                    .padding(16)
-                    .foregroundStyle(primary ? Color.white : Color.primary)
-                    .background(primary ? AssistanceColors.primaryActionFill : Color(uiColor: .secondarySystemGroupedBackground),
-                                in: RoundedRectangle(cornerRadius: 20))
-                    .overlay {
-                        if !primary {
-                            RoundedRectangle(cornerRadius: 20).stroke(.primary.opacity(0.5), lineWidth: 1)
-                        }
-                    }
-            }
-            .buttonStyle(.plain)
-            .accessibilityHint(explanation)
-            .accessibilityIdentifier(primary ? "role.blind" : "role.helper")
-            Text(explanation).font(.body).foregroundStyle(AssistanceColors.secondaryText)
+                            height: CGFloat, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.largeTitle.bold())
                 .fixedSize(horizontal: false, vertical: true)
+                .padding(20)
+                .frame(maxWidth: .infinity, minHeight: max(88, height))
+                .foregroundStyle(primary ? Color.white : Color.primary)
+                .background(primary ? AssistanceColors.primaryActionFill : Color(uiColor: .secondarySystemGroupedBackground),
+                            in: RoundedRectangle(cornerRadius: 24))
+                .overlay {
+                    if !primary {
+                        RoundedRectangle(cornerRadius: 24).stroke(.primary, lineWidth: 2)
+                    }
+                }
+                .contentShape(RoundedRectangle(cornerRadius: 24))
         }
+        .buttonStyle(.plain)
+        .accessibilityHint(explanation)
+        .accessibilityIdentifier(primary ? "role.blind" : "role.helper")
     }
 
     private var callLanding: some View {
         GeometryReader { geometry in
             ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    brand
+                VStack(alignment: .leading, spacing: 16) {
                     if dependencies.simulated { SimulationLabel() }
-                    Text("Ready when you are.")
-                        .font(.largeTitle.bold())
-                        .fixedSize(horizontal: false, vertical: true)
-                        .accessibilityAddTraits(.isHeader)
                     if session.phase == .failed || session.phase == .ended {
                         Text(session.message).font(.body)
                             .fixedSize(horizontal: false, vertical: true)
@@ -136,47 +131,38 @@ struct HomeView: View {
                             permissionRecovery
                         }
                     }
-                    VStack(spacing: 28) {
-                        Spacer(minLength: 24)
-                        Button(action: session.start) {
-                            VStack(spacing: 20) {
-                                Image("CallGlyph").resizable().scaledToFit()
-                                    .frame(width: 52, height: 52)
-                                    .accessibilityHidden(true)
-                                Text("Call").font(.largeTitle.bold())
-                                    .fixedSize(horizontal: false, vertical: true)
-                            }
+                    Button(action: session.start) {
+                        Text("Call")
+                            .font(.system(size: callTitleSize, weight: .bold))
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(24)
+                            .frame(maxWidth: .infinity,
+                                   minHeight: max(260, geometry.size.height - (showsCallNotice ? 180 : 32)))
                             .foregroundStyle(.white)
-                            .frame(maxWidth: .infinity)
-                            .frame(minHeight: dynamicTypeSize.isAccessibilitySize ? 160 : 252)
-                            .padding(.vertical, dynamicTypeSize.isAccessibilitySize ? 24 : 0)
                             .background(AssistanceColors.primaryActionFill,
-                                        in: RoundedRectangle(cornerRadius: dynamicTypeSize.isAccessibilitySize ? 36 : 126))
-                        }
-                        .buttonStyle(.plain)
-                        .frame(maxWidth: dynamicTypeSize.isAccessibilitySize ? 420 : 252)
-                        .accessibilityLabel("Call")
-                        .accessibilityHint(dependencies.simulated
-                                           ? "Starts simulated assistance. The microphone is not listening."
-                                           : "Starts voice assistance and requests camera, microphone and speech recognition access if needed.")
-                        .accessibilityIdentifier("home.start")
-                        .accessibilityFocused($callFocused)
-                        Text(dependencies.simulated ? "Try simulated assistance." : "Voice assistance starts right away.")
-                            .font(.title3.weight(.semibold)).multilineTextAlignment(.center)
-                            .fixedSize(horizontal: false, vertical: true)
-                        Text(dependencies.simulated ? "No real camera, microphone or wristbands." : "Describe the object you want to find.")
-                            .font(.body).foregroundStyle(AssistanceColors.secondaryText).multilineTextAlignment(.center)
-                            .fixedSize(horizontal: false, vertical: true)
-                        Spacer(minLength: 24)
+                                        in: RoundedRectangle(cornerRadius: 24))
+                            .contentShape(RoundedRectangle(cornerRadius: 24))
                     }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Call")
+                    .accessibilityHint(dependencies.simulated
+                                       ? "Starts simulated assistance. The microphone is not listening."
+                                       : "Starts voice assistance and requests camera, microphone and speech recognition access if needed.")
+                    .accessibilityIdentifier("home.start")
+                    .accessibilityFocused($callFocused)
                 }
-                .padding(24)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 16)
                 .frame(maxWidth: 650, minHeight: geometry.size.height, alignment: .topLeading)
                 .frame(maxWidth: .infinity)
             }
         }
+        .environment(\.colorScheme, .dark)
         .onAppear { callFocused = true }
+    }
+
+    private var showsCallNotice: Bool {
+        dependencies.simulated || session.phase == .failed || session.phase == .ended
     }
 
     @ViewBuilder

@@ -1,4 +1,5 @@
 import CoreGraphics
+import AVFoundation
 import Guidance
 import XCTest
 @testable import Reflex
@@ -65,5 +66,51 @@ final class NativePerceptionGeometryTests: XCTestCase {
         XCTAssertFalse(NativePerceptionGeometry.validTrackedBox(.init(x: -0.1, y: 0.2, width: 0.2, height: 0.2), confidence: 1))
         XCTAssertFalse(NativePerceptionGeometry.validTrackedBox(.init(x: 0.9, y: 0.2, width: 0.2, height: 0.2), confidence: 1))
         XCTAssertFalse(NativePerceptionGeometry.validTrackedBox(.zero, confidence: 1))
+    }
+}
+
+final class NativeRearCameraFormatPolicyTests: XCTestCase {
+    func testUltraWideWinsWithoutChangingARKitQualityOrderWithinLens() {
+        let formats: [NativeRearCameraFormatPolicy.Format] = [
+            .init(position: .back, deviceType: .builtInWideAngleCamera),
+            .init(position: .back, deviceType: .builtInUltraWideCamera),
+            .init(position: .back, deviceType: .builtInUltraWideCamera)
+        ]
+        XCTAssertEqual(NativeRearCameraFormatPolicy.preferredIndex(in: formats), 1)
+        XCTAssertNil(NativeRearCameraFormatPolicy.description(for: .builtInUltraWideCamera).fallbackReason)
+    }
+
+    func testUnsupportedUltraWideFallsBackToWideBeforeTelephoto() {
+        let formats: [NativeRearCameraFormatPolicy.Format] = [
+            .init(position: .back, deviceType: .builtInTelephotoCamera),
+            .init(position: .back, deviceType: .builtInWideAngleCamera),
+            .init(position: .back, deviceType: .builtInWideAngleCamera)
+        ]
+        XCTAssertEqual(NativeRearCameraFormatPolicy.preferredIndex(in: formats), 1)
+        let description = NativeRearCameraFormatPolicy.description(for: .builtInWideAngleCamera)
+        XCTAssertEqual(description.lens, "Wide rear camera")
+        XCTAssertNotNil(description.fallbackReason)
+    }
+
+    func testFrontUltraWideCannotReplaceRearCamera() {
+        let formats: [NativeRearCameraFormatPolicy.Format] = [
+            .init(position: .front, deviceType: .builtInUltraWideCamera),
+            .init(position: .back, deviceType: .builtInWideAngleCamera)
+        ]
+        XCTAssertEqual(NativeRearCameraFormatPolicy.preferredIndex(in: formats), 1)
+        XCTAssertNil(NativeRearCameraFormatPolicy.preferredIndex(in: [formats[0]]))
+        XCTAssertNil(NativeRearCameraFormatPolicy.preferredIndex(in: []))
+    }
+
+    func testUnknownRearFormatRetainsARKitPreferenceAndDoesNotClaimUltraWide() {
+        let type = AVCaptureDevice.DeviceType(rawValue: "FutureRearCamera")
+        let formats: [NativeRearCameraFormatPolicy.Format] = [
+            .init(position: .unspecified, deviceType: .builtInUltraWideCamera),
+            .init(position: .back, deviceType: type)
+        ]
+        XCTAssertEqual(NativeRearCameraFormatPolicy.preferredIndex(in: formats), 1)
+        let description = NativeRearCameraFormatPolicy.description(for: type)
+        XCTAssertEqual(description.lens, "ARKit rear camera (FutureRearCamera)")
+        XCTAssertNotNil(description.fallbackReason)
     }
 }

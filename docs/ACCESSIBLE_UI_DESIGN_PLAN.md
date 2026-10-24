@@ -1,6 +1,6 @@
 # Reflex role-based accessible UI plan
 
-October 24, 2026 — revised after user review. This version supersedes the earlier shared Home/task-controls concept. The approved interface is now implemented in the native iOS shell; service and physical-device acceptance remain separate.
+October 24, 2026 — revised after the camera-first screenshot review. This version supersedes the earlier shared Home/task-controls concept. The approved interface is now implemented in the native iOS shell; service and physical-device acceptance remain separate.
 
 [Figma current overview](https://www.figma.com/design/L4c5A5bH9pjnDCTFPDcwHs?node-id=3-27) · [Current specification](https://www.figma.com/design/L4c5A5bH9pjnDCTFPDcwHs?node-id=3-28)
 
@@ -71,11 +71,11 @@ These are the immediate design priorities. No autonomous elevator travel, routin
 ## Accessibility specification
 
 - Role choices have accessible names and concise purpose descriptions. Initial assisted landing focus goes to Call. Call's hint explains that AI starts and authorized friends may join. The decorative phone icon is not a separate focus stop.
-- Native semantic controls with visible labels. Call is a large 252pt circle in the mockup; other primary controls are at least 60pt tall. The minimum implementation target is 44pt.
-- Native SF Pro through semantic system text styles and Dynamic Type. At maximum accessibility sizes, preserve content, wrap labels, stack controls and allow scrolling. A large fixed Call circle must become flexible if its label grows.
+- Native semantic controls with visible labels. Blind occupies about half the role screen and Not blind about 15%; purpose descriptions remain VoiceOver hints. The heading is “Choose your view.” Call is a large blue rounded rectangle on black, filling the available landing area; other primary controls are at least 60pt tall. The minimum implementation target is 44pt.
+- Native SF Pro through semantic system text styles and Dynamic Type. At maximum accessibility sizes, preserve content, wrap labels, stack controls and allow scrolling. Role and Call targets have minimum, not fixed, heights so their labels grow and the page scrolls when needed.
 - Significant state changes are spoken once. Coordinate VoiceOver, AI and friend audio through R1's output authority; Stop/hazards preempt conversation. Captions or telemetry updates must not steal focus or announce every frame.
 - No critical gesture-only, color-only, visual-only or timed interaction. Provide accessible manual confirmation/recovery alternatives when speech fails, without displaying a permanent task menu.
-- Use semi-transparent native material islands over the camera, per the implementation request. Keep the complete camera frame visible with aspect-fit. Use opaque surfaces only with Reduce Transparency and stronger material with Increase Contrast. Honor Reduce Motion. Reuse the established Light/Dark semantic tokens.
+- Keep the complete camera frame visible with aspect-fit. Use a compact status pill and circular details control at the top, with concise instructions/captions and a dark control dock at the bottom. The dock retains immediate Stop/Resume and End call. Use opaque dark surfaces for stable contrast over the camera; secondary confirmation/details surfaces honor Reduce Transparency and Increase Contrast. Honor Reduce Motion. Reuse the established Light/Dark semantic tokens.
 - Helper web supports keyboard-only target selection, visible focus and status announcements. Do not rely on reading the landmark overlay to use core session controls.
 
 ## Figma deliverables and review
@@ -94,6 +94,14 @@ Visual review covered all revised compositions; the current phone body bounds fi
 4. Integrate and validate the labeled elevator-button task with R2 task state, R3 label evidence and R1 guidance authority. Do not imply current object guidance already covers buttons.
 5. Verify real iPhone owner/helper flows, browser keyboard operation, VoiceOver alongside speech, maximum Dynamic Type, offline Stop, interruptions, missing depth, reconnect and revocation. Obtain consenting blind/low-vision user feedback when feasible.
 
-Current code supports local cup/can/bottle/bowl evidence/guidance and a separate authenticated snapshot reader; watch-only friend camera sharing exists in code. Full unified AI calls, helper audio/telemetry and integrated elevator-button guidance remain implementation/validation work. The native shell now provides role routing, one-button local assistance, translucent camera controls, and authenticated watch-only helper discovery/join. The normal Call does not yet publish a shared room: owner sharing remains a separate tool with explicit consent. See the iOS validation record for actual checks.
+Normal Call now uses the authenticated native Gemini object client, pending the R3 backend endpoint/configuration; the local cup/can/bottle/bowl adapter remains in source. The authenticated snapshot reader and watch-only friend sharing are separate tools. Full unified AI calls, helper audio/telemetry and integrated elevator-button guidance remain implementation/validation work. The native shell now provides role routing, one-button local assistance, translucent camera controls, and authenticated watch-only helper discovery/join. The normal Call does not yet publish a shared room: owner sharing remains a separate tool with explicit consent. See the iOS validation record for actual checks.
 
 References: repository R2/R3 live friend assistance and build specifications; [Apple accessibility](https://developer.apple.com/design/human-interface-guidelines/accessibility); [VoiceOver](https://developer.apple.com/design/human-interface-guidelines/voiceover); [WCAG 2.2](https://www.w3.org/TR/WCAG22/); [Record3D features](https://record3d.app/features) as visual-stream context only.
+
+## Screenshot refresh — October 24, 2026
+
+The current Figma role (11:42), Call (11:57), and calling (11:76) frames were read before this revision and edited in place. The supplied Be My Eyes screenshots define the dominant blue call target, black canvas, camera focus and bottom controls. Reflex retains its own Call/Stop/End meanings and existing role/tools/settings navigation; unrelated tabs, Siri prompts, photo capture and history are not introduced. The Figma scene is illustrative, not camera validation.
+
+The native role buttons use minimum heights of 56% and 17% of usable view height to approximate the requested 50%/15% screen areas after margins and system safe areas. Dynamic Type can increase heights, with scrolling preserving both choices.
+
+Normal Call selects a rear format from `ARWorldTrackingConfiguration.supportedVideoFormats` at startup: physical ultra-wide first, then wide, preserving ARKit preference within each lens. It reports the actual selected lens and fallback reason. A phone having an ultra-wide lens does not establish that ARKit world tracking exposes it; no hardcoded 0.5× label or digital zoom is applied. The single AR session, scene-depth registration and geometry invalidation remain intact. Physical lens/field-of-view verification is outstanding.

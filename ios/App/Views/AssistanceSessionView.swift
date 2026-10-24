@@ -15,11 +15,22 @@ struct AssistanceSessionView: View {
         GeometryReader { geometry in
             ZStack {
                 cameraBackground(size: geometry.size)
-                VStack(spacing: 0) {
+                VStack(spacing: 12) {
+                    statusIsland
+                        .padding(.horizontal, 20)
+                        .padding(.top, 12)
+                    Spacer(minLength: 0)
                     ScrollView {
-                        VStack(spacing: 16) {
-                            statusIsland
-                            if preferences.captions, !session.caption.isEmpty {
+                        VStack(spacing: 12) {
+                            Text(session.message)
+                                .font(.body)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(16)
+                                .cameraIsland(opaque: true)
+                                .accessibilityIdentifier("session.message")
+                            if preferences.captions, !session.caption.isEmpty,
+                               session.caption != session.message {
                                 Text(session.caption)
                                     .font(.title3)
                                     .fixedSize(horizontal: false, vertical: true)
@@ -33,23 +44,22 @@ struct AssistanceSessionView: View {
                             if session.simulated { fixtureControls }
                         }
                         .frame(maxWidth: 650)
-                        .padding(.horizontal, 24)
-                        .padding(.top, 16)
-                        .padding(.bottom, 12)
+                        .padding(.horizontal, 20)
                         .frame(maxWidth: .infinity)
                     }
-                    .accessibilityIdentifier("session.content")
+                    .defaultScrollAnchor(.bottom)
+                    .frame(maxHeight: geometry.size.height * 0.50)
                     .clipped()
-                    .contentShape(Rectangle())
+                    .accessibilityIdentifier("session.content")
                     controlsIsland
                         .frame(maxWidth: 650)
-                        .padding(.horizontal, 24)
+                        .padding(.horizontal, 16)
                         .padding(.bottom, 12)
-                        .padding(.top, 8)
                         .frame(maxWidth: .infinity)
                 }
             }
         }
+        .environment(\.colorScheme, .dark)
         .sheet(isPresented: $detailsPresented, onDismiss: {
             if settingsRequested {
                 settingsRequested = false
@@ -88,36 +98,40 @@ struct AssistanceSessionView: View {
     }
 
     private var statusIsland: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            if session.simulated { SimulationLabel() }
-            HStack(alignment: .top, spacing: 12) {
+        HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                if session.simulated {
+                    Text("SIMULATED")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.yellow)
+                        .accessibilityLabel("Simulated mode. No real camera or wristbands.")
+                        .accessibilityIdentifier("simulation.banner")
+                }
                 Text(session.activity.rawValue)
-                    .font(.title2.bold())
+                    .font(.headline)
                     .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, alignment: .leading)
                     .accessibilityAddTraits(.isHeader)
                     .accessibilityIdentifier("session.status")
                     .accessibilityFocused($statusFocused)
-                Button { detailsPresented = true } label: {
-                    Image(systemName: "ellipsis")
-                        .font(.title3.weight(.semibold))
-                        .frame(width: 44, height: 44)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Call details")
-                .accessibilityHint("Microphone, captions, settings and connection status. Stop and End call remain available.")
-                .accessibilityIdentifier("session.details")
             }
-            Text(session.message)
-                .font(.body)
-                .fixedSize(horizontal: false, vertical: true)
-                .accessibilityIdentifier("session.message")
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .cameraIsland(cornerRadius: 24, opaque: true)
+            Spacer(minLength: 0)
+            Button { detailsPresented = true } label: {
+                Image(systemName: "ellipsis")
+                    .font(.title2.weight(.semibold))
+                    .frame(width: 52, height: 52)
+                    .cameraIsland(cornerRadius: 26, opaque: true)
+                    .contentShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Call details")
+            .accessibilityHint("Microphone, captions, settings and connection status. Stop and End call remain available.")
+            .accessibilityIdentifier("session.details")
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(16)
-        // Status and instructions need stable contrast as the camera image changes.
-        .cameraIsland(opaque: true)
+        .frame(maxWidth: 650)
+        .frame(maxWidth: .infinity)
     }
 
     @ViewBuilder
@@ -153,7 +167,7 @@ struct AssistanceSessionView: View {
             sessionControls
         }
         .padding(16)
-        .cameraIsland()
+        .cameraIsland(cornerRadius: 28, opaque: true)
     }
 
     private var stopAvailability: String {
@@ -186,7 +200,7 @@ struct AssistanceSessionView: View {
                     .padding(.horizontal, 12)
                     .frame(maxWidth: .infinity, minHeight: 60)
                     .foregroundStyle(.white)
-                    .background(Color(red: 38.0 / 255, green: 51.0 / 255, blue: 55.0 / 255),
+                    .background(AssistanceColors.primaryActionFill,
                                 in: RoundedRectangle(cornerRadius: 16))
                     .contentShape(RoundedRectangle(cornerRadius: 16))
             }

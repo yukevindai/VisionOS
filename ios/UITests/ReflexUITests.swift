@@ -55,6 +55,15 @@ final class ReflexUITests: XCTestCase {
         let helper = app.buttons["role.helper"]
         XCTAssertTrue(blind.waitForExistence(timeout: 5))
         XCTAssertTrue(helper.isHittable)
+        let screenArea = app.frame.width * app.frame.height
+        let blindArea = blind.frame.width * blind.frame.height / screenArea
+        let helperArea = helper.frame.width * helper.frame.height / screenArea
+        XCTAssertGreaterThan(blindArea, 0.40, "Blind should occupy about half the screen.")
+        XCTAssertLessThan(blindArea, 0.60)
+        XCTAssertGreaterThan(helperArea, 0.11, "Not blind should occupy about 15 percent of the screen.")
+        XCTAssertLessThan(helperArea, 0.20)
+        XCTAssertLessThanOrEqual(blind.frame.maxY, helper.frame.minY)
+        XCTAssertFalse(app.staticTexts["Choose the experience that works for you."].exists)
         XCTAssertFalse(app.buttons["home.start"].exists)
         XCTAssertFalse(app.buttons["session.end"].exists)
         attachScreenshot(of: app, named: "Choose Blind or Not blind")
@@ -67,7 +76,12 @@ final class ReflexUITests: XCTestCase {
 
         app.buttons["home.changeRole"].tap()
         selectBlindRole(in: app)
-        XCTAssertEqual(app.buttons["home.start"].label, "Call")
+        let call = app.buttons["home.start"]
+        XCTAssertEqual(call.label, "Call")
+        XCTAssertGreaterThan(call.frame.width, app.frame.width * 0.85)
+        XCTAssertGreaterThan(call.frame.height, app.frame.height * 0.65)
+        XCTAssertTrue(call.isHittable)
+        XCTAssertFalse(app.staticTexts["Ready when you are."].exists)
         XCTAssertFalse(app.buttons["home.friendVideo"].exists)
         XCTAssertFalse(app.buttons["home.targetReader"].exists)
         XCTAssertFalse(app.buttons["session.end"].exists)
@@ -122,11 +136,17 @@ final class ReflexUITests: XCTestCase {
             "UICTContentSizeCategoryAccessibilityXXXL",
         ]
         app.launch()
+        attachScreenshot(of: app, named: "Largest text role selection")
+        let helper = app.buttons["role.helper"]
+        reveal(helper, in: app)
+        XCTAssertTrue(helper.isHittable)
+        reveal(app.buttons["role.blind"], in: app)
         selectBlindRole(in: app)
 
         let start = app.buttons["home.start"]
         XCTAssertTrue(start.waitForExistence(timeout: 5))
         XCTAssertTrue(start.isHittable)
+        attachScreenshot(of: app, named: "Largest text Call")
         start.tap()
 
         let end = app.buttons["session.end"]
@@ -136,6 +156,12 @@ final class ReflexUITests: XCTestCase {
             scrollView.swipeUp()
         }
         XCTAssertTrue(end.isHittable)
+        XCTAssertTrue(app.buttons["session.pause"].isHittable)
+        XCTAssertTrue(app.buttons["session.details"].isHittable)
+        XCTAssertTrue(app.staticTexts["simulation.banner"].isHittable)
+        attachScreenshot(of: app, named: "Largest text camera controls")
+        end.tap()
+        XCTAssertTrue(start.waitForExistence(timeout: 5))
     }
 
     func testDeniedPermissionsBlockStartAndRecoverWithoutSystemPrompts() {
@@ -250,6 +276,8 @@ final class ReflexUITests: XCTestCase {
         XCTAssertGreaterThanOrEqual(send.frame.width, 44)
         XCTAssertGreaterThanOrEqual(send.frame.height, 44)
         XCTAssertLessThanOrEqual(send.frame.maxY, pause.frame.minY)
+        XCTAssertTrue(app.staticTexts["simulation.banner"].isHittable,
+                      "Simulation provenance must stay visible while session content scrolls.")
         XCTAssertTrue(pause.isHittable)
         XCTAssertTrue(end.isHittable)
         try performAudit(of: app, screen: "Session with simulated input visible")
