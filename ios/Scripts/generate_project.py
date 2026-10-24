@@ -75,6 +75,7 @@ def main() -> None:
     builds = "\n".join(app_builds + unit_builds + ui_builds)
     config_refs = f"""\
 \t\t{uid('resource:Models')} /* Models */ = {{isa = PBXFileReference; lastKnownFileType = folder; path = Resources/Models; sourceTree = SOURCE_ROOT; }};
+\t\t{uid('resource:Assets')} /* Assets.xcassets */ = {{isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Resources/Assets.xcassets; sourceTree = SOURCE_ROOT; }};
 \t\t{uid('config:Debug.xcconfig')} /* Debug.xcconfig */ = {{isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Config/Debug.xcconfig; sourceTree = SOURCE_ROOT; }};
 \t\t{uid('config:Release.xcconfig')} /* Release.xcconfig */ = {{isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Config/Release.xcconfig; sourceTree = SOURCE_ROOT; }};
 \t\t{uid('config:Local.example.xcconfig')} /* Local.example.xcconfig */ = {{isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Config/Local.example.xcconfig; sourceTree = SOURCE_ROOT; }};
@@ -134,6 +135,7 @@ def main() -> None:
 \t\t{uid('package-build:Guidance')} /* Guidance in Frameworks */ = {{isa = PBXBuildFile; productRef = {dep_guidance}; }};
 \t\t{uid('package-build:Guidance-unit')} /* Guidance in Frameworks */ = {{isa = PBXBuildFile; productRef = {dep_guidance}; }};
 \t\t{uid('resource-build:Models')} /* Models in Resources */ = {{isa = PBXBuildFile; fileRef = {uid('resource:Models')}; }};
+\t\t{uid('resource-build:Assets')} /* Assets in Resources */ = {{isa = PBXBuildFile; fileRef = {uid('resource:Assets')}; }};
 \t\t{uid('package-build:Targets')} /* Targets in Frameworks */ = {{isa = PBXBuildFile; productRef = {dep_interpretation}; }};
 \t\t{uid('package-build:Targets-unit')} /* Targets in Frameworks */ = {{isa = PBXBuildFile; productRef = {dep_interpretation}; }};
 \t\t{uid('package-build:SimpleKeychain')} /* SimpleKeychain in Frameworks */ = {{isa = PBXBuildFile; productRef = {dep_keychain}; }};
@@ -145,7 +147,7 @@ def main() -> None:
 \t\t{uid('package-build:Tasks')} /* Tasks in Frameworks */ = {{isa = PBXBuildFile; productRef = {dep_tasks}; }};
 \t\t{uid('package-build:HapticLink')} /* HapticLink in Frameworks */ = {{isa = PBXBuildFile; productRef = {dep_haptics}; }};
 """
-    source_tree_children = [uid("resource:Models"), uid("group:App"), uid("group:ReflexAppTests"), uid("group:ReflexUITests"), uid("config:Debug.xcconfig"), uid("config:Release.xcconfig"), uid("config:Local.example.xcconfig"), uid("app:Info.plist"), uid("group:Products")]
+    source_tree_children = [uid("resource:Assets"), uid("resource:Models"), uid("group:App"), uid("group:ReflexAppTests"), uid("group:ReflexUITests"), uid("config:Debug.xcconfig"), uid("config:Release.xcconfig"), uid("config:Local.example.xcconfig"), uid("app:Info.plist"), uid("group:Products")]
     product_children = [uid("product:Reflex.app"), uid("product:ReflexAppTests.xctest"), uid("product:ReflexUITests.xctest")]
 
     text = f'''// !$*UTF8*$!
@@ -192,7 +194,7 @@ def main() -> None:
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-\t\t{app_resources} /* Resources */ = {{isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = ({uid('resource-build:Models')}, ); runOnlyForDeploymentPostprocessing = 0; }};
+\t\t{app_resources} /* Resources */ = {{isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = ({uid('resource-build:Models')}, {uid('resource-build:Assets')}, ); runOnlyForDeploymentPostprocessing = 0; }};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */

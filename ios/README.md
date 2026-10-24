@@ -38,6 +38,24 @@ The preparation script downloads the original model named in the teammate's `mod
 
 Read [the model notice](Resources/Models/NOTICE.txt) and [AGPL-3.0 license](Resources/Models/ULTRALYTICS-AGPL-3.0.txt). The repository's MIT license does not relicense the Ultralytics model. Conversion and a synthetic model-loading test do not establish real-device recognition accuracy or latency.
 
+## Conversational speech
+
+Normal native assistance uses Cartesia for priority-4 speech through the authenticated
+Convex `speech:synthesize` action when online configuration and an existing sign-in
+are available. Sign in through the image reader or friend tools first. The phone
+contains no Cartesia key; R3 owns the backend action and its server configuration.
+This demo path does not implement the planned streaming STT/Claude/LiveKit worker.
+
+The shared native scheduler retains all playback and priority authority. Stop,
+hazards, lost-target and movement cues stay local. Missing configuration/sign-in,
+provider errors, simulated responses, invalid audio, and the five-second total
+deadline fall back to the original on-device utterance. Text beyond the backend's
+300 UTF-16-unit limit stays local without truncation. Stop, context changes, mute,
+interruptions, new owner speech and replacement utterances cancel pending synthesis;
+late replies cannot restart it. Decode/playback failure also uses local speech.
+Simulator tests use simulated HTTP replies and do not establish live provider,
+microphone, echo-cancellation, or physical-device acceptance.
+
 ## Explicit simulation
 
 Simulation is off by default. Turn it on from **Settings → Use simulated assistance**, or launch the app with `--simulate`. The home and active-session views show a persistent **SIMULATED** label. Fixtures use sample scene/task events and typed requests; they do not connect to the camera, microphone, or wristbands. Inside a simulated session, enter a request in the simulated voice input field and submit it to exercise a fixture flow. This typed path is for fixture development. Normal assistance uses the native adapters described below and requires their actual camera, microphone, speech-recognition and depth readiness.
@@ -140,9 +158,15 @@ Reflex app
 
 See [the native R1/R3 validation record](Validation/2026-10-24-native-r1-r3.md) for actual current results and remaining checks. No live-device pass is established here. The connected iPhone is on iOS 27.2 beta; the installed Xcode 26.6 developer disk image lacks the required device variant, blocking installation/debug validation in this environment. This tooling failure is separate from simulation and compilation. Camera orientation, depth accuracy, speech interruption, offline Stop, actual object detection and physical reaching still need observed device tests under [native adapter acceptance](Validation/ADAPTER_ACCEPTANCE.md).
 
+## Role-based interface
+
+Every app launch starts with **Blind / Not blind**. Blind opens a large **Call** action, which starts the existing native voice/object-assistance coordinator after any required first-use setup. There is no task grid or friend picker in that path. The live camera uses aspect-fit and semi-transparent native material islands; Stop and End call remain reachable, including with large text. Reduce Transparency switches the islands to opaque surfaces. Settings and separate camera tools remain outside the call.
+
+Not blind opens authenticated shared sessions, invitation redemption, and a watch-only rear-camera viewer. It shows only server-authorized joinable sessions. It never opens this phone's camera or microphone. Missing cloud setup is explicit; hand landmarks, object labels, task state and distances remain unavailable until a real shared telemetry feed exists. Full call audio and automatic friend sharing from the normal Call are not wired yet. The existing owner-video tool provides the separate consented sharing path.
+
 ## Gemini snapshot reader
 
-The separate home-screen scene-reading flow captures an upright snapshot and sends it through the authenticated Convex `vision:readScreen` action to the private Python Gemini service. It reuses the teammate's image preparation, Gemini parser and `Targets` selector. The live HTTP path returns one correlated `ScreenModel`; the portable Python selector remains for CLI/evaluation. The old unauthenticated `/v1/select` HTTP route was removed.
+The separate **Blind → More tools → Read a camera image** flow captures an upright snapshot and sends it through the authenticated Convex `vision:readScreen` action to the private Python Gemini service. It reuses the teammate's image preparation, Gemini parser and `Targets` selector. The live HTTP path returns one correlated `ScreenModel`; the portable Python selector remains for CLI/evaluation. The old unauthenticated `/v1/select` HTTP route was removed.
 
 This flow requires real Auth0/Convex configuration plus the private Gemini service URL/token and Gemini key/model, documented in [backend setup](../backend/README.md). These services are not configured or live-tested in this checkout. Missing configuration fails visibly. Numeric confidence and control safety are not invented when Gemini omits them; a readable target is not automatically eligible for physical guidance. The snapshot reader is separate from local object reaching and from the friend-video flow.
 
@@ -165,7 +189,7 @@ The [session discovery and media-limit checkpoint](Validation/2026-10-24-discove
 
 ## Real iPhone video demo
 
-Open **Share live video with a friend** from the home screen with simulation off. This separate full-screen flow provides Auth0 sign-in, invitation codes, explicit friend-request approval, per-session sharing consent and End. A user-authorized rear AR camera adapter feeds the existing LiveKit video gates; no second camera runs alongside normal assistance. The viewer is `apps/friend-web`. Neither path changes teammate ScreenModel, Target Selector or Gemini code.
+Open **Blind → More tools → Share live video with a friend** with simulation off. This separate full-screen flow provides Auth0 sign-in, invitation codes, explicit friend-request approval, per-session sharing consent and End. A user-authorized rear AR camera adapter feeds the existing LiveKit video gates; no second camera runs alongside normal assistance. Viewers are the native **Not blind → Shared sessions** route and `apps/friend-web`. Neither path changes teammate ScreenModel, Target Selector or Gemini code.
 
 Use [the setup guide](../docs/LIVE_VIDEO_DEMO_SETUP.md) for the missing Convex/Auth0/LiveKit projects, callback/webhook URLs, ignored local config and physical iPhone instructions. No Gemini/Claude/Cartesia key is needed for this demo. Camera, microphone and provider secrets are not simulated into a live success.
 

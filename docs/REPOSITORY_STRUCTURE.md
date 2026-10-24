@@ -9,6 +9,8 @@ The root README contains the canonical directory tree. This layout was recorded 
 | `ios/App/` | R2 integration | SwiftUI shell, accessibility, session coordination and native adapters |
 | `ios/App/Perception/` | R1 implementation through R2 integration | Single ARKit camera, Vision hand/target observations, registered depth and native guidance adapter |
 | `ios/App/Audio/` | R1 implementation through R2 integration | Shared native audio, local speech commands and output scheduling |
+| `ios/App/Friends/` | R2 client integration | Native authenticated session discovery and watch-only helper camera UI |
+| `ios/Resources/Assets.xcassets/` | R2 | Native UI assets, including the approved Figma call glyph |
 | `ios/App/Targets/` | R3 integration | Local Core ML object evidence and separate Gemini snapshot-reader UI |
 | `ios/Resources/Models/` | R1/R3 integration | Model notice, provenance manifest and ignored generated YOLO11s Core ML binary |
 | `ios/Packages/Perception/` | R1 | Preserved perception research root; the current native ARKit/Vision adapter lives in `App/Perception` |

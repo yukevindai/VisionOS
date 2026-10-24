@@ -37,6 +37,7 @@ final class SessionCoordinator: ObservableObject {
     private var requestWork: [RequestContext: Task<Void, Never>] = [:]
     private var deadline: ScheduledWork?
     private var frameWatchdog: ScheduledWork?
+    private var previewExpiry: ScheduledWork?
     private var frameWork: Task<Void, Never>?
     private var pendingFrame: FrameSnapshot?
     private var lastFrame: FrameSnapshot?
@@ -143,6 +144,7 @@ final class SessionCoordinator: ObservableObject {
         phase = .preparing; activity = .preparing; message = "Preparing assistance."
         hazardActive = false; microphoneMuted = false; seenConversationEvents.removeAll(); caption = ""
         lastFrame = nil; pendingFrame = nil; preview = nil; lastFrameDispatchMs = nil
+        previewExpiry?.cancel(); previewExpiry = nil
         capabilities = SessionCapabilities(); capabilities.leftBand = bands.leftStatus; capabilities.rightBand = bands.rightStatus
         capabilities.perception = .preparing; capabilities.conversation = .preparing
         bands.discover()
@@ -221,6 +223,7 @@ final class SessionCoordinator: ObservableObject {
         let stopEpoch = startupEpoch
         friendAssistance?.preemptForStop()
         guard startupEpoch == stopEpoch else { return }
+        previewExpiry?.cancel(); previewExpiry = nil; preview = nil
         if phase == .paused && cause == .userPause && calibrationIndex == nil {
             friendAssistance?.ownerStopped(endSharing: false)
             return
@@ -756,6 +759,15 @@ private extension SessionCoordinator {
               frame.expiresAtMs > clock.nowMs, clock.nowMs - frame.capturedAtMs <= 300,
               camera == nil || frame.geometryID == camera?.geometryID else { return }
         lastFrame = frame; preview = frame.preview
+        previewExpiry?.cancel()
+        previewExpiry = nil
+        if frame.preview != nil {
+            previewExpiry = clock.schedule(afterMs: min(frame.expiresAtMs - clock.nowMs,
+                                                        300 - (clock.nowMs - frame.capturedAtMs))) { [weak self] in
+                self?.preview = nil
+                self?.previewExpiry = nil
+            }
+        }
         if !frame.trackingNormal { if phase == .active { stop(.trackingLost) }; return }
         guard phase == .active else { return }
         let capturedAtUTCms = Int64(Date().timeIntervalSince1970 * 1_000) - (clock.nowMs - frame.capturedAtMs)

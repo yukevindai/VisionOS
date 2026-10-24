@@ -3,6 +3,13 @@ import XCTest
 @testable import Reflex
 
 final class NativeAudioPolicyTests: XCTestCase {
+    func testCancelledAudioDoesNotMuteOwnerInputUntilFormerClipEnd() {
+        XCTAssertEqual(NativeAudioTiming.echoExpiryAfterCancellation(currentExpiry: 60_000, nowMs: 1_000), 1_500)
+        XCTAssertEqual(NativeAudioTiming.echoExpiryAfterCancellation(currentExpiry: 1_200, nowMs: 1_000), 1_200)
+        XCTAssertEqual(NativeAudioTiming.echoExpiryAfterCancellation(currentExpiry: 900, nowMs: 1_000), 900)
+        XCTAssertEqual(NativeAudioTiming.echoExpiryAfterCancellation(currentExpiry: Int64.max, nowMs: Int64.max - 5), Int64.max)
+        XCTAssertEqual(NativeAudioTiming.echoExpiryAfterCancellation(currentExpiry: 900, nowMs: -1), 900)
+    }
     func testGuidanceCannotPreemptStopOrHazard() {
         var state = NativeAudioOutputState()
         let stop = state.begin(priority: 0, kind: .speech)
