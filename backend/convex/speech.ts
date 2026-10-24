@@ -20,6 +20,8 @@ export function speechCacheKey(model: string, voiceId: string, text: string): st
  * Not for Stop, hazards or hand-guidance cues: those stay on-device.
  * On ok === false the caller speaks the same text with the on-device voice.
  * Repeated sentences are served from the cache and spend no Cartesia credits.
+ * Never returns SIMULATED audio: a deployment without Cartesia credentials answers
+ * SPEECH_NOT_CONFIGURED so the app falls back instead of playing silence.
  */
 export const synthesize = action({
   args: { requestId: v.string(), text: v.string() },
@@ -28,7 +30,7 @@ export const synthesize = action({
     const text = validateSpeechRequest(args);
     const config = readCartesiaConfig(process.env);
     if (config === null || config === "INCOMPLETE") {
-      return { ...(await synthesizeSpeech(args)), cached: false };
+      return { ok: false, requestId: args.requestId, errorCode: "SPEECH_NOT_CONFIGURED", latencyMs: 0, cached: false };
     }
 
     const started = Date.now();

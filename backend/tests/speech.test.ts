@@ -28,10 +28,16 @@ describe("speech:synthesize", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  it("returns SIMULATED audio when no key is configured", async () => {
-    vi.stubEnv("CARTESIA_API_KEY", "");
+  it("never returns silent SIMULATED audio to the app: missing credentials mean fall back", async () => {
+    const fetch = vi.fn(); vi.stubGlobal("fetch", fetch);
     const owner = await signedIn();
-    expect(await owner.action(api.speech.synthesize, args)).toMatchObject({ ok: true, mode: "SIMULATED", requestId: "speech-1" });
+    vi.stubEnv("CARTESIA_API_KEY", "");
+    expect(await owner.action(api.speech.synthesize, args))
+      .toEqual({ ok: false, requestId: "speech-1", errorCode: "SPEECH_NOT_CONFIGURED", latencyMs: 0, cached: false });
+    vi.stubEnv("CARTESIA_API_KEY", KEY);
+    vi.stubEnv("CARTESIA_VOICE_ID", "");
+    expect(await owner.action(api.speech.synthesize, args)).toMatchObject({ ok: false, errorCode: "SPEECH_NOT_CONFIGURED" });
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it("returns real-mode WAV and keeps the key server-side", async () => {
@@ -73,7 +79,7 @@ describe("speech:synthesize", () => {
     expect(fetch).toHaveBeenCalledTimes(2);
   });
 
-  it("never caches failures or SIMULATED audio", async () => {
+  it("never caches failures", async () => {
     vi.stubEnv("CARTESIA_API_KEY", KEY);
     vi.stubEnv("CARTESIA_VOICE_ID", "SIMULATED-voice");
     vi.stubEnv("CARTESIA_MODEL", "SIMULATED-model");
@@ -84,8 +90,5 @@ describe("speech:synthesize", () => {
     await owner.action(api.speech.synthesize, args);
     expect(fetch).toHaveBeenCalledTimes(2);
 
-    vi.stubEnv("CARTESIA_API_KEY", "");
-    await owner.action(api.speech.synthesize, args);
-    await expect(owner.action(api.speech.synthesize, args)).resolves.toMatchObject({ mode: "SIMULATED", cached: false });
   });
 });
