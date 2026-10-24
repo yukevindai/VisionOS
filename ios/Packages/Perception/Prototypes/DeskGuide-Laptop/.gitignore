@@ -4,7 +4,6 @@ logs/
 models/*.onnx
 models/*.task
 models/*.pt
-models/nanodet.py
 
 # Local-only borrowed reference integration; never include in Reflex submission.
 /.local_reference/

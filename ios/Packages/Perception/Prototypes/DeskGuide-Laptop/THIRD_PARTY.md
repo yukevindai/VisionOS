@@ -1,3 +1,9 @@
+# Unused integration audit (2026-10-24)
+
+No Cosmos, Nemotron, YOLO-World, speech-recognition, TTS or LLM integration exists in the active code. The unused NanoDet download entries were removed from models.lock.json, the stale models/manifest.json was deleted, and the orphan sentencepiece pin was removed from requirements.lock.txt. models/NANODET-LICENSE and the NanoDet history below are kept as attribution records; NanoDet is not downloaded, loaded or distributed.
+
+---
+
 # Audio removal update (2026-10-24)
 
 The sound callback (audio.py), sounddevice dependency, unused speech/haptic/data provider ports (providers.py) and the PathOn sample-capture script (diagnose_live.py) were removed. Guidance is now a silent structured event (guidance.py). Comments and docstrings were removed from project-authored Python with an AST-equivalence check; executable code was unchanged. The third-party adapter notices in hand_observations.py and object_observations.py, all license files and the records below are retained. Ultralytics/YOLO11s (AGPL-3.0) is still required by the detector and remains unresolved for a closed-source Reflex submission.
