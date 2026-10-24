@@ -1,0 +1,12 @@
+{
+  "fixture": "SIMULATED_elevator_panel",
+  "request": "Find floor 12",
+  "expected": {
+    "status": "NOT_FOUND",
+    "request": "Find floor 12",
+    "frameId": "SIMULATED-elevator-frame-0001",
+    "source": "SIMULATED",
+    "reason": "NO_MATCH",
+    "candidateIds": []
+  }
+}

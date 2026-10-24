@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 3,
+  "frameId": "SIMULATED-elevator-frame-0001",
+  "capturedAtMs": 1792800000000,
+  "panelType": "elevatorPanel",
+  "availability": "available",
+  "coordinateSystem": "normalizedImageTopLeft",
+  "source": "SIMULATED",
+  "notes": "SIMULATED fixture. Hand-written observation of a generic elevator panel; not captured from a camera, OCR or any model.",
+  "sections": ["Floors", "Door controls", "Emergency"],
+  "isPaymentScreen": false,
+  "controls": [
+    { "id": "el-b",     "label": "B",     "type": "button", "section": "Floors",        "confidence": 0.93, "region": { "x": 0.30, "y": 0.70, "width": 0.12, "height": 0.08 } },
+    { "id": "el-1",     "label": "1",     "type": "button", "section": "Floors",        "confidence": 0.95, "region": { "x": 0.55, "y": 0.70, "width": 0.12, "height": 0.08 } },
+    { "id": "el-2",     "label": "2",     "type": "button", "section": "Floors",        "confidence": 0.94, "region": { "x": 0.30, "y": 0.60, "width": 0.12, "height": 0.08 } },
+    { "id": "el-3",     "label": "3",     "type": "button", "section": "Floors",        "confidence": 0.94, "region": { "x": 0.55, "y": 0.60, "width": 0.12, "height": 0.08 } },
+    { "id": "el-4",     "label": "4",     "type": "button", "section": "Floors",        "confidence": 0.92, "region": { "x": 0.30, "y": 0.50, "width": 0.12, "height": 0.08 } },
+    { "id": "el-5",     "label": "5",     "type": "button", "section": "Floors",        "confidence": 0.91, "region": { "x": 0.55, "y": 0.50, "width": 0.12, "height": 0.08 } },
+    { "id": "el-6",     "label": "6",     "type": "button", "section": "Floors",        "confidence": 0.90, "region": { "x": 0.30, "y": 0.40, "width": 0.12, "height": 0.08 } },
+    { "id": "el-7",     "label": "7",     "type": "button", "section": "Floors",        "confidence": 0.90, "region": { "x": 0.55, "y": 0.40, "width": 0.12, "height": 0.08 } },
+    { "id": "el-open",  "label": "Open",  "type": "button", "section": "Door controls", "confidence": 0.88, "region": { "x": 0.30, "y": 0.82, "width": 0.12, "height": 0.08 } },
+    { "id": "el-close", "label": "Close", "type": "button", "section": "Door controls", "confidence": 0.87, "region": { "x": 0.55, "y": 0.82, "width": 0.12, "height": 0.08 } },
+    { "id": "el-alarm", "label": "Alarm", "type": "button", "section": "Emergency",     "confidence": 0.89, "region": { "x": 0.42, "y": 0.20, "width": 0.14, "height": 0.08 } }
+  ]
+}

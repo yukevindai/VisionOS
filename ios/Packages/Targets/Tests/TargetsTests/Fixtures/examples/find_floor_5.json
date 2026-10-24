@@ -1,0 +1,24 @@
+{
+  "fixture": "SIMULATED_elevator_panel",
+  "request": "Find floor 5",
+  "expected": {
+    "status": "SELECTED",
+    "request": "Find floor 5",
+    "frameId": "SIMULATED-elevator-frame-0001",
+    "source": "SIMULATED",
+    "candidateIds": [],
+    "target": {
+      "targetId": "el-5",
+      "label": "5",
+      "elementType": "button",
+      "imageRegion": { "x": 0.55, "y": 0.50, "width": 0.12, "height": 0.08 },
+      "coordinateSystem": "normalizedImageTopLeft",
+      "frameId": "SIMULATED-elevator-frame-0001",
+      "capturedAtMs": 1792800000000,
+      "panelType": "elevatorPanel",
+      "confidence": 0.91,
+      "source": "SIMULATED",
+      "match": "labelInRequest"
+    }
+  }
+}

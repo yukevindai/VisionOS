@@ -1,0 +1,18 @@
+{
+  "_note": "SIMULATED: hand-written in the shape of a Gemini generateContent REST reply. Not produced by the Gemini API.",
+  "responseId": "SIMULATED-response-0002",
+  "modelVersion": "SIMULATED",
+  "candidates": [
+    {
+      "finishReason": "STOP",
+      "content": {
+        "role": "model",
+        "parts": [
+          {
+            "text": "{\"panelType\":\"orderingKiosk\",\"availability\":\"partial\",\"unavailableReason\":\"occluded\",\"isPaymentScreen\":false,\"sections\":[\"Burgers\",\"Sides\"],\"elements\":[{\"label\":\"Big Mac\",\"legibility\":\"clear\",\"type\":\"menuItem\",\"box_2d\":[200,50,380,330],\"price\":\"$5.99\",\"section\":\"Burgers\"},{\"label\":\"Big Mac Meal\",\"legibility\":\"clear\",\"type\":\"menuItem\",\"box_2d\":[200,360,380,640],\"section\":\"Burgers\"},{\"label\":\"Small Fries\",\"legibility\":\"clear\",\"type\":\"menuItem\",\"box_2d\":[420,360,600,640],\"section\":\"Sides\"},{\"label\":\"Large Fries\",\"legibility\":\"clear\",\"type\":\"menuItem\",\"box_2d\":[420,670,600,950],\"section\":\"Sides\"}]}"
+          }
+        ]
+      }
+    }
+  ]
+}

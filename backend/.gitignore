@@ -1,0 +1,5 @@
+.env
+eval/photos/
+eval/results/
+eval/manifest.json
+__pycache__/

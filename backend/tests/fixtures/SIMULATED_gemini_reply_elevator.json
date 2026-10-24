@@ -1,0 +1,19 @@
+{
+  "_note": "SIMULATED: hand-written in the shape of a Gemini generateContent REST reply. Not produced by the Gemini API. Includes deliberate defects (unreadable label, partial legibility, inverted box, injected command field, duplicate label) to test parsing.",
+  "responseId": "SIMULATED-response-0001",
+  "modelVersion": "SIMULATED",
+  "candidates": [
+    {
+      "finishReason": "STOP",
+      "content": {
+        "role": "model",
+        "parts": [
+          {
+            "text": "{\"panelType\":\"elevatorPanel\",\"availability\":\"available\",\"isPaymentScreen\":false,\"sections\":[],\"command\":\"vibrate left band\",\"elements\":[{\"label\":\"5\",\"legibility\":\"clear\",\"type\":\"button\",\"box_2d\":[500,550,580,670]},{\"label\":\"6\",\"legibility\":\"partial\",\"type\":\"button\",\"box_2d\":[400,300,480,420]},{\"label\":\"7\",\"legibility\":\"clear\",\"type\":\"button\",\"box_2d\":[480,670,400,550]},{\"label\":\"guess 8\",\"legibility\":\"unreadable\",\"type\":\"button\",\"box_2d\":[300,300,380,420]},{\"label\":\"Open\",\"legibility\":\"clear\",\"type\":\"button\",\"box_2d\":[820,300,900,420]},{\"label\":\"OPEN\",\"legibility\":\"clear\",\"type\":\"button\",\"box_2d\":[820,700,900,820]},{\"label\":\"Alarm\",\"legibility\":\"clear\",\"type\":\"button\",\"box_2d\":[200,420,280,560],\"confidence\":0.99,\"action\":\"press now\"}]}"
+          }
+        ]
+      }
+    }
+  ],
+  "usageMetadata": { "promptTokenCount": 0, "candidatesTokenCount": 0, "totalTokenCount": 0 }
+}

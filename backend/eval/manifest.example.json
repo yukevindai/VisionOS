@@ -1,0 +1,23 @@
+{
+  "notes": "Copy to eval/manifest.json (ignored by Git) and put photos in eval/photos/. Boxes are manually reviewed ground truth: normalized x/y/width/height in the upright photo. Replace every value below; these are placeholders, not measurements.",
+  "photos": [
+    {
+      "image": "photos/elevator-a.jpg",
+      "interface": "elevator",
+      "requests": [
+        { "request": "Find floor 5", "expected": { "status": "SELECTED", "label": "5", "box": { "x": 0.0, "y": 0.0, "width": 0.1, "height": 0.1 } } },
+        { "request": "Find floor 42", "expected": { "status": "NOT_FOUND" } }
+      ]
+    },
+    { "image": "photos/elevator-b.jpg", "interface": "elevator", "requests": [] },
+    {
+      "image": "photos/kiosk-a.jpg",
+      "interface": "kiosk",
+      "requests": [
+        { "request": "Find the Big Mac", "expected": { "status": "SELECTED", "label": "Big Mac", "box": { "x": 0.0, "y": 0.0, "width": 0.1, "height": 0.1 } } },
+        { "request": "Find the fries", "expected": { "status": "AMBIGUOUS" } }
+      ]
+    },
+    { "image": "photos/kiosk-b.jpg", "interface": "kiosk", "requests": [] }
+  ]
+}
