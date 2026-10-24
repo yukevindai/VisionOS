@@ -1,0 +1,360 @@
+{
+  "_note": "SIMULATED: kiosk ScreenModels built by r3_vision.pipeline from hand-written Gemini-shaped replies. Not from a real kiosk or the Gemini API. For R2 task-engine tests (T07 path).",
+  "sequence": [
+    {
+      "step": "welcome",
+      "screenModel": {
+        "schemaVersion": 3,
+        "frameId": "SIMULATED-seq-00",
+        "capturedAtMs": 0,
+        "coordinateSystem": "normalizedImageTopLeft",
+        "source": "SIMULATED",
+        "evidence": {
+          "provider": "gemini",
+          "model": "SIMULATED",
+          "live": false,
+          "latencyMs": 1.0
+        },
+        "notes": "SIMULATED: reply did not come from the live Gemini API.",
+        "panelType": "orderingKiosk",
+        "availability": "available",
+        "controls": [
+          {
+            "id": "el-001",
+            "label": "Tap to start",
+            "type": "screenControl",
+            "legibility": "clear",
+            "region": {
+              "x": 0.2,
+              "y": 0.4,
+              "width": 0.6,
+              "height": 0.2
+            }
+          }
+        ],
+        "sections": [],
+        "isPaymentScreen": false,
+        "screenKind": "welcome",
+        "isWelcomeScreen": true,
+        "screenSignature": "scr-08a25b405674e3fd"
+      }
+    },
+    {
+      "step": "menu",
+      "screenModel": {
+        "schemaVersion": 3,
+        "frameId": "SIMULATED-seq-01",
+        "capturedAtMs": 0,
+        "coordinateSystem": "normalizedImageTopLeft",
+        "source": "SIMULATED",
+        "evidence": {
+          "provider": "gemini",
+          "model": "SIMULATED",
+          "live": false,
+          "latencyMs": 1.0
+        },
+        "notes": "SIMULATED: reply did not come from the live Gemini API.",
+        "panelType": "orderingKiosk",
+        "availability": "available",
+        "controls": [
+          {
+            "id": "el-001",
+            "label": "Burgers",
+            "type": "screenControl",
+            "legibility": "clear",
+            "region": {
+              "x": 0.05,
+              "y": 0.1,
+              "width": 0.4,
+              "height": 0.2
+            }
+          },
+          {
+            "id": "el-002",
+            "label": "Drinks",
+            "type": "screenControl",
+            "legibility": "clear",
+            "region": {
+              "x": 0.5,
+              "y": 0.1,
+              "width": 0.45,
+              "height": 0.2
+            }
+          },
+          {
+            "id": "el-003",
+            "label": "Desserts",
+            "type": "screenControl",
+            "legibility": "clear",
+            "region": {
+              "x": 0.05,
+              "y": 0.35,
+              "width": 0.4,
+              "height": 0.2
+            }
+          }
+        ],
+        "sections": [],
+        "isPaymentScreen": false,
+        "screenKind": "menu",
+        "isWelcomeScreen": false,
+        "screenSignature": "scr-1f77d1816a4067d3"
+      }
+    },
+    {
+      "step": "itemOptions",
+      "screenModel": {
+        "schemaVersion": 3,
+        "frameId": "SIMULATED-seq-02",
+        "capturedAtMs": 0,
+        "coordinateSystem": "normalizedImageTopLeft",
+        "source": "SIMULATED",
+        "evidence": {
+          "provider": "gemini",
+          "model": "SIMULATED",
+          "live": false,
+          "latencyMs": 1.0
+        },
+        "notes": "SIMULATED: reply did not come from the live Gemini API.",
+        "panelType": "orderingKiosk",
+        "availability": "available",
+        "controls": [
+          {
+            "id": "el-001",
+            "label": "Small",
+            "type": "screenControl",
+            "legibility": "clear",
+            "region": {
+              "x": 0.05,
+              "y": 0.2,
+              "width": 0.25,
+              "height": 0.2
+            },
+            "price": "$1.99"
+          },
+          {
+            "id": "el-002",
+            "label": "Medium",
+            "type": "screenControl",
+            "legibility": "clear",
+            "region": {
+              "x": 0.35,
+              "y": 0.2,
+              "width": 0.25,
+              "height": 0.2
+            },
+            "price": "$2.49"
+          },
+          {
+            "id": "el-003",
+            "label": "Large",
+            "type": "screenControl",
+            "legibility": "clear",
+            "region": {
+              "x": 0.65,
+              "y": 0.2,
+              "width": 0.3,
+              "height": 0.2
+            },
+            "price": "$2.99"
+          },
+          {
+            "id": "el-004",
+            "label": "Add to order",
+            "type": "screenControl",
+            "legibility": "clear",
+            "region": {
+              "x": 0.3,
+              "y": 0.8,
+              "width": 0.4,
+              "height": 0.15
+            }
+          }
+        ],
+        "sections": [],
+        "isPaymentScreen": false,
+        "screenKind": "itemOptions",
+        "isWelcomeScreen": false,
+        "screenSignature": "scr-ef5b899dde9cf45c"
+      }
+    },
+    {
+      "step": "upsell",
+      "screenModel": {
+        "schemaVersion": 3,
+        "frameId": "SIMULATED-seq-03",
+        "capturedAtMs": 0,
+        "coordinateSystem": "normalizedImageTopLeft",
+        "source": "SIMULATED",
+        "evidence": {
+          "provider": "gemini",
+          "model": "SIMULATED",
+          "live": false,
+          "latencyMs": 1.0
+        },
+        "notes": "SIMULATED: reply did not come from the live Gemini API.",
+        "panelType": "orderingKiosk",
+        "availability": "available",
+        "controls": [
+          {
+            "id": "el-001",
+            "label": "Add fries for $1.99",
+            "type": "screenControl",
+            "legibility": "clear",
+            "region": {
+              "x": 0.1,
+              "y": 0.3,
+              "width": 0.8,
+              "height": 0.2
+            }
+          },
+          {
+            "id": "el-002",
+            "label": "No thanks",
+            "type": "screenControl",
+            "legibility": "clear",
+            "region": {
+              "x": 0.3,
+              "y": 0.6,
+              "width": 0.4,
+              "height": 0.15
+            }
+          }
+        ],
+        "sections": [],
+        "isPaymentScreen": false,
+        "screenKind": "upsell",
+        "isWelcomeScreen": false,
+        "screenSignature": "scr-e8022edfeb568b07"
+      }
+    },
+    {
+      "step": "cart",
+      "screenModel": {
+        "schemaVersion": 3,
+        "frameId": "SIMULATED-seq-04",
+        "capturedAtMs": 0,
+        "coordinateSystem": "normalizedImageTopLeft",
+        "source": "SIMULATED",
+        "evidence": {
+          "provider": "gemini",
+          "model": "SIMULATED",
+          "live": false,
+          "latencyMs": 1.0
+        },
+        "notes": "SIMULATED: reply did not come from the live Gemini API.",
+        "panelType": "orderingKiosk",
+        "availability": "available",
+        "controls": [
+          {
+            "id": "el-001",
+            "label": "Edit",
+            "type": "screenControl",
+            "legibility": "clear",
+            "region": {
+              "x": 0.05,
+              "y": 0.7,
+              "width": 0.25,
+              "height": 0.15
+            }
+          },
+          {
+            "id": "el-002",
+            "label": "Checkout",
+            "type": "screenControl",
+            "legibility": "clear",
+            "region": {
+              "x": 0.65,
+              "y": 0.7,
+              "width": 0.3,
+              "height": 0.15
+            }
+          }
+        ],
+        "sections": [],
+        "isPaymentScreen": false,
+        "screenKind": "cart",
+        "isWelcomeScreen": false,
+        "orderTotal": "$7.48",
+        "screenSignature": "scr-ca343226376e216f"
+      }
+    },
+    {
+      "step": "payment",
+      "screenModel": {
+        "schemaVersion": 3,
+        "frameId": "SIMULATED-seq-05",
+        "capturedAtMs": 0,
+        "coordinateSystem": "normalizedImageTopLeft",
+        "source": "SIMULATED",
+        "evidence": {
+          "provider": "gemini",
+          "model": "SIMULATED",
+          "live": false,
+          "latencyMs": 1.0
+        },
+        "notes": "SIMULATED: reply did not come from the live Gemini API.",
+        "panelType": "orderingKiosk",
+        "availability": "available",
+        "controls": [
+          {
+            "id": "el-001",
+            "label": "Insert or tap card",
+            "type": "screenControl",
+            "legibility": "clear",
+            "region": {
+              "x": 0.1,
+              "y": 0.3,
+              "width": 0.8,
+              "height": 0.4
+            }
+          }
+        ],
+        "sections": [],
+        "isPaymentScreen": true,
+        "screenKind": "payment",
+        "isWelcomeScreen": false,
+        "orderTotal": "$7.48",
+        "screenSignature": "scr-c71cecca99c1c75e"
+      }
+    },
+    {
+      "step": "reset",
+      "screenModel": {
+        "schemaVersion": 3,
+        "frameId": "SIMULATED-seq-06",
+        "capturedAtMs": 0,
+        "coordinateSystem": "normalizedImageTopLeft",
+        "source": "SIMULATED",
+        "evidence": {
+          "provider": "gemini",
+          "model": "SIMULATED",
+          "live": false,
+          "latencyMs": 1.0
+        },
+        "notes": "SIMULATED: reply did not come from the live Gemini API.",
+        "panelType": "orderingKiosk",
+        "availability": "available",
+        "controls": [
+          {
+            "id": "el-001",
+            "label": "Tap to start",
+            "type": "screenControl",
+            "legibility": "clear",
+            "region": {
+              "x": 0.2,
+              "y": 0.4,
+              "width": 0.6,
+              "height": 0.2
+            }
+          }
+        ],
+        "sections": [],
+        "isPaymentScreen": false,
+        "screenKind": "welcome",
+        "isWelcomeScreen": true,
+        "screenSignature": "scr-08a25b405674e3fd"
+      }
+    }
+  ]
+}
