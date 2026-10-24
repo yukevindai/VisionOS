@@ -206,6 +206,7 @@ final class SetupAccessibilityUITests: XCTestCase {
                                "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
         if let permissionScenario { app.launchArguments += ["--ui-permission-scenario", permissionScenario] }
         app.launch()
+        selectBlindRole(in: app)
         XCTAssertTrue(app.buttons["home.start"].waitForExistence(timeout: 5))
         return app
     }

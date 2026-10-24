@@ -436,3 +436,121 @@ final class ConvexNativeMediaBackend: NativeMediaBackend, R3ScreenReading {
         }
     }
 }
+
+extension ConvexNativeMediaBackend {
+    func helperSessions(cursor: String? = nil) async throws -> NativeHelperPage {
+        guard cursor == nil || (!cursor!.isEmpty && cursor!.count <= 16_384) else {
+            throw NativeMediaTransportError.invalidRequest
+        }
+        let data = try object(try await call("sessions:listJoinable", kind: "query", args: [
+            "paginationOpts": ["numItems": 20, "cursor": cursor as Any? ?? NSNull()]
+        ]))
+        guard let page = data["page"] as? [Any], page.count <= 20 else {
+            throw NativeMediaTransportError.invalidResponse
+        }
+        let done = try bool(data, "isDone")
+        let cursor = try string(data, "continueCursor")
+        guard cursor.count <= 16_384, done || !cursor.isEmpty else {
+            throw NativeMediaTransportError.invalidResponse
+        }
+        let sessions = try page.map { value in
+            let item = try object(value)
+            let name = try string(item, "ownerDisplayName")
+            let epoch = try nonemptyString(item, "epoch")
+            guard UUID(uuidString: epoch) != nil,
+                  !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, name.count <= 160,
+                  !name.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) else {
+                throw NativeMediaTransportError.invalidResponse
+            }
+            return NativeHelperSession(sessionID: try nonemptyString(item, "sessionId"), epoch: epoch, ownerName: name)
+        }
+        return NativeHelperPage(sessions: sessions, nextCursor: done ? nil : cursor)
+    }
+
+    func redeemHelperInvite(_ code: String) async throws -> Bool {
+        guard code.count == 43, code.utf8.allSatisfy({ byte in
+            (65...90).contains(byte) || (97...122).contains(byte) || (48...57).contains(byte) || byte == 45 || byte == 95
+        }) else { throw NativeMediaTransportError.invalidRequest }
+        let data = try object(try await call("invites:redeemInvite", kind: "action", args: ["code": code]))
+        let state = try string(data, "state")
+        guard state == "accepted" || state == "pending" else { throw NativeMediaTransportError.invalidResponse }
+        return state == "accepted"
+    }
+
+    func reserveHelper(_ session: NativeHelperSession, clientID: String) async throws -> NativeHelperConnection {
+        try validateNonce(clientID)
+        let data = try object(try await call("assistance:reserveHelper", kind: "mutation",
+            args: helperScope(session).merging(["clientInstanceId": clientID]) { _, new in new }))
+        guard try string(data, "kind") == "reserved", try string(data, "clientInstanceId") == clientID,
+              try positiveMs(data, "expiresAt") > Int64(Date().timeIntervalSince1970 * 1_000) else {
+            throw NativeMediaTransportError.invalidResponse
+        }
+        let version = try safeUInt(data, "leaseVersion")
+        guard version > 0 else { throw NativeMediaTransportError.invalidResponse }
+        return NativeHelperConnection(session: session, connectionID: try nonemptyString(data, "connectionId"), leaseVersion: version)
+    }
+
+    func helperToken(_ session: NativeHelperSession, clientID: String) async throws -> NativeMediaToken {
+        try validateNonce(clientID)
+        let data = try object(try await call("livekit:issueHelperToken", kind: "action",
+            args: helperScope(session).merging(["clientInstanceId": clientID]) { _, new in new }))
+        let room = try room(data)
+        let token = try jwtString(data, "token")
+        guard let url = URL(string: try nonemptyString(data, "serverUrl")),
+              ["wss", "https"].contains(url.scheme?.lowercased() ?? ""), url.host != nil,
+              url.user == nil, url.password == nil, url.query == nil, url.fragment == nil,
+              url.path.isEmpty || url.path == "/", room.generation > 0 else {
+            throw NativeMediaTransportError.invalidResponse
+        }
+        let expiresAt = try positiveMs(data, "expiresAt")
+        guard expiresAt > Int64(Date().timeIntervalSince1970 * 1_000) else { throw NativeMediaTransportError.invalidResponse }
+        return NativeMediaToken(token: token, serverURL: url, room: room,
+                                identity: try nonemptyString(data, "identity"), expiresAtMs: expiresAt)
+    }
+
+    func helperStatus(_ connection: NativeHelperConnection, nonce: String) async throws -> NativeHelperStatus? {
+        try validateNonce(nonce)
+        let data = try object(try await call("assistance:helperStatus", kind: "query",
+            args: helperScope(connection).merging(["nonce": nonce]) { _, new in new }))
+        guard try string(data, "nonce") == nonce else { throw NativeMediaTransportError.invalidResponse }
+        let state = try string(data, "state")
+        if state == "closed" { return nil }
+        guard let parsed = NativeHelperStatus.State(rawValue: state) else { throw NativeMediaTransportError.invalidResponse }
+        let duration = try positiveMs(data, "validForMs")
+        let version = try safeUInt(data, "authorizationVersion")
+        guard duration <= 15_000, version > 0 else { throw NativeMediaTransportError.invalidResponse }
+        return NativeHelperStatus(state: parsed, room: try room(data),
+            ownerIdentity: try nonemptyString(data, "ownerIdentity"), ownerSID: try nonemptyString(data, "ownerParticipantSid"),
+            helperSID: parsed == .connected ? try nonemptyString(data, "participantSid") : nil,
+            authorizationVersion: version, validForMs: duration)
+    }
+
+    func helperHeartbeat(_ connection: NativeHelperConnection, authorizationVersion: UInt64) async throws {
+        guard authorizationVersion > 0, authorizationVersion <= Self.maxSafeInteger else {
+            throw NativeMediaTransportError.invalidRequest
+        }
+        _ = try await call("assistance:heartbeat", kind: "mutation",
+            args: helperScope(connection).merging(["authorizationVersion": authorizationVersion]) { _, new in new })
+    }
+
+    func leaveHelper(_ connection: NativeHelperConnection) async throws {
+        _ = try await call("assistance:leave", kind: "mutation", args: helperScope(connection))
+    }
+
+    private func helperScope(_ session: NativeHelperSession) throws -> [String: Any] {
+        guard !session.sessionID.isEmpty, session.sessionID.count <= 512,
+              session.sessionID.rangeOfCharacter(from: .whitespacesAndNewlines) == nil,
+              UUID(uuidString: session.epoch) != nil else { throw NativeMediaTransportError.invalidRequest }
+        return ["sessionId": session.sessionID, "epoch": session.epoch]
+    }
+
+    private func helperScope(_ connection: NativeHelperConnection) throws -> [String: Any] {
+        guard connection.leaseVersion > 0, connection.leaseVersion <= Self.maxSafeInteger else {
+            throw NativeMediaTransportError.invalidRequest
+        }
+        try validateNonce(connection.connectionID)
+        return try helperScope(connection.session).merging([
+            "connectionId": connection.connectionID, "leaseVersion": connection.leaseVersion
+        ]) { _, new in new }
+    }
+}

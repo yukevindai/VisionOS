@@ -4,107 +4,281 @@ struct AssistanceSessionView: View {
     @ObservedObject var session: SessionCoordinator
     @ObservedObject var preferences: UserPreferences
     @State private var fixtureInput = ""
+    @State private var detailsPresented = false
     @FocusState private var fixtureInputFocused: Bool
     @AccessibilityFocusState private var statusFocused: Bool
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     var body: some View {
-        VStack(spacing: 0) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    if session.simulated { SimulationLabel() }
-                    Text(session.activity.rawValue).font(dynamicTypeSize.isAccessibilitySize ? .title2.bold() : .largeTitle.bold()).accessibilityAddTraits(.isHeader)
-                        .accessibilityIdentifier("session.status").accessibilityFocused($statusFocused)
-                    Text(session.message).font(.body).fixedSize(horizontal: false, vertical: true)
-                        .accessibilityIdentifier("session.message")
-                    if let preview = session.preview {
-                        Image(uiImage: preview).resizable().scaledToFit().clipShape(RoundedRectangle(cornerRadius: 20))
-                            .accessibilityHidden(true)
-                    } else {
-                        Label(session.simulated ? "Simulated camera scene" : "Waiting for the camera view", systemImage: "camera")
-                            .frame(maxWidth: .infinity, minHeight: 130)
-                            .background(.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 20))
-                            .accessibilityHidden(true)
-                    }
-                    if preferences.captions, !session.caption.isEmpty {
-                        Text(session.caption).font(.title3).textSelection(.enabled)
-                            .accessibilityIdentifier("session.caption")
-                    }
-                    if !session.simulated {
-                        Toggle("Mute microphone", isOn: Binding(get: { session.microphoneMuted }, set: session.setMuted))
-                            .accessibilityHint("Muting pauses guidance. Spoken Stop cannot be heard while muted.")
-                    }
-                    if let confirmation = session.taskState?.confirmation {
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text(confirmation.question).font(.headline)
-                            HStack {
-                                Button("Yes") { session.confirmCurrent(true) }.frame(minWidth: 70, minHeight: 44)
-                                Button("No") { session.confirmCurrent(false) }.frame(minWidth: 70, minHeight: 44)
-                            }.buttonStyle(.bordered)
+        GeometryReader { geometry in
+            ZStack {
+                cameraBackground(size: geometry.size)
+                ScrollView {
+                    VStack(spacing: 16) {
+                        statusIsland
+                        if preferences.captions, !session.caption.isEmpty {
+                            Text(session.caption)
+                                .font(.title3)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .textSelection(.enabled)
+                                .padding(16)
+                                .cameraIsland()
+                                .accessibilityIdentifier("session.caption")
                         }
+                        confirmation
+                        if session.simulated { fixtureControls }
                     }
-                    if session.simulated {
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("Simulated voice input").font(.headline)
-                            Text("Type a request such as “press the blue button”, “pick up the cup”, “read the menu”, or “open the door”. This replaces microphone input in the fixture.")
-                                .font(.callout).foregroundStyle(.primary)
-                                .accessibilityIdentifier("fixture.instructions")
-                            TextField("Simulated request", text: $fixtureInput,
-                                      prompt: Text("Simulated request").foregroundColor(Color(uiColor: .label)), axis: .vertical)
-                                .textFieldStyle(.roundedBorder)
-                                .foregroundStyle(Color(uiColor: .label))
-                                .accessibilityLabel("Simulated request")
-                                .accessibilityIdentifier("fixture.input")
-                                .focused($fixtureInputFocused)
-                                .onSubmit(sendFixtureInput)
-                            Button(action: sendFixtureInput) {
-                                Text("Send simulated request")
-                                    .foregroundStyle(Color(uiColor: .label))
-                                    .fixedSize(horizontal: false, vertical: true)
-                                    .padding(.horizontal, 16).padding(.vertical, 8)
-                                    .frame(minWidth: 44, minHeight: 44)
-                                    .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
-                                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(uiColor: .label), lineWidth: 1))
-                                    .contentShape(RoundedRectangle(cornerRadius: 12))
-                            }
-                            .buttonStyle(.plain).accessibilityIdentifier("fixture.send")
-                        }
-                    }
-                }.padding(24).frame(maxWidth: 650)
+                    .frame(maxWidth: 650)
+                    .padding(.horizontal, 24)
+                    .padding(.top, 16)
+                    .padding(.bottom, 12)
+                    .frame(maxWidth: .infinity)
+                }
+                .accessibilityIdentifier("session.content")
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    controlsIsland
+                        .frame(maxWidth: 650)
+                        .padding(.horizontal, 24)
+                        .padding(.bottom, 12)
+                        .padding(.top, 8)
+                        .frame(maxWidth: .infinity)
+                }
             }
-            .clipped()
-            .accessibilityIdentifier("session.content")
-            sessionControls.padding().background(Color(uiColor: .systemBackground))
+        }
+        .sheet(isPresented: $detailsPresented, onDismiss: { statusFocused = true }) {
+            callDetails
         }
         .onAppear { statusFocused = true }
+        .onChange(of: session.phase) { _, phase in
+            if phase == .ended || phase == .failed { detailsPresented = false }
+        }
     }
-    private var sessionControls: some View {
+
+    private func cameraBackground(size: CGSize) -> some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+            if let preview = session.preview {
+                Image(uiImage: preview)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: size.width, height: size.height)
+            } else {
                 VStack(spacing: 12) {
-                    Button {
-                        if session.phase == .paused { session.resume() } else { session.stop(.userPause) }
-                    } label: {
-                        Label(dynamicTypeSize.isAccessibilitySize
-                              ? (session.phase == .paused ? "Resume" : "Pause")
-                              : (session.phase == .paused ? "Resume assistance" : "Pause assistance"),
-                              systemImage: session.phase == .paused ? "play.fill" : "pause.fill")
-                            .frame(maxWidth: .infinity, minHeight: 52)
-                    }.buttonStyle(.borderedProminent).controlSize(.large)
-                        .tint(AssistanceColors.primaryActionFill).foregroundStyle(.white)
-                        .accessibilityLabel(session.phase == .paused ? "Resume assistance" : "Pause assistance")
-                        .accessibilityIdentifier("session.pause")
-                    Button(role: .destructive) { session.stop(.userEnd) } label: {
-                        Label(dynamicTypeSize.isAccessibilitySize ? "End" : "End assistance", systemImage: "phone.down.fill")
-                            .foregroundStyle(Color(uiColor: .label))
-                            .fixedSize(horizontal: false, vertical: true)
-                            .padding(.horizontal, 16).padding(.vertical, 12)
-                            .frame(maxWidth: .infinity, minHeight: 52)
-                            .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16))
-                            .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color(uiColor: .label), lineWidth: 1))
-                    }.buttonStyle(.plain).controlSize(.large)
-                        .accessibilityLabel("End assistance").accessibilityIdentifier("session.end")
+                    Image(systemName: "camera")
+                        .font(.system(size: 38))
                 }
+                .foregroundStyle(.white)
+                .padding(32)
+            }
+        }
+        .accessibilityHidden(true)
+        .allowsHitTesting(false)
     }
+
+    private var statusIsland: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if session.simulated { SimulationLabel() }
+            HStack(alignment: .top, spacing: 12) {
+                Text(session.activity.rawValue)
+                    .font(.title2.bold())
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityAddTraits(.isHeader)
+                    .accessibilityIdentifier("session.status")
+                    .accessibilityFocused($statusFocused)
+                if !session.simulated {
+                    Button { detailsPresented = true } label: {
+                        Image(systemName: "ellipsis")
+                            .font(.title3.weight(.semibold))
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Call details")
+                    .accessibilityHint("Microphone, captions and connection status. Stop and End call remain available.")
+                    .accessibilityIdentifier("session.details")
+                }
+            }
+            Text(session.message)
+                .font(.body)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("session.message")
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .cameraIsland()
+    }
+
+    @ViewBuilder
+    private var confirmation: some View {
+        if let confirmation = session.taskState?.confirmation {
+            VStack(alignment: .leading, spacing: 12) {
+                Text(confirmation.question)
+                    .font(.headline)
+                    .fixedSize(horizontal: false, vertical: true)
+                adaptiveControlLayout {
+                    Button { session.confirmCurrent(true) } label: {
+                        Text("Yes").frame(maxWidth: .infinity, minHeight: 52)
+                    }
+                    Button { session.confirmCurrent(false) } label: {
+                        Text("No").frame(maxWidth: .infinity, minHeight: 52)
+                    }
+                }
+                .buttonStyle(.bordered)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(16)
+            .cameraIsland()
+        }
+    }
+
+    private var controlsIsland: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            if !session.simulated {
+                Text(stopAvailability)
+                    .font(.subheadline)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            sessionControls
+        }
+        .padding(16)
+        .cameraIsland()
+    }
+
+    private var stopAvailability: String {
+        if session.microphoneMuted { return "Microphone muted. Use Stop or End call." }
+        return session.capabilities.offlineStop.usable
+            ? "Say “Stop” at any time."
+            : "Use Stop or End call at any time."
+    }
+
+    private var adaptiveControlLayout: AnyLayout {
+        dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(spacing: 12))
+            : AnyLayout(HStackLayout(spacing: 12))
+    }
+
+    private var sessionControls: some View {
+        adaptiveControlLayout {
+            Button {
+                fixtureInputFocused = false
+                if session.phase == .paused { session.resume() } else { session.stop(.userPause) }
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: session.phase == .paused ? "play.fill" : "pause.fill")
+                        .accessibilityHidden(true)
+                    Text(session.phase == .paused ? "Resume" : "Stop")
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                    .font(.headline)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 12)
+                    .frame(maxWidth: .infinity, minHeight: 60)
+                    .foregroundStyle(.white)
+                    .background(Color(red: 38.0 / 255, green: 51.0 / 255, blue: 55.0 / 255),
+                                in: RoundedRectangle(cornerRadius: 16))
+                    .contentShape(RoundedRectangle(cornerRadius: 16))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(session.phase == .paused ? "Resume assistance" : "Stop assistance")
+            .accessibilityHint(session.phase == .paused ? "Checks current tracking before resuming guidance." : "Stops physical guidance immediately. The session remains open.")
+            .accessibilityIdentifier("session.pause")
+
+            Button(role: .destructive) { session.stop(.userEnd) } label: {
+                Label("End call", systemImage: "phone.down.fill")
+                    .font(.headline)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 12)
+                    .frame(maxWidth: .infinity, minHeight: 60)
+                    .foregroundStyle(.white)
+                    .background(Color(red: 180.0 / 255, green: 35.0 / 255, blue: 50.0 / 255),
+                                in: RoundedRectangle(cornerRadius: 16))
+                    .contentShape(RoundedRectangle(cornerRadius: 16))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("End call")
+            .accessibilityHint("Stops assistance and closes the session immediately.")
+            .accessibilityIdentifier("session.end")
+        }
+    }
+
+    private var fixtureControls: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Simulated voice input").font(.headline)
+            Text("Type a request such as “press the blue button”, “pick up the cup”, “read the menu”, or “open the door”. This replaces microphone input in the fixture.")
+                .font(.callout)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("fixture.instructions")
+            TextField("Simulated request", text: $fixtureInput,
+                      prompt: Text("Simulated request").foregroundColor(Color(uiColor: .label)), axis: .vertical)
+                .textFieldStyle(.roundedBorder)
+                .foregroundStyle(Color(uiColor: .label))
+                .accessibilityLabel("Simulated request")
+                .accessibilityIdentifier("fixture.input")
+                .focused($fixtureInputFocused)
+                .onSubmit(sendFixtureInput)
+            Button(action: sendFixtureInput) {
+                Text("Send simulated request")
+                    .font(.headline)
+                    .foregroundStyle(Color(uiColor: .label))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .frame(minWidth: 44, minHeight: 44)
+                    .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
+                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(uiColor: .label), lineWidth: 1))
+                    .contentShape(RoundedRectangle(cornerRadius: 12))
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("fixture.send")
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .cameraIsland()
+    }
+
+    private var callDetails: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 24) {
+                    Toggle("Mute microphone", isOn: Binding(get: { session.microphoneMuted }, set: session.setMuted))
+                        .accessibilityHint("Muting pauses guidance. Spoken Stop cannot be heard while muted.")
+                        .accessibilityIdentifier("session.mute")
+                    if session.microphoneMuted {
+                        Text("Guidance is paused. Spoken Stop is unavailable while the microphone is muted. Use Stop or End call.")
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Toggle("Show captions", isOn: $preferences.captions)
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Connection status").font(.headline).accessibilityAddTraits(.isHeader)
+                        Text("Camera: \(session.capabilities.perception.label)")
+                        Text("Voice assistance: \(session.capabilities.conversation.label)")
+                        Text("Spoken Stop: \(session.capabilities.offlineStop.label)")
+                    }
+                    .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(24)
+            }
+            .safeAreaInset(edge: .bottom) {
+                sessionControls.padding(16).cameraIsland().padding(16)
+            }
+            .navigationTitle("Call details")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { detailsPresented = false }
+                        .accessibilityIdentifier("session.details.done")
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+    }
+
     private func sendFixtureInput() {
         fixtureInputFocused = false
-        session.submitFixtureText(fixtureInput); fixtureInput = ""
+        session.submitFixtureText(fixtureInput)
+        fixtureInput = ""
     }
 }
