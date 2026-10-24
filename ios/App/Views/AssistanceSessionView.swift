@@ -103,8 +103,10 @@ struct AssistanceSessionView: View {
                 if session.simulated {
                     Text("SIMULATED")
                         .font(.caption.weight(.semibold))
+                        .fixedSize(horizontal: false, vertical: true)
                         .foregroundStyle(.yellow)
-                        .accessibilityLabel("Simulated mode. No real camera or wristbands.")
+                        .accessibilityLabel("Simulated")
+                        .accessibilityHint("No real camera or wristbands.")
                         .accessibilityIdentifier("simulation.banner")
                 }
                 Text(session.activity.rawValue)

@@ -20,11 +20,11 @@ Read the latest Figma current role (11:42), ready (11:57) and calling (11:76) fr
 - Unsigned Release iPhone build passed. This is compilation, not physical-device validation.
 - Combined focused UI run: 15 cases, 13 passed; only the existing simulated `session.caption` contrast checks failed in light and dark appearances. Maximum Dynamic Type audit passed. Functional cases passed for role routing/size proportions, Call, Stop/Resume/End, repeated start, helper tool entry, reduced transparency, permissions and maximum-text settings recovery.
 - Rendered role targets measured approximately 45% Blind and 14% Not blind of the full simulator screen; Figma uses 50%/15% frame heights. Normal Call fills the available body. Normal and maximum-text screenshots were visually reviewed.
-- A final narrow UI rerun validates the persistent simulation badge after the combined run; see final PR validation status.
+- Final UI rerun after making simulation persistent: role routing/proportions, lifecycle, reduced-transparency and largest-text control reachability all passed (4 cases). The compact badge audit initially reported clipped text; giving it an unconstrained text height and matching its visible label while retaining the longer explanation as a VoiceOver hint resolved that new finding. Final 3-audit rerun: maximum-text audit passed; only the same light/dark simulated-caption contrast failures remain. No audit exclusions or suppressions changed.
 
 The initial UI run exposed an unbounded scroll viewport behind the bottom controls. Removing vertical fixedSize and clipping the bounded ScrollView repaired that overlap. The simulation indicator was also moved into the fixed status area so bottom-anchored content cannot hide it.
 
-Local logs: `/tmp/reflex-call-refresh-{Guidance,Targets,Tasks,HapticLink}.log`, `/tmp/reflex-wide-camera-tests.log`, `/tmp/reflex-call-refresh-final-tests.log`, `/tmp/reflex-call-refresh-release-final.log`.
+Local logs: `/tmp/reflex-call-refresh-{Guidance,Targets,Tasks,HapticLink}.log`, `/tmp/reflex-wide-camera-tests.log`, `/tmp/reflex-call-refresh-final-tests.log`, `/tmp/reflex-call-refresh-release-final.log`, `/tmp/reflex-call-refresh-final-ui.log`, `/tmp/reflex-call-refresh-badge-audits.log`.
 
 ## Limits
 
