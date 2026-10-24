@@ -3,8 +3,10 @@ import SwiftUI
 struct AssistanceSessionView: View {
     @ObservedObject var session: SessionCoordinator
     @ObservedObject var preferences: UserPreferences
+    var openSettings: () -> Void
     @State private var fixtureInput = ""
     @State private var detailsPresented = false
+    @State private var settingsRequested = false
     @FocusState private var fixtureInputFocused: Bool
     @AccessibilityFocusState private var statusFocused: Bool
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -46,7 +48,14 @@ struct AssistanceSessionView: View {
                 }
             }
         }
-        .sheet(isPresented: $detailsPresented, onDismiss: { statusFocused = true }) {
+        .sheet(isPresented: $detailsPresented, onDismiss: {
+            if settingsRequested {
+                settingsRequested = false
+                openSettings()
+            } else {
+                statusFocused = true
+            }
+        }) {
             callDetails
         }
         .onAppear { statusFocused = true }
@@ -87,18 +96,16 @@ struct AssistanceSessionView: View {
                     .accessibilityAddTraits(.isHeader)
                     .accessibilityIdentifier("session.status")
                     .accessibilityFocused($statusFocused)
-                if !session.simulated {
-                    Button { detailsPresented = true } label: {
-                        Image(systemName: "ellipsis")
-                            .font(.title3.weight(.semibold))
-                            .frame(width: 44, height: 44)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Call details")
-                    .accessibilityHint("Microphone, captions and connection status. Stop and End call remain available.")
-                    .accessibilityIdentifier("session.details")
+                Button { detailsPresented = true } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.title3.weight(.semibold))
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Call details")
+                .accessibilityHint("Microphone, captions, settings and connection status. Stop and End call remain available.")
+                .accessibilityIdentifier("session.details")
             }
             Text(session.message)
                 .font(.body)
@@ -250,6 +257,15 @@ struct AssistanceSessionView: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     Toggle("Show captions", isOn: $preferences.captions)
+                    Button {
+                        settingsRequested = true
+                        detailsPresented = false
+                    } label: {
+                        Label("Settings and wristbands", systemImage: "gearshape")
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(minHeight: 44)
+                    }
+                    .accessibilityIdentifier("session.settings")
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Connection status").font(.headline).accessibilityAddTraits(.isHeader)
                         Text("Camera: \(session.capabilities.perception.label)")
@@ -260,6 +276,7 @@ struct AssistanceSessionView: View {
                 }
                 .padding(24)
             }
+            .accessibilityIdentifier("session.details.content")
             .safeAreaInset(edge: .bottom) {
                 sessionControls.padding(16).cameraIsland().padding(16)
             }
@@ -272,7 +289,7 @@ struct AssistanceSessionView: View {
                 }
             }
         }
-        .presentationDetents([.medium, .large])
+        .presentationDetents(dynamicTypeSize.isAccessibilitySize ? [.large] : [.medium, .large])
         .presentationDragIndicator(.visible)
     }
 

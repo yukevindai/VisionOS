@@ -182,7 +182,7 @@ final class SimulatedTaskFlowUITests: XCTestCase {
     }
 
     private func openDiagnostics(_ app: XCUIApplication) {
-        app.buttons["home.settings"].tap()
+        openSettings(in: app)
         let diagnostics = app.buttons["Integration diagnostics"]
         reveal(diagnostics, in: app); diagnostics.tap()
     }

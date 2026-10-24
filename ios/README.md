@@ -38,6 +38,24 @@ The preparation script downloads the original model named in the teammate's `mod
 
 Read [the model notice](Resources/Models/NOTICE.txt) and [AGPL-3.0 license](Resources/Models/ULTRALYTICS-AGPL-3.0.txt). The repository's MIT license does not relicense the Ultralytics model. Conversion and a synthetic model-loading test do not establish real-device recognition accuracy or latency.
 
+## Conversational speech
+
+Normal native assistance uses Cartesia for priority-4 speech through the authenticated
+Convex `speech:synthesize` action when online configuration and an existing sign-in
+are available. Sign in through the image reader or friend tools first. The phone
+contains no Cartesia key; R3 owns the backend action and its server configuration.
+This demo path does not implement the planned streaming STT/Claude/LiveKit worker.
+
+The shared native scheduler retains all playback and priority authority. Stop,
+hazards, lost-target and movement cues stay local. Missing configuration/sign-in,
+provider errors, simulated responses, invalid audio, and the five-second total
+deadline fall back to the original on-device utterance. Text beyond the backend's
+300 UTF-16-unit limit stays local without truncation. Stop, context changes, mute,
+interruptions, new owner speech and replacement utterances cancel pending synthesis;
+late replies cannot restart it. Decode/playback failure also uses local speech.
+Simulator tests use simulated HTTP replies and do not establish live provider,
+microphone, echo-cancellation, or physical-device acceptance.
+
 ## Explicit simulation
 
 Simulation is off by default. Turn it on from **Settings → Use simulated assistance**, or launch the app with `--simulate`. The home and active-session views show a persistent **SIMULATED** label. Fixtures use sample scene/task events and typed requests; they do not connect to the camera, microphone, or wristbands. Inside a simulated session, enter a request in the simulated voice input field and submit it to exercise a fixture flow. This typed path is for fixture development. Normal assistance uses the native adapters described below and requires their actual camera, microphone, speech-recognition and depth readiness.
