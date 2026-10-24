@@ -141,33 +141,36 @@ struct CalibrationView: View {
     @ObservedObject var session: SessionCoordinator
     private let answers = ["Left", "Right", "Move left", "Move right", "Move up", "Move down", "Closer", "On target", "Success", "Stop", "Lost target or hand"]
     var body: some View {
-        Form {
-            if session.simulated { SimulationLabel() }
-            Section {
-                Text("Practice each side and all nine patterns. Identify the side or meaning after each scheduled pattern. Assistance remains paused during calibration.")
-                    .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityIdentifier("calibration.instructions")
-                if !session.calibrationMessage.isEmpty {
-                    Text(session.calibrationMessage)
+        VStack(spacing: 0) {
+            Form {
+                if session.simulated { SimulationLabel() }
+                Section {
+                    Text("Practice each side and all nine patterns. Identify the side or meaning after each scheduled pattern. Assistance remains paused during calibration.")
                         .fixedSize(horizontal: false, vertical: true)
-                        .accessibilityIdentifier("calibration.message")
-                }
-                if session.calibrationIndex == nil {
-                    Button(action: session.beginCalibration) { Text("Begin calibration").foregroundStyle(Color.primary) }.frame(minHeight: 44).accessibilityIdentifier("calibration.start")
-                } else {
-                    Text("Check \((session.calibrationIndex ?? 0) + 1) of 11")
-                        .accessibilityIdentifier("calibration.progress")
-                    Button(action: session.playCalibration) { Text("Repeat pattern").foregroundStyle(Color.primary) }
-                        .frame(minHeight: 44)
-                        .accessibilityIdentifier("calibration.repeat")
-                    ForEach(answers, id: \.self) { answer in
-                        Button { session.answerCalibration(answer) } label: { Text(answer).foregroundStyle(Color.primary) }
+                        .accessibilityIdentifier("calibration.instructions")
+                    if !session.calibrationMessage.isEmpty {
+                        Text(session.calibrationMessage)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityIdentifier("calibration.message")
+                    }
+                    if session.calibrationIndex == nil {
+                        Button(action: session.beginCalibration) { Text("Begin calibration").foregroundStyle(Color.primary) }.frame(minHeight: 44).accessibilityIdentifier("calibration.start")
+                    } else {
+                        Text("Check \((session.calibrationIndex ?? 0) + 1) of 11")
+                            .accessibilityIdentifier("calibration.progress")
+                        Button(action: session.playCalibration) { Text("Repeat pattern").foregroundStyle(Color.primary) }
                             .frame(minHeight: 44)
-                            .accessibilityIdentifier("calibration.answer.\(answer)")
+                            .accessibilityIdentifier("calibration.repeat")
+                        ForEach(answers, id: \.self) { answer in
+                            Button { session.answerCalibration(answer) } label: { Text(answer).foregroundStyle(Color.primary) }
+                                .frame(minHeight: 44)
+                                .accessibilityIdentifier("calibration.answer.\(answer)")
+                        }
                     }
                 }
             }
         }
+        .clipped()
         .safeAreaInset(edge: .bottom) {
             if session.calibrationIndex != nil {
                 Button(role: .destructive, action: session.stopCalibration) {

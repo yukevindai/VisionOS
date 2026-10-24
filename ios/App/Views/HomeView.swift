@@ -17,7 +17,8 @@ struct HomeView: View {
         NavigationStack {
             Group {
                 if sessionVisible {
-                    AssistanceSessionView(session: session, preferences: dependencies.preferences)
+                    AssistanceSessionView(session: session, preferences: dependencies.preferences,
+                                          openSettings: { settingsPresented = true })
                 } else {
                     switch role {
                     case .none: rolePicker

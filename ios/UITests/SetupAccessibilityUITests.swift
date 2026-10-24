@@ -7,7 +7,7 @@ final class SetupAccessibilityUITests: XCTestCase {
         let app = launch()
         app.buttons["home.start"].tap()
         XCTAssertTrue(app.buttons["session.end"].waitForExistence(timeout: 5))
-        app.buttons["home.settings"].tap()
+        openSettings(in: app)
         reveal(app.buttons["settings.calibration"], in: app)
         app.buttons["settings.calibration"].tap()
         reveal(app.buttons["calibration.start"], in: app)
@@ -62,7 +62,7 @@ final class SetupAccessibilityUITests: XCTestCase {
 
     func testSettingsAndBandInstructionsAtLargestText() throws {
         let app = launch()
-        app.buttons["home.settings"].tap()
+        openSettings(in: app)
         attach(app, "Settings preferences at largest text")
         reveal(app.buttons["settings.bands"], in: app)
         app.buttons["settings.bands"].tap()
@@ -85,7 +85,7 @@ final class SetupAccessibilityUITests: XCTestCase {
         let app = launch()
         app.buttons["home.start"].tap()
         XCTAssertTrue(app.buttons["session.end"].waitForExistence(timeout: 5))
-        app.buttons["home.settings"].tap()
+        openSettings(in: app)
         reveal(app.buttons["settings.calibration"], in: app)
         app.buttons["settings.calibration"].tap()
         reveal(app.buttons["calibration.start"], in: app)
@@ -117,7 +117,7 @@ final class SetupAccessibilityUITests: XCTestCase {
         app.navigationBars.buttons["BackButton"].tap()
         app.buttons["settings.done"].tap()
         XCTAssertEqual(app.buttons["session.pause"].label, "Resume assistance")
-        app.buttons["home.settings"].tap()
+        openSettings(in: app)
         reveal(app.buttons["settings.calibration"], in: app)
         app.buttons["settings.calibration"].tap()
         reveal(feedback, in: app, towardTop: true)
@@ -129,7 +129,7 @@ final class SetupAccessibilityUITests: XCTestCase {
         let app = launch()
         app.buttons["home.start"].tap()
         XCTAssertTrue(app.buttons["session.end"].waitForExistence(timeout: 5))
-        app.buttons["home.settings"].tap()
+        openSettings(in: app)
         let pause = app.buttons["settings.pause"]
         XCTAssertTrue(pause.waitForExistence(timeout: 3))
         XCTAssertTrue(pause.isHittable)
@@ -156,14 +156,14 @@ final class SetupAccessibilityUITests: XCTestCase {
 
     func testSettingsAuditWithLargestText() throws {
         let app = launch()
-        app.buttons["home.settings"].tap()
+        openSettings(in: app)
         XCTAssertTrue(app.buttons["settings.done"].waitForExistence(timeout: 3))
         try audit(app, "Settings")
     }
 
     func testBandSetupAuditWithLargestText() throws {
         let app = launch()
-        app.buttons["home.settings"].tap()
+        openSettings(in: app)
         reveal(app.buttons["settings.bands"], in: app)
         app.buttons["settings.bands"].tap()
         XCTAssertTrue(app.staticTexts["bands.summary"].waitForExistence(timeout: 3))
@@ -182,7 +182,7 @@ final class SetupAccessibilityUITests: XCTestCase {
         let app = launch(appearance: appearance)
         app.buttons["home.start"].tap()
         XCTAssertTrue(app.buttons["session.end"].waitForExistence(timeout: 5))
-        app.buttons["home.settings"].tap()
+        openSettings(in: app)
         reveal(app.buttons["settings.calibration"], in: app)
         app.buttons["settings.calibration"].tap()
         reveal(app.buttons["calibration.start"], in: app)
@@ -214,26 +214,41 @@ final class SetupAccessibilityUITests: XCTestCase {
     private func reveal(_ element: XCUIElement, in app: XCUIApplication, towardTop: Bool = false) {
         let scroll = app.collectionViews.firstMatch.exists ? app.collectionViews.firstMatch : app.scrollViews.firstMatch
         for attempt in 0..<40 {
-            let top = (app.navigationBars.allElementsBoundByIndex.map { $0.frame.maxY }.max() ?? app.frame.minY) + 8
+            let viewport = scroll.frame.intersection(app.frame)
+            let navigationBottom = app.navigationBars.allElementsBoundByIndex
+                .filter { $0.isHittable }.map { $0.frame.maxY }.max() ?? viewport.minY
+            let top = max(viewport.minY, navigationBottom)
             let footerIDs = ["calibration.stop", "settings.pause", "settings.done", "setup.cancel"]
-            let footerTop = footerIDs.map { app.buttons[$0] }.filter { $0.exists && $0.frame.minY > app.frame.midY }
+            let footerTop = footerIDs.map { app.buttons[$0] }.filter { $0.exists && $0.isHittable && $0.frame.minY > app.frame.midY }
                 .map { $0.frame.minY }.min()
-            let bottom = footerTop.map { $0 - 8 } ?? app.frame.maxY - 32
+            let bottom = min(viewport.maxY, footerTop ?? viewport.maxY)
+            guard bottom > top else { XCTFail("No unobscured scrolling area for \(element)"); return }
+            var delta: CGFloat
             if element.exists {
                 let frame = element.frame
-                if element.isHittable && frame.minY >= top && frame.maxY <= bottom { return }
+                if element.isHittable && frame.minY >= top - 1 && frame.maxY <= bottom + 1 { return }
                 if element.elementType == .staticText && frame.height > bottom - top,
-                   frame.minY >= top && frame.minY < top + 200 { return }
-                if frame.minY < top {
-                    scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.35))
-                        .press(forDuration: 0.05, thenDragTo: scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.65)))
-                    continue
+                   abs(frame.minY - top) <= 12 { return }
+                if frame.height > bottom - top || frame.minY < top {
+                    delta = top - frame.minY
+                } else {
+                    delta = bottom - frame.maxY
                 }
+            } else {
+                let searchUpward = towardTop ? attempt < 20 : attempt >= 20
+                delta = (bottom - top) * (searchUpward ? 0.4 : -0.4)
             }
-            let searchUpward = !element.exists && (towardTop ? attempt < 20 : attempt >= 20)
-            scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: searchUpward ? 0.35 : 0.65))
-                .press(forDuration: 0.05, thenDragTo: scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: searchUpward ? 0.65 : 0.35)))
+            // Fixed-distance swipes oscillate past long text at the largest size.
+            // Move only the missing distance, with both endpoints clear of fixed controls.
+            let limit = (bottom - top) * 0.4
+            delta = max(-limit, min(limit, delta))
+            if abs(delta) < 24 { delta = delta < 0 ? -24 : 24 }
+            let start = app.coordinate(withNormalizedOffset: .zero)
+                .withOffset(CGVector(dx: viewport.midX, dy: (top + bottom) / 2))
+            start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 0, dy: delta)))
         }
+        attach(app, "Unable to reveal \(element.identifier)")
+        print("Reveal failed: element=\(element.frame), scroll=\(scroll.frame)")
         XCTFail("Unable to fully reveal \(element)")
     }
 

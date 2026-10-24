@@ -112,7 +112,7 @@ final class AppDependencies: ObservableObject {
     }
 
     private static func nativeIntegration(preferences: UserPreferences, clock: any AppClock) -> LiveIntegrationBundle {
-        let audio = NativeAudioCoordinator(clock: clock)
+        let audio = NativeAudioCoordinator(clock: clock, speechProvider: try? ConvexSpeechClient.live())
         let perception = NativePerceptionGuidanceClient(
             startAudio: { context in try await audio.startInput(context: context) },
             stopAudio: { _ in audio.stopInput() },
