@@ -247,4 +247,154 @@ final class ConvexNativeMediaBackendTests: XCTestCase {
             XCTFail("Oversized reply accepted")
         } catch { XCTAssertEqual(error as? NativeMediaTransportError, .responseTooLarge) }
     }
+
+    private func speechWav() -> Data {
+        // SIMULATED one-sample mono PCM fixture, never sent to a provider.
+        Data([82, 73, 70, 70, 38, 0, 0, 0, 87, 65, 86, 69,
+              102, 109, 116, 32, 16, 0, 0, 0, 1, 0, 1, 0,
+              192, 93, 0, 0, 128, 187, 0, 0, 2, 0, 16, 0,
+              100, 97, 116, 97, 2, 0, 0, 0, 0, 0])
+    }
+
+    private func speechReply() -> [String: Any] {
+        ["ok": true, "requestId": "speech-1", "mode": "REAL_API", "format": "wav",
+         "sampleRate": 24_000, "audioBase64": speechWav().base64EncodedString()]
+    }
+
+    func testSpeechUsesAuthenticatedActionAndReturnsCorrelatedWav() async throws {
+        let backend = try makeBackend(MediaTestIdentity())
+        let value = speechReply()
+        MediaURLProtocol.handler = { request in
+            XCTAssertEqual(request.url?.path, "/api/action")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer header.payload.signature")
+            XCTAssertEqual(request.timeoutInterval, 5)
+            let body = try XCTUnwrap(JSONSerialization.jsonObject(with: requestBody(request)) as? [String: Any])
+            XCTAssertEqual(body["path"] as? String, "speech:synthesize")
+            let args = try XCTUnwrap((body["args"] as? [[String: Any]])?.first)
+            XCTAssertEqual(args["requestId"] as? String, "speech-1")
+            XCTAssertEqual(args["text"] as? String, "Read the options")
+            return try mediaResponse(request, value: value)
+        }
+        let audio = try await ConvexSpeechClient(backend: backend).synthesize(
+            text: "Read the options", requestID: "speech-1")
+        XCTAssertEqual(audio, speechWav())
+    }
+
+    func testSpeechRequestsLocalFallbackForProviderErrorAndSimulatedSilence() async throws {
+        let backend = try makeBackend(MediaTestIdentity())
+        var simulated = speechReply()
+        simulated["mode"] = "SIMULATED"
+        let failed: [String: Any] = ["ok": false, "requestId": "speech-1", "errorCode": "PROVIDER_TIMEOUT"]
+        for value in [simulated, failed] {
+            MediaURLProtocol.handler = { request in try mediaResponse(request, value: value) }
+            let audio = try await backend.synthesizeSpeech(text: "Read the options", requestID: "speech-1")
+            XCTAssertNil(audio)
+        }
+    }
+
+    func testSpeechRejectsMismatchedMalformedAndUnsupportedResponses() async throws {
+        let backend = try makeBackend(MediaTestIdentity())
+        for (field, invalid) in [("requestId", "other" as Any), ("ok", 1), ("mode", "UNKNOWN"),
+                                  ("format", "mp3"), ("sampleRate", 44_100), ("sampleRate", true),
+                                  ("audioBase64", "not base64!"),
+                                  ("audioBase64", Data(repeating: 0, count: 60).base64EncodedString()),
+                                  ("audioBase64", speechWav().base64EncodedString() + "\n")] {
+            var value = speechReply()
+            value[field] = invalid
+            MediaURLProtocol.handler = { request in try mediaResponse(request, value: value) }
+            do {
+                _ = try await backend.synthesizeSpeech(text: "Options", requestID: "speech-1")
+                XCTFail("Invalid \(field) accepted")
+            } catch { XCTAssertEqual(error as? NativeMediaTransportError, .invalidResponse) }
+        }
+    }
+
+    func testSpeechKeepsLongOrInvalidTextLocalWithoutTruncationOrNetwork() async throws {
+        let backend = try makeBackend(MediaTestIdentity())
+        MediaURLProtocol.handler = { request in
+            XCTFail("Invalid text reached network")
+            return try mediaResponse(request, value: [:])
+        }
+        for text in ["   ", String(repeating: "x", count: 301),
+                     String(repeating: "😀", count: 151), "invalid\u{0000}text"] {
+            let audio = try await backend.synthesizeSpeech(text: text, requestID: "speech-1")
+            XCTAssertNil(audio)
+        }
+    }
+
+    func testSpeechRejectsMissingAuthenticationAndAccountChange() async throws {
+        let identity = MediaTestIdentity()
+        let backend = try makeBackend(identity)
+        let original = identity.credentials
+        identity.credentials = NativeMediaCredentials(jwt: "", accountID: "", identityEpoch: UUID())
+        MediaURLProtocol.handler = { request in
+            XCTFail("Unauthenticated request reached network")
+            return try mediaResponse(request, value: [:])
+        }
+        do {
+            _ = try await backend.synthesizeSpeech(text: "Options", requestID: "speech-1")
+            XCTFail("Missing authentication accepted")
+        } catch { XCTAssertEqual(error as? NativeMediaTransportError, .unauthenticated) }
+
+        identity.credentials = original
+        let changedIdentity = MediaTestIdentity()
+        changedIdentity.changeOnNextRead = true
+        let changedBackend = try makeBackend(changedIdentity)
+        let value = speechReply()
+        MediaURLProtocol.handler = { request in try mediaResponse(request, value: value) }
+        do {
+            _ = try await changedBackend.synthesizeSpeech(text: "Options", requestID: "speech-1")
+            XCTFail("Cross-account speech accepted")
+        } catch { XCTAssertEqual(error as? NativeMediaTransportError, .accountChanged) }
+    }
+
+    func testSpeechBoundsResponseAndDecodedAudio() async throws {
+        let backend = try makeBackend(MediaTestIdentity())
+        MediaURLProtocol.handler = { request in
+            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil,
+                                           headerFields: ["Content-Length": "6291457"])!
+            return (response, Data())
+        }
+        do {
+            _ = try await backend.synthesizeSpeech(text: "Options", requestID: "speech-1")
+            XCTFail("Oversized response accepted")
+        } catch { XCTAssertEqual(error as? NativeMediaTransportError, .responseTooLarge) }
+        var value = speechReply()
+        var oversized = speechWav()
+        oversized.append(Data(repeating: 0, count: 4 * 1024 * 1024 + 1 - oversized.count))
+        value["audioBase64"] = oversized.base64EncodedString()
+        MediaURLProtocol.handler = { request in try mediaResponse(request, value: value) }
+        do {
+            _ = try await backend.synthesizeSpeech(text: "Options", requestID: "speech-1")
+            XCTFail("Oversized audio accepted")
+        } catch { XCTAssertEqual(error as? NativeMediaTransportError, .invalidResponse) }
+    }
+
+    func testSpeechSurfacesHttpAndNetworkFailuresForLocalFallback() async throws {
+        let backend = try makeBackend(MediaTestIdentity())
+        MediaURLProtocol.handler = { request in try mediaResponse(request, value: [:], status: 401) }
+        do {
+            _ = try await backend.synthesizeSpeech(text: "Options", requestID: "speech-1")
+            XCTFail("HTTP failure accepted")
+        } catch { XCTAssertEqual(error as? NativeMediaTransportError, .rejected) }
+        MediaURLProtocol.handler = { _ in throw URLError(.timedOut) }
+        do {
+            _ = try await backend.synthesizeSpeech(text: "Options", requestID: "speech-1")
+            XCTFail("Network failure accepted")
+        } catch { XCTAssertEqual(error as? NativeMediaTransportError, .unavailable) }
+    }
+
+    func testCancelledSpeechDoesNotStartHttpRequest() async throws {
+        let backend = try makeBackend(MediaTestIdentity())
+        MediaURLProtocol.handler = { request in
+            XCTFail("Cancelled speech reached network")
+            return try mediaResponse(request, value: [:])
+        }
+        let task = Task { try await backend.synthesizeSpeech(text: "Options", requestID: "speech-1") }
+        task.cancel()
+        do {
+            _ = try await task.value
+            XCTFail("Cancelled speech completed")
+        } catch { XCTAssertTrue(error is CancellationError) }
+    }
 }

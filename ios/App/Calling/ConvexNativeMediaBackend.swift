@@ -73,6 +73,42 @@ final class ConvexNativeMediaBackend: NativeMediaBackend, R3ScreenReading {
         _ = try nonemptyString(user, "_id")
     }
 
+    func synthesizeSpeech(text: String, requestID: String) async throws -> Data? {
+        try Task.checkCancellation()
+        let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Match the provider's JavaScript length limit without truncating the spoken text.
+        guard !text.isEmpty, text.utf16.count <= 300,
+              !text.unicodeScalars.contains(where: {
+                  $0.value <= 8 || (11...31).contains($0.value) || $0.value == 127
+              }) else { return nil }
+        try validateNonce(requestID)
+        let result = try object(try await call("speech:synthesize", kind: "action",
+            args: ["requestId": requestID, "text": text],
+            maximumResponseBytes: 6 * 1024 * 1024, requestTimeout: 5))
+        try Task.checkCancellation()
+        guard try string(result, "requestId") == requestID else {
+            throw NativeMediaTransportError.invalidResponse
+        }
+        guard try bool(result, "ok") else { return nil }
+        let mode = try string(result, "mode")
+        guard mode != "SIMULATED" else { return nil }
+        guard mode == "REAL_API", try string(result, "format") == "wav",
+              try safeUInt(result, "sampleRate") == 24_000 else {
+            throw NativeMediaTransportError.invalidResponse
+        }
+        let encoded = try string(result, "audioBase64")
+        let maxAudioBytes = 4 * 1024 * 1024
+        guard encoded.utf8.count <= ((maxAudioBytes + 2) / 3) * 4,
+              let audio = Data(base64Encoded: encoded),
+              audio.count > 44, audio.count <= maxAudioBytes,
+              audio.base64EncodedString() == encoded,
+              audio.prefix(4) == Data("RIFF".utf8),
+              audio.subdata(in: 8..<12) == Data("WAVE".utf8) else {
+            throw NativeMediaTransportError.invalidResponse
+        }
+        return audio
+    }
+
     func readScreen(image: Data, frameID: String, capturedAtUTCms: Int64,
                     requestID: String) async throws -> Targets.ScreenModel {
         guard !image.isEmpty, image.count <= 512 * 1024,
@@ -298,10 +334,12 @@ final class ConvexNativeMediaBackend: NativeMediaBackend, R3ScreenReading {
     }
 
     private func call(_ path: String, kind: String, args: [String: Any],
-                      maximumResponseBytes: Int = 1_048_576) async throws -> Any {
+                      maximumResponseBytes: Int = 1_048_576,
+                      requestTimeout: TimeInterval = 8) async throws -> Any {
         let before: NativeMediaCredentials
         do { before = try await identity.currentCredentials() }
         catch { throw NativeMediaTransportError.unauthenticated }
+        try Task.checkCancellation()
         let segments = before.jwt.split(separator: ".", omittingEmptySubsequences: false)
         guard !before.accountID.isEmpty, before.accountID.count <= 512,
               before.jwt.count <= 16_384, segments.count == 3,
@@ -310,7 +348,7 @@ final class ConvexNativeMediaBackend: NativeMediaBackend, R3ScreenReading {
                   (byte >= 48 && byte <= 57) || byte == 45 || byte == 95
               }) }) else { throw NativeMediaTransportError.unauthenticated }
         let endpoint = origin.appendingPathComponent("api").appendingPathComponent(kind)
-        var request = URLRequest(url: endpoint, cachePolicy: .reloadIgnoringLocalAndRemoteCacheData, timeoutInterval: 8)
+        var request = URLRequest(url: endpoint, cachePolicy: .reloadIgnoringLocalAndRemoteCacheData, timeoutInterval: requestTimeout)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(before.jwt)", forHTTPHeaderField: "Authorization")

@@ -36,9 +36,11 @@ final class NativeAudioCoordinator: NSObject, SpeechSchedulerClient, Conversatio
     private var cueExpiry: ScheduledWork?
     private var latestCue: String?
     private var player: AVAudioPlayer?
+    private let conversationalSpeech: ConversationalSpeechRequest?
 
-    init(clock: any AppClock) {
+    init(clock: any AppClock, speechProvider: (any ConversationalSpeechSynthesizing)? = nil) {
         self.clock = clock
+        conversationalSpeech = speechProvider.map { ConversationalSpeechRequest(provider: $0, clock: clock) }
         super.init()
         synthesizer.delegate = self
     }
@@ -177,6 +179,9 @@ final class NativeAudioCoordinator: NSObject, SpeechSchedulerClient, Conversatio
             consumedWords = words.count
             return
         }
+        // Cancel before the utterance debounce: a response arriving during that wait
+        // must not start playing and cause the owner's words to be discarded as echo.
+        if conversationalSpeech?.isPending == true { cancelOutput() }
         utteranceWork?.cancel()
         utteranceWork = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 700_000_000)
@@ -184,6 +189,7 @@ final class NativeAudioCoordinator: NSObject, SpeechSchedulerClient, Conversatio
                   self.offlineStopReady, !self.synthesizer.isSpeaking,
                   self.player?.isPlaying != true, self.clock.nowMs >= self.echoUntilMs else { return }
             self.consumedWords = words.count
+            self.cancelOutput()
             self.emit(.localOwnerUtterance(fresh), context: context)
         }
     }
@@ -193,7 +199,23 @@ final class NativeAudioCoordinator: NSObject, SpeechSchedulerClient, Conversatio
     }
 
     func speak(_ text: String, priority: Int, context: SessionContext) {
-        _ = beginSpeech(text, priority: priority, context: context, kind: .speech)
+        guard priority == 4, let conversationalSpeech else {
+            _ = beginSpeech(text, priority: priority, context: context, kind: .speech)
+            return
+        }
+        guard self.context == context, !text.isEmpty, offlineStopReady,
+              output.permits(priority: priority) else { return }
+        cancelOutput()
+        let token = output.begin(priority: priority, kind: .speech)
+        onCaption?(context, text)
+        guard self.context == context, output.isCurrent(token), offlineStopReady else { return }
+        conversationalSpeech.start(text: text) { [weak self] audio in
+            guard let self, self.context == context, self.output.isCurrent(token),
+                  self.offlineStopReady else { return }
+            if let audio, self.playAudio(audio, context: context) { return }
+            // Includes unavailable services, SIMULATED silence, timeout and decoder failure.
+            _ = self.beginSpeech(text, priority: 4, context: context, kind: .speech)
+        }
     }
 
     @discardableResult
@@ -238,18 +260,24 @@ final class NativeAudioCoordinator: NSObject, SpeechSchedulerClient, Conversatio
     }
 
     func enqueueAudio(_ audio: Data, context: SessionContext) {
+        _ = playAudio(audio, context: context)
+    }
+
+    @discardableResult
+    private func playAudio(_ audio: Data, context: SessionContext) -> Bool {
         guard self.context == context, offlineStopReady, output.permits(priority: 4),
               let decoded = try? AVAudioPlayer(data: audio),
-              let duration = NativeAudioTiming.durationMilliseconds(seconds: decoded.duration) else { return }
+              let duration = NativeAudioTiming.durationMilliseconds(seconds: decoded.duration) else { return false }
         cancelOutput()
         let token = output.begin(priority: 4, kind: .audio)
         player = decoded
         echoUntilMs = NativeAudioTiming.deadline(nowMs: clock.nowMs, durationMs: duration + 500) ?? Int64.max
-        guard decoded.play() else { cancelOutput(); return }
+        guard decoded.play() else { cancelOutput(); return false }
         cueExpiry = clock.schedule(afterMs: duration) { [weak self] in
             guard let self, self.context == context, self.output.isCurrent(token) else { return }
             self.cancelOutput()
         }
+        return true
     }
     func cancel(context: SessionContext) {
         guard self.context == context else { return }
@@ -274,6 +302,7 @@ final class NativeAudioCoordinator: NSObject, SpeechSchedulerClient, Conversatio
         throw IntegrationUnavailable(component: "Confirmed wristband output scheduler")
     }
     private func cancelOutput() {
+        conversationalSpeech?.cancel()
         cueExpiry?.cancel(); cueExpiry = nil
         latestCue = nil
         output.cancel()
@@ -281,6 +310,7 @@ final class NativeAudioCoordinator: NSObject, SpeechSchedulerClient, Conversatio
         speechToken = nil
         player?.stop(); player = nil
         synthesizer.stopSpeaking(at: .immediate)
+        echoUntilMs = NativeAudioTiming.echoExpiryAfterCancellation(currentExpiry: echoUntilMs, nowMs: clock.nowMs)
     }
     nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
         Task { @MainActor [weak self] in
@@ -345,6 +375,10 @@ struct NativeAudioOutputState {
 }
 
 enum NativeAudioTiming {
+    static func echoExpiryAfterCancellation(currentExpiry: Int64, nowMs: Int64) -> Int64 {
+        // A cancelled clip leaves only a brief acoustic tail, not its original duration.
+        min(currentExpiry, deadline(nowMs: nowMs, durationMs: 500) ?? currentExpiry)
+    }
     static func deadline(nowMs: Int64, durationMs: Int64) -> Int64? {
         guard nowMs >= 0, durationMs >= 0 else { return nil }
         let result = nowMs.addingReportingOverflow(durationMs)
