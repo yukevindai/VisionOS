@@ -51,11 +51,16 @@ class LockSessionTests(unittest.TestCase):
         self.assertEqual(states, ['REACQUIRING', 'LOCKED', 'UNCERTAIN', 'TARGET LOST'])
         self.assertEqual(shown, [False, True, True, False])
 
-    def test_stale_frame_hides_box_and_resets_temporal_tracking(self):
+    def test_long_stall_hides_box_and_resets_temporal_tracking(self):
         s = self.session([])
-        match = s.update(Image.new('RGB', (64, 96)), 1., 1.5)
+        match = s.update(Image.new('RGB', (64, 96)), 1., 2.6)
         self.assertIsNone(match.polygon)
         self.assertEqual((s.state, s.tracker.resets), ('TARGET LOST', 1))
+
+    def test_late_frame_within_grace_keeps_tracking(self):
+        s = self.session([LockMatch(box(), 'ok', LOCKED)])
+        s.update(Image.new('RGB', (64, 96)), 1., 1.5)
+        self.assertEqual((s.state, s.tracker.resets), (LOCKED, 0))
 
     def test_late_gemini_result_cannot_replace_an_active_lock(self):
         s = self.session([LockMatch(box(), 'ok', LOCKED)])
@@ -148,6 +153,14 @@ class RecordedCanLockTests(unittest.TestCase):
             self.assertGreaterEqual(p['correct'], p['frames'] - 1, phase)
             self.assertEqual(p['wrong'], 0, phase)
 
+    def test_covered_target_keeps_a_remembered_box_that_follows_the_camera(self):
+        for phase in ('full cover', 'covered pan'):
+            p = self.summary['phases'][phase]
+            self.assertEqual(p['shown'], 0, f'{phase}: no live box on a covered target')
+            self.assertGreaterEqual(p['remembered'], p['frames'] - 1, phase)
+            self.assertGreaterEqual(p['correct'], p['frames'] - 1, f'{phase}: remembered box must stay on the object')
+            self.assertEqual(p['wrong'], 0, phase)
+
     def test_never_shows_box_on_hidden_target(self):
         self.assertEqual(self.summary['boxesOnHiddenTarget'], 0)
         for phase in ('full cover', 'point away'):
@@ -161,7 +174,9 @@ class RecordedCanLockTests(unittest.TestCase):
     def test_box_only_with_lock_states(self):
         for r in self.rows:
             if r['boxShown']:
-                self.assertIn(r['state'], (LOCKED, UNCERTAIN))
+                self.assertIn(r['state'], (LOCKED, UNCERTAIN, 'HIDDEN'))
+        self.assertEqual(self.summary['phases']['point away']['remembered'], 0,
+                         'pointing away must end the remembered location')
 
     def test_two_identical_cans_are_not_chosen_between(self):
         frame = np.load(FRAMES[0])['rgb']

@@ -5,8 +5,9 @@ let package = Package(
     name: "Targets",
     platforms: [.iOS(.v17), .macOS(.v13)],
     products: [.library(name: "Targets", targets: ["Targets"])],
+    dependencies: [.package(path: "../Tasks")],
     targets: [
-        .target(name: "Targets"),
-        .testTarget(name: "TargetsTests", dependencies: ["Targets"], resources: [.copy("Fixtures")])
+        .target(name: "Targets", dependencies: ["Tasks"]),
+        .testTarget(name: "TargetsTests", dependencies: ["Targets", "Tasks"], resources: [.copy("Fixtures")])
     ]
 )
