@@ -4,11 +4,22 @@ import Tasks
 
 @MainActor
 final class SessionLifecycleStressTests: XCTestCase {
-    private func start(_ h: AdapterCompatibilityHarness) async {
+    private func start(_ h: AdapterCompatibilityHarness, retryWhilePreviousAttemptStops: Bool = false) async {
         let ready = expectation(description: "R2 announced readiness")
         h.speech.onSpeech = { ready.fulfill() }
         h.session.start()
+        // Releasing an adapter continuation does not synchronously finish its caller.
+        // Retry the public Start action until that cancelled attempt has unwound;
+        // a single MainActor turn is not a FIFO completion barrier.
+        let retry = retryWhilePreviousAttemptStops ? Task { @MainActor in
+            while h.session.phase == .ended && !Task.isCancelled {
+                await Task.yield()
+                guard !Task.isCancelled else { return }
+                h.session.start()
+            }
+        } : nil
         await fulfillment(of: [ready], timeout: 2)
+        retry?.cancel()
         h.speech.onSpeech = nil
         XCTAssertEqual(h.session.phase, .active)
     }
@@ -256,7 +267,7 @@ final class SessionLifecycleStressTests: XCTestCase {
         await drainActorTurn()
         XCTAssertEqual(h.session.phase, .ended, "Late startup cannot revive the ended session")
         transport.holdStart = false
-        await start(h)
+        await start(h, retryWhilePreviousAttemptStops: true)
         XCTAssertEqual(transport.startedContexts.count, 2)
     }
 
@@ -288,7 +299,7 @@ final class SessionLifecycleStressTests: XCTestCase {
         await drainActorTurn()
         XCTAssertEqual(h.session.phase, .ended)
         h.conversation.holdStart = false
-        await start(h)
+        await start(h, retryWhilePreviousAttemptStops: true)
         XCTAssertEqual(h.conversation.startedContexts.count, 3)
     }
 
