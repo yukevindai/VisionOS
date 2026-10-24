@@ -9,12 +9,15 @@ VisionOS/
 ├── README.md
 ├── docs/
 │   ├── Cal_Hacks_13_Build_Spec_v3.md
-│   └── R2_IOS_IMPLEMENTATION_SPEC.md
+│   ├── R2_IOS_IMPLEMENTATION_SPEC.md
+│   └── REPOSITORY_STRUCTURE.md
 ├── ios/
 │   ├── Reflex.xcodeproj/         # R2 owns project wiring
 │   ├── App/                     # R2
 │   ├── Packages/
 │   │   ├── Perception/          # R1
+│   │   │   └── Prototypes/
+│   │   │       └── DeskGuide-Laptop/ # Python research harness
 │   │   ├── Guidance/            # R1
 │   │   ├── Tasks/               # R2
 │   │   ├── HapticLink/          # R2
@@ -30,7 +33,9 @@ VisionOS/
     └── workflows/               # Automated checks
 ```
 
-The [repository ownership guide](docs/REPOSITORY_STRUCTURE.md) records how these directories are used. Empty directories have `.gitkeep` placeholders so they survive a clone; their implementations and automated workflows await the responsible owners. The iOS project also includes `Config/`, `Scripts/`, and `Validation/` for build configuration, project generation, and validation records.
+The [repository ownership guide](docs/REPOSITORY_STRUCTURE.md) records how these directories are used. Empty owner directories have `.gitkeep` placeholders so they survive a clone; their implementations await the responsible owners. The iOS project also includes `Config/`, `Scripts/`, and `Validation/` for build configuration, project generation, and validation records. The [iOS CI workflow](.github/workflows/ios-ci.yml) contains the automated checks; hosted execution remains unverified.
+
+The [DeskGuide laptop prototype](ios/Packages/Perception/Prototypes/DeskGuide-Laptop/README.md) lives with R1's perception work. Its Python source, evaluation tools, fixtures, licenses, and reports stay together. It is a research reference for perception and guidance; native Perception and Guidance packages still need to be supplied and integrated.
 
 ## Run and contribute
 

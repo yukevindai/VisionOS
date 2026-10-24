@@ -1,6 +1,6 @@
 # Repository structure and ownership
 
-The root README contains the canonical directory tree. This layout was recorded on October 23, 2026. Both team specifications are stored in `docs/`; their original filenames are preserved.
+The root README contains the canonical directory tree. This layout was recorded on October 23, 2026 and updated on October 24 to place the laptop research prototype under R1's perception directory. Both team specifications are stored in `docs/`; their original filenames are preserved.
 
 | Path | Owner | Contents |
 |---|---|---|
@@ -8,6 +8,7 @@ The root README contains the canonical directory tree. This layout was recorded 
 | `ios/Reflex.xcodeproj/` | R2 | iPhone targets, dependencies, build settings, shared scheme |
 | `ios/App/` | R2 | SwiftUI shell, accessibility, session coordination and integration adapters |
 | `ios/Packages/Perception/` | R1 | Camera/AR session, frames, depth, pose and perception |
+| `ios/Packages/Perception/Prototypes/DeskGuide-Laptop/` | R1 | Standalone Python perception/guidance research harness, evaluation tools and original validation records |
 | `ios/Packages/Guidance/` | R1 | Hand/approach guidance, app speech and output scheduling |
 | `ios/Packages/Tasks/` | R2 | Task state machines and evidence validation |
 | `ios/Packages/HapticLink/` | R2 | CoreBluetooth transport and wristband command safety |
@@ -22,6 +23,12 @@ The root README contains the canonical directory tree. This layout was recorded 
 | `.github/workflows/` | Team | Automated repository checks |
 
 Supporting R2 paths remain under `ios/`: `Config/` contains build settings, `Scripts/` contains the reproducible Xcode project generator, and `Validation/` contains recorded results. `LICENSE` and `AGENTS.md` remain at the repository root.
+
+## Research prototype
+
+The former root `DeskGuide-Laptop/` directory now lives intact at `ios/Packages/Perception/Prototypes/DeskGuide-Laptop/`. Run its commands from that directory. Its fixtures, model manifests, dependency lists and licenses remain beside the code so its relative paths and provenance are preserved. Historical reports retain their original paths and environment descriptions.
+
+This location groups the prototype with its R1 owner without making it an iOS dependency. It has no Swift package manifest and is not linked into the Xcode project. R1 still owns the native perception and guidance implementations, including camera and audio scheduling; R2's integration boundaries are unchanged. Promote fixtures to the shared `fixtures/` directory only when they become agreed cross-team inputs.
 
 ## Placeholder directories
 

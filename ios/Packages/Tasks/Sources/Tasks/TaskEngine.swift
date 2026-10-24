@@ -26,7 +26,7 @@ public struct TaskEngine: Sendable {
     /// freshness continuously during its guidance loop. Unknown depth never authorizes approach.
     public func isGuidanceDispatchAllowed(context: RequestContext, evidence: PhysicalEvidence, nowMs: Int64) -> Bool {
         guard context == state.pendingRequest, context.task == state.context,
-              nowMs >= context.issuedAtMs, nowMs < context.expiresAtMs,
+              nowMs >= lastNow, nowMs >= context.issuedAtMs, nowMs < context.expiresAtMs,
               state.phase == .guiding || state.phase == .approaching else { return false }
         return physicalFailure(evidence, mode: state.phase == .approaching ? .approach : .hand, now: nowMs) == nil
     }

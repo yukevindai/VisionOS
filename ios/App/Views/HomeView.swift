@@ -13,16 +13,15 @@ struct HomeView: View {
                 } else {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 28) {
-                            Image(systemName: "hand.raised.fingers.spread.fill")
-                                .font(.system(size: 64)).foregroundStyle(.tint).accessibilityHidden(true)
-                            Text("A little guidance.\nMore independence.").font(.largeTitle.bold()).fixedSize(horizontal: false, vertical: true)
-                            Text("Talk with an assistant about what’s in front of you. Get help with everyday tasks, at your pace.")
-                                .font(.title3).foregroundStyle(.secondary)
                             if dependencies.simulated { SimulationLabel() }
+                            Text("Help at your pace.").font(.title2.bold())
+                                .fixedSize(horizontal: false, vertical: true)
+                                .accessibilityAddTraits(.isHeader)
+                            Text("Ask about what’s in front of you.").font(.body)
+                                .fixedSize(horizontal: false, vertical: true)
                             if session.phase == .failed {
                                 Text(session.message).foregroundStyle(.primary).accessibilityIdentifier("session.error")
                             }
-                            Text("You can pause or end at any time.").font(.callout).foregroundStyle(.secondary)
                         }.padding(24).frame(maxWidth: 650)
                     }
                     .safeAreaInset(edge: .bottom) {
@@ -31,14 +30,16 @@ struct HomeView: View {
                                 .frame(maxWidth: .infinity, minHeight: 52)
                         }
                         .buttonStyle(.borderedProminent).controlSize(.large)
+                        .tint(AssistanceColors.primaryActionFill).foregroundStyle(.white)
                         .accessibilityIdentifier("home.start")
-                        .accessibilityHint("Starts an assistance session using the rear camera.")
+                        .accessibilityHint(dependencies.simulated ? "Starts simulated assistance with typed requests. No real camera or microphone." : "Starts an assistance session using the rear camera.")
                         .accessibilityFocused($startFocused)
                         .padding().background(.regularMaterial)
                     }
                 }
             }
             .navigationTitle("Reflex")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { settingsPresented = true } label: { Label("Settings", systemImage: "gearshape") }
@@ -51,15 +52,36 @@ struct HomeView: View {
             }
             .onAppear { startFocused = true }
         }
+        .preferredColorScheme(uiTestingAppearance)
     }
+
+    private var uiTestingAppearance: ColorScheme? {
+        #if DEBUG
+        let arguments = ProcessInfo.processInfo.arguments
+        if arguments.contains("--uitesting"), arguments.contains("--simulate"),
+           let option = arguments.firstIndex(of: "--ui-appearance"),
+           arguments.indices.contains(option + 1) {
+            switch arguments[option + 1] {
+            case "dark": return .dark
+            case "light": return .light
+            default: return nil
+            }
+        }
+        #endif
+        return nil
+    }
+}
+
+enum AssistanceColors {
+    static let primaryActionFill = Color(red: 0, green: 90.0 / 255, blue: 190.0 / 255)
 }
 
 struct SimulationLabel: View {
     var body: some View {
-        Label("SIMULATED", systemImage: "testtube.2")
-            .font(.headline).padding(12).frame(maxWidth: .infinity, alignment: .leading)
-            .background(.yellow.opacity(0.15), in: RoundedRectangle(cornerRadius: 12))
-            .accessibilityLabel("Simulated mode. No real camera or wristbands.")
-            .accessibilityIdentifier("simulation.banner")
+        Text("SIMULATED")
+        .font(.headline).padding(12).frame(maxWidth: .infinity, alignment: .leading)
+        .background(.yellow.opacity(0.15), in: RoundedRectangle(cornerRadius: 12))
+        .accessibilityLabel("Simulated mode. No real camera or wristbands.")
+        .accessibilityIdentifier("simulation.banner")
     }
 }

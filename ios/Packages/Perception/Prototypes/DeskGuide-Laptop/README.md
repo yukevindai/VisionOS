@@ -4,10 +4,13 @@ Independent Windows CPU prototype for the future native Reflex reaching feature.
 
 ## Run
 
+From your repository root, enter `ios/Packages/Perception/Prototypes/DeskGuide-Laptop`. The prototype's source, models, fixtures, and evaluation tools remain together; historical reports describe the original laptop checkout.
+
 Keep the laptop on Cal Hacks 13.0 and the phone on the existing TONY 0864 hotspot. Open PathOn and keep streaming foregrounded. No hotspot reset or password access is needed. Close other streaming clients.
 
 ```powershell
-Set-Location 'C:\Users\ngkho\OneDrive\Desktop\visionOS\DeskGuide-Laptop'
+# Start from the VisionOS repository root.
+Set-Location 'ios\Packages\Perception\Prototypes\DeskGuide-Laptop'
 $phoneIP = Read-Host 'Current IP displayed by PathOn'
 .\.venv\Scripts\python.exe -m deskguide --host $phoneIP --port 8888 --target cup
 ```
@@ -31,4 +34,4 @@ RGB long side 960; clockwise rotation 90; medium/high depth confidence accepted;
 
 The original files are MIT; active YOLO dependencies/weights are AGPL-3.0. Read [THIRD_PARTY.md](THIRD_PARTY.md) before distribution or closed-source iOS integration.
 
-The Python UI does not compile for iOS. Native Reflex should supply its existing ARSession frames to equivalent geometry/tracking logic and route guidance through its central audio/haptic scheduler. Final native contracts and the actual Reflex repository are still needed. USB remains physically unverified; working Wi-Fi transport is the development path.
+The Python UI does not compile for iOS. Native Reflex should supply its existing ARSession frames to equivalent geometry/tracking logic and route guidance through its central audio/haptic scheduler. This harness now resides in the Reflex repository; final native adapters and confirmed integration contracts are still needed. See the [repository ownership guide](../../../../../docs/REPOSITORY_STRUCTURE.md). USB remains physically unverified; working Wi-Fi transport is the development path.

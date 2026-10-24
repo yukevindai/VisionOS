@@ -1,0 +1,66 @@
+name: iOS CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-and-build:
+    name: Swift packages, iOS tests, unsigned Release
+    runs-on: macos-26
+    timeout-minutes: 60
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Verify generated Xcode project is current
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 ios/Scripts/generate_project.py
+          git diff --exit-code -- ios/Reflex.xcodeproj
+
+      - name: Select pinned Xcode
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/ios-ci-artifacts"
+          sudo xcode-select --switch /Applications/Xcode_26.6.app
+          xcodebuild -version | tee "$RUNNER_TEMP/ios-ci-artifacts/xcode-version.txt"
+          grep -F 'Xcode 26.6' "$RUNNER_TEMP/ios-ci-artifacts/xcode-version.txt"
+
+      - name: Record toolchain and select an available iPhone simulator
+        id: simulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          swift --version | tee "$RUNNER_TEMP/ios-ci-artifacts/swift-version.txt"
+          python3 ios/Scripts/select_simulator.py --boot --github-output "$GITHUB_OUTPUT" \
+            | tee "$RUNNER_TEMP/ios-ci-artifacts/simulator-selection.log"
+
+      - name: Run Swift package tests, app/UI tests, and unsigned Release build
+        shell: bash
+        env:
+          IOS_SIMULATOR_UDID: ${{ steps.simulator.outputs.udid }}
+          CI_ARTIFACT_DIR: ${{ runner.temp }}/ios-ci-artifacts
+        run: bash ios/Scripts/ci_xcodebuild.sh
+
+      - name: Upload test results and build logs
+        if: ${{ always() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ios-ci-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/ios-ci-artifacts/
+          if-no-files-found: warn
+          retention-days: 14

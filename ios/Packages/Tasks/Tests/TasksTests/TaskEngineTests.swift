@@ -189,6 +189,19 @@ final class TaskEngineTests: XCTestCase {
         }
     }
 
+    func testDispatchClockRegressionCannotMakeOldEvidenceFresh() {
+        var h = Harness(); h.start(); h.resolve(); h.acquire()
+        let pending = h.engine.state.pendingRequest!
+        h.now = 1_000
+        h.send(.guidance(mode: .hand, targetID: "simulated-button", status: .guiding,
+                         evidence: TaskFixtures.physical(nowMs: h.now)))
+        XCTAssertEqual(h.engine.state.phase, .guiding)
+        XCTAssertFalse(h.engine.isGuidanceDispatchAllowed(context: pending,
+                       evidence: TaskFixtures.physical(nowMs: 300), nowMs: 500))
+        XCTAssertTrue(h.engine.isGuidanceDispatchAllowed(context: pending,
+                      evidence: TaskFixtures.physical(nowMs: h.now), nowMs: h.now))
+    }
+
     func testTrackingRecoveryRequiresFreshReacquisitionAndExplicitConfirmation() {
         var h = Harness(); h.start(); h.resolve(); h.acquire()
         _ = h.engine.reduce(.stop(.trackingLost), nowMs: h.now)

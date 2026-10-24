@@ -31,7 +31,7 @@ final class SessionCoordinator: ObservableObject {
     private var engine: TaskEngine?
     private(set) var context: SessionContext?
     private var startWork: Task<Void, Never>?
-    private var requestWork: [String: Task<Void, Never>] = [:]
+    private var requestWork: [RequestContext: Task<Void, Never>] = [:]
     private var deadline: ScheduledWork?
     private var frameWatchdog: ScheduledWork?
     private var frameWork: Task<Void, Never>?
@@ -53,22 +53,26 @@ final class SessionCoordinator: ObservableObject {
     private var frameThrottle: ScheduledWork?
     private var lastFrameDispatchMs: Int64?
     private let generationSeed: () -> UInt64
+    private let enforceSimulatedPermissions: Bool
     private var calibrationTaskID: String?
     var hasActiveTask: Bool {
         guard let state = taskState else { return false }
         return ![.idle, .completed, .failed, .cancelled, .paused].contains(state.phase)
     }
     var canResume: Bool { phase == .paused && calibrationIndex == nil && !microphoneMuted }
+    var requiresPermissions: Bool { !simulated || enforceSimulatedPermissions }
 
     init(simulated: Bool, preferences: UserPreferences, diagnostics: Diagnostics, bands: BandService,
          clock: any AppClock, perception: any PerceptionGuidanceClient, speech: any SpeechSchedulerClient,
          conversation: any ConversationClient, evidence: any TargetEvidenceClient, permissions: any PermissionClient,
+         enforceSimulatedPermissions: Bool = false,
          configuration: SessionConfiguration = .init(), framePolicy: FrameDeliveryPolicy? = nil,
          generationSeed: @escaping () -> UInt64 = { 0 }) {
         self.simulated = simulated; self.preferences = preferences; self.diagnostics = diagnostics; self.bands = bands
         self.clock = clock; self.perception = perception; self.speech = speech; self.conversation = conversation
         self.evidence = evidence; self.permissions = permissions
         self.configuration = configuration; self.framePolicy = framePolicy; self.generationSeed = generationSeed
+        self.enforceSimulatedPermissions = enforceSimulatedPermissions
         permissionState = permissions.current()
         bindAdapters()
     }
@@ -117,7 +121,7 @@ final class SessionCoordinator: ObservableObject {
         guard phase == .idle || phase == .ended || phase == .failed else { return }
         guard preferences.setupComplete else { showSetup = true; return }
         permissionState = permissions.current()
-        guard simulated || permissionState.ready else { showSetup = true; message = permissionState.explanation; return }
+        guard !requiresPermissions || permissionState.ready else { showSetup = true; message = permissionState.explanation; return }
         startupEpoch = UUID()
         let epoch = startupEpoch
         let id = UUID().uuidString
@@ -142,13 +146,15 @@ final class SessionCoordinator: ObservableObject {
         startWork = Task { [weak self] in
             do {
                 let ready = try await perception.start(context: context, policy: CameraPolicy())
-                guard let self, self.startupEpoch == epoch, self.phase == .preparing, !Task.isCancelled else { return }
-                self.camera = ready.camera; self.sharedAudioInput = ready.audioInput; self.supportsSpeechOnlyGuidance = ready.supportsSpeechOnlyGuidance
-                self.capabilities.perception = self.simulated ? .simulated : .ready
-                self.capabilities.microphone = self.simulated ? .unavailable("SIMULATED text input; microphone is not listening") : .ready
-                self.capabilities.offlineStop = ready.supportsOfflineStop ? .ready : .unavailable("Offline spoken Stop is not integrated. Use Pause or End.")
+                if let self {
+                    guard self.startupEpoch == epoch, self.phase == .preparing, !Task.isCancelled else { return }
+                    self.camera = ready.camera; self.sharedAudioInput = ready.audioInput; self.supportsSpeechOnlyGuidance = ready.supportsSpeechOnlyGuidance
+                    self.capabilities.perception = self.simulated ? .simulated : .ready
+                    self.capabilities.microphone = self.simulated ? .unavailable("SIMULATED text input; microphone is not listening") : .ready
+                    self.capabilities.offlineStop = ready.supportsOfflineStop ? .ready : .unavailable("Offline spoken Stop is not integrated. Use Pause or End.")
+                } else { return }
                 try await conversation.start(context: context, audioInput: ready.audioInput)
-                guard self.startupEpoch == epoch, self.phase == .preparing, !Task.isCancelled else { return }
+                guard let self, self.startupEpoch == epoch, self.phase == .preparing, !Task.isCancelled else { return }
                 conversation.setMicrophoneMuted(self.microphoneMuted)
                 self.capabilities.conversation = self.simulated ? .simulated : .ready
                 self.startupDeadline?.cancel(); self.startupDeadline = nil
@@ -174,9 +180,11 @@ final class SessionCoordinator: ObservableObject {
     func requestPermissions() {
         guard !requestingPermissions else { return }
         requestingPermissions = true
+        let permissions = self.permissions
         Task { [weak self] in
+            let state = await permissions.request()
             guard let self else { return }
-            self.permissionState = await self.permissions.request()
+            self.permissionState = state
             self.requestingPermissions = false
         }
     }
@@ -223,7 +231,7 @@ final class SessionCoordinator: ObservableObject {
 
     func resume() {
         refreshPermissions()
-        guard simulated || permissionState.ready else { message = permissionState.explanation; return }
+        guard !requiresPermissions || permissionState.ready else { message = permissionState.explanation; return }
         guard canResume, !hazardActive, let frame = lastFrame,
               frame.trackingNormal, frame.capturedAtMs <= clock.nowMs,
               frame.expiresAtMs > clock.nowMs, clock.nowMs - frame.capturedAtMs <= 300,
@@ -291,8 +299,8 @@ final class SessionCoordinator: ObservableObject {
         taskState = engine.state
         for effect in effects { execute(effect) }
         // Cancel obsolete requests even when their providers ignore Swift task cancellation.
-        let pendingID = self.engine?.state.pendingRequest?.requestID
-        for key in Array(requestWork.keys) where key != pendingID { requestWork.removeValue(forKey: key)?.cancel() }
+        let pending = self.engine?.state.pendingRequest
+        for (request, work) in requestWork where request != pending { work.cancel() }
         if self.engine?.state.phase == .paused, phase == .active {
             stop(.userPause)
         }
@@ -305,7 +313,7 @@ final class SessionCoordinator: ObservableObject {
         guard let task = engine?.state.context else { return }
         let new = SessionContext(sessionID: task.sessionID, generation: task.generation)
         if context != new {
-            frameWork?.cancel(); frameWork = nil; pendingFrame = nil
+            frameWork?.cancel(); pendingFrame = nil
             frameThrottle?.cancel(); frameThrottle = nil
             context = new
             perception.updateContext(new); conversation.updateContext(new)
@@ -315,9 +323,10 @@ final class SessionCoordinator: ObservableObject {
         }
     }
     private func cancelPendingWork() {
-        requestWork.values.forEach { $0.cancel() }; requestWork.removeAll()
+        // Keep cancelled operations counted until the adapter actually returns.
+        requestWork.values.forEach { $0.cancel() }
         deadline?.cancel(); deadline = nil
-        frameWork?.cancel(); frameWork = nil; pendingFrame = nil
+        frameWork?.cancel(); pendingFrame = nil
         frameThrottle?.cancel(); frameThrottle = nil
     }
     private func log(_ name: String, code: String? = nil) {
@@ -420,7 +429,7 @@ private extension SessionCoordinator {
             activity = .guiding
             launch(request, source: .r1) { [weak self] in
                 let fresh = try await perception.reacquire(request, target: target)
-                guard let self, self.engine?.isGuidanceDispatchAllowed(context: request, evidence: fresh, nowMs: self.clock.nowMs) == true else {
+                guard self?.engine?.isGuidanceDispatchAllowed(context: request, evidence: fresh, nowMs: self?.clock.nowMs ?? -1) == true else {
                     return .unavailable(.lowConfidence)
                 }
                 return try await perception.guide(request, mode: mode, target: target, hand: hand)
@@ -463,17 +472,17 @@ private extension SessionCoordinator {
 
     func launch(_ request: RequestContext, source: EventSource,
                 operation: @escaping @MainActor () async throws -> TaskResponse) {
-        guard requestWork.count < 8 else {
+        guard requestWork.count < 8, requestWork[request] == nil else {
             receiveResponse(request, source: source, response: .unavailable(.providerTimeout)); return
         }
-        requestWork[request.requestID]?.cancel()
-        requestWork[request.requestID] = Task { [weak self] in
+        requestWork[request] = Task { [weak self] in
+            defer { self?.requestWork.removeValue(forKey: request) }
             let response: TaskResponse
-            do { response = try await operation() }
+            do { try Task.checkCancellation(); response = try await operation() }
             catch is CancellationError { return }
             catch { response = .unavailable(.lowConfidence) }
             guard !Task.isCancelled, let self else { return }
-            self.requestWork.removeValue(forKey: request.requestID)
+            self.requestWork.removeValue(forKey: request)
             self.receiveResponse(request, source: source, response: response)
         }
     }
@@ -551,7 +560,7 @@ private extension SessionCoordinator {
     }
     func pumpFrame() {
         guard frameWork == nil, let frame = pendingFrame, phase == .active else { return }
-        guard clock.nowMs < frame.expiresAtMs else { pendingFrame = nil; return }
+        guard frameIsFreshForConversation(frame) else { pendingFrame = nil; return }
         if let policy = framePolicy {
             guard (frame.encodedImage?.count ?? 0) <= policy.maximumEncodedBytes else {
                 pendingFrame = nil; log("frame_dropped", code: "TRANSPORT_SIZE_LIMIT"); return
@@ -565,11 +574,23 @@ private extension SessionCoordinator {
         pendingFrame = nil; lastFrameDispatchMs = clock.nowMs
         let conversation = self.conversation
         frameWork = Task { [weak self] in
-            do { try await conversation.sendLatestFrame(frame) } catch { /* Transport emits connection state separately. */ }
-            guard !Task.isCancelled, let self, frame.context == self.context else { return }
+            // A frame can expire while waiting for this task to enter the main actor.
+            if !Task.isCancelled, self?.frameIsFreshForConversation(frame) == true {
+                do { try await conversation.sendLatestFrame(frame) }
+                catch { /* Transport emits connection state separately. */ }
+            }
+            // Even an obsolete send owns the single slot until it returns. Only current
+            // pending input may be pumped; the old frame never re-enters the session.
+            guard let self else { return }
             self.frameWork = nil
             self.pumpFrame()
         }
+    }
+    func frameIsFreshForConversation(_ frame: FrameSnapshot) -> Bool {
+        let now = clock.nowMs
+        return phase == .active && frame.context == context &&
+            frame.capturedAtMs >= 0 && frame.capturedAtMs <= now &&
+            frame.expiresAtMs > now && now - frame.capturedAtMs <= 300
     }
     func armFrameWatchdog() {
         frameWatchdog?.cancel()

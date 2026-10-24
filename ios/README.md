@@ -25,6 +25,8 @@ Simulation is off by default. Turn it on from **Settings → Use simulated assis
 
 For UI automation, launch with both `--simulate` and `--uitesting`. The latter uses and clears a separate `Reflex.UITests` preferences domain and disables fixture speech output so the simulator does not speak during tests. UI tests set these arguments themselves.
 
+Debug UI automation can also add `--ui-permission-scenario` followed by `denied`, `camera-denied`, `microphone-denied`, `restricted`, or `requestable`. These scenarios enforce the app's permission gate using simulated authorization, without opening the camera/microphone or showing system prompts. Recovery is an explicitly labeled simulated Settings action. These injections require both simulation/test flags and are excluded from Release builds.
+
 ## Tests and build checks
 
 Run each local package suite from the repository root:
@@ -58,17 +60,46 @@ xcodebuild \
   build
 ```
 
-The project and scheme were accepted by `xcodebuild -list` with both local packages resolved. The latest validation passed 40 Tasks tests, 40 HapticLink tests, 32 app unit tests, and 3 UI tests. Debug simulator compilation and the unsigned Release device build passed. See [the continuation validation record](Validation/2026-10-23-r2-continuation.md), [the initial validation record](Validation/2026-10-23.md), and [the repository ownership guide](../docs/REPOSITORY_STRUCTURE.md). Physical camera, microphone, Bluetooth, wristband timing, and H1 failsafe checks have not been run as part of this setup guide; simulator success does not establish hardware behavior.
+The project and scheme were accepted by `xcodebuild -list` with both local packages resolved. The latest validation passed **139 tests**: 41 Tasks, 40 HapticLink, 47 app unit, and 11 UI tests. The accessibility cases include one documented exception for a verified offscreen contrast-sampling error. Debug simulator compilation and the unsigned Release device build passed. See [the optional-band and freshness validation record](Validation/2026-10-24-speech-only.md), [the CI/accessibility validation record](Validation/CI_ACCESSIBILITY.md), [the continuation validation record](Validation/2026-10-23-r2-continuation.md), [the initial validation record](Validation/2026-10-23.md), and [the repository ownership guide](../docs/REPOSITORY_STRUCTURE.md). Physical camera, microphone, Bluetooth, wristband timing, and H1 failsafe checks have not been run as part of this setup guide; simulator success does not establish hardware behavior.
+
+## Continuous integration
+
+[The iOS workflow](../.github/workflows/ios-ci.yml) checks the generated Xcode project, both Swift packages, simulator app/UI tests, and the unsigned Release iPhone build on pushes and pull requests. It uses read-only repository access, cancels superseded runs, and uploads logs plus the `.xcresult` even if a test fails. Hosted execution remains unverified until the workflow is pushed and a GitHub run completes.
+
+The workflow selects Xcode 26.6 on `macos-26` and discovers an installed iPhone simulator. This matches the [official runner image inventory](https://github.com/actions/runner-images/blob/main/images/macos/macos-26-arm64-Readme.md). Official [checkout v7.0.1](https://github.com/actions/checkout/releases/tag/v7.0.1) and [upload-artifact v7.0.2](https://github.com/actions/upload-artifact/releases/tag/v7.0.2) actions are pinned to commit SHAs. If that runner image changes its installed Xcode versions, update the explicit selection after checking the inventory.
+
+Run the same test/build script locally:
+
+```sh
+python3 ios/Scripts/select_simulator.py --boot
+# Copy the selected device's UDID from the output:
+IOS_SIMULATOR_UDID='<selected-udid>' bash ios/Scripts/ci_xcodebuild.sh
+```
+
+The script creates a fresh temporary artifact directory unless `CI_ARTIFACT_DIR` is provided. It refuses to overwrite an existing result bundle. After adding/removing Swift files, regenerate with `python3 ios/Scripts/generate_project.py` and include the resulting project change; CI rejects missing target membership.
+
+## Adapter and lifecycle verification
+
+`Tests/ReflexAppTests/AdapterCompatibilityHarness.swift` provides test-only recording speech and controllable conversation/evidence clients. Tests deliberately hold callbacks after cancellation and check latest-frame delivery, capacity recovery, scoped calibration answers, and release of the session coordinator. The composition accepts alternate R2-facing adapters for future integration tests; it does not establish compatibility with unpushed teammate code.
+
+The coordinator retains a single occupied frame slot until its adapter returns, even after Stop. Only the newest current frame waits behind it. Cancelled task requests remain counted against the eight-operation limit until they return, using the full request context to keep sessions separate. Providers should still implement cancellation and bound their internal queues; R2 cannot force a third-party operation to finish.
+
+The virtual-clock stress case produces 12,000 fixture frames over 20 simulated minutes, alongside repeated Stop/Resume and Start/End cycles. It checks scheduling and work bounds, not wall-clock memory, battery, thermal behavior or physical endurance. Use the [iPhone accessibility checklist](Validation/DEVICE_ACCESSIBILITY.md) for the remaining manual checks.
 
 ## Connect live adapters
 
-`AppDependencies` accepts an optional `LiveIntegrationBundle`. Supply the confirmed adapters and configuration there when integrating R1, R3, and H1:
+The latest teammate update adds a Python reaching research prototype. See the [R2 integration review](Validation/TEAM_SYNC_REVIEW.md) for reusable evidence, unsupported mappings, and the next R2 tasks. It does not yet provide native R1/R3 packages or confirmed H1 configuration.
+
+`AppDependencies` accepts an optional `LiveIntegrationBundle`. Supply the confirmed R1/R3 adapters and frame policy there; wristbands are optional:
 
 - `PerceptionGuidanceClient` for R1-owned camera/session frames, tracking, guidance, and scheduled haptic releases; `FrameDeliveryPolicy` from R3 for its supported image size/rate limits.
 - `SpeechSchedulerClient` for R1-owned app speech and priority-zero local Stop.
 - `ConversationClient` and `TargetEvidenceClient` for R3 conversation, intent/target proposals, evidence, and verification.
-- `HapticLinkConfiguration` and `BandTransport` for H1's confirmed BLE contract.
-- `generationSeed` and `configureBandSynchronization` for H1's actual generation handshake and synchronization proof.
+- Optional `LiveBandIntegrationBundle` in `bands`, containing `HapticLinkConfiguration`, `BandTransport`, `generationSeed`, and `configureBandSynchronization` for H1's confirmed BLE contract and actual generation handshake.
+
+Omit `bands` until H1's dependencies are ready. The app then constructs no BLE controller, reports both wristbands unavailable, and allows conversation through the supplied R1/R3 adapters. Physical speech-only guidance still requires R1 to report both supported speech-only guidance and working offline spoken Stop. Band calibration remains unavailable. A generation starting at zero in this composition is an app task counter only; it is never sent to firmware as a guessed synchronization value.
+
+See [native adapter acceptance](Validation/ADAPTER_ACCEPTANCE.md) for clock, geometry, depth provenance, completion, and offline Stop cases to verify when the real adapters arrive. Existing R2 tests use synthetic adapters and do not establish native compatibility.
 
 The current unavailable adapters fail clearly; they do not switch the app into simulation. H1 UUIDs, protocol version, pattern envelopes, identity verification, and generation reset/handshake policy are still external configuration and must come from H1. Do not invent values or treat a Bluetooth connection as proof that generations are synchronized. Keep provider endpoints and credentials in R3's approved integration/backend; do not put secrets in this project or local xcconfig. Adapter names are R2 projections and need mapping to the teammates' real APIs before calling integration complete.
 
