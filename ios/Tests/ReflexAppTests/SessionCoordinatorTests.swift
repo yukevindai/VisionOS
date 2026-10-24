@@ -3,6 +3,61 @@ import UIKit
 import Tasks
 @testable import Reflex
 
+#if DEBUG
+@MainActor
+final class UITestAppClockTests: XCTestCase {
+    func testClockSelectionNeverChangesLiveOrOrdinarySimulationTime() {
+        let system = SystemAppClock()
+        let flags = ["--simulate", "--uitesting"]
+        XCTAssertTrue(AppDependencies.compositionClock(simulated: true, fallback: system, arguments: flags) is UITestAppClock)
+        XCTAssertTrue(AppDependencies.compositionClock(simulated: false, fallback: system, arguments: flags) === system)
+        XCTAssertTrue(AppDependencies.compositionClock(simulated: true, fallback: system, arguments: ["--simulate"]) === system)
+        XCTAssertTrue(AppDependencies.compositionClock(simulated: true, fallback: system, arguments: ["--uitesting"]) === system)
+        let manual = ManualAppClock()
+        XCTAssertTrue(AppDependencies.compositionClock(simulated: true, fallback: manual, arguments: flags) === manual)
+    }
+
+    func testDeadlinesRunInOrderAndCancellationStillWorks() {
+        let clock = UITestAppClock(automaticallyAdvances: false)
+        var events: [Int] = []
+        let first = clock.schedule(afterMs: 100) { events.append(1) }
+        let cancelled = clock.schedule(afterMs: 50) { events.append(0) }
+        let second = clock.schedule(afterMs: 100) { events.append(2) }
+        cancelled.cancel()
+        XCTAssertEqual(clock.nowMs, 1_000)
+        XCTAssertTrue(events.isEmpty)
+        clock.advance(100)
+        XCTAssertEqual(events, [1, 2])
+        XCTAssertEqual(clock.nowMs, 1_100)
+        withExtendedLifetime([first, second]) {}
+    }
+
+    func testFixtureMenuSurvivesDelayedTicksButStillStopsForStaleFrames() async {
+        let clock = UITestAppClock(automaticallyAdvances: false)
+        let dependencies = AppDependencies(simulated: true, clock: clock,
+            defaults: UserDefaults(suiteName: UUID().uuidString)!)
+        dependencies.preferences.setupComplete = true
+        let session = dependencies.session
+        session.start()
+        for _ in 0..<80 { await Task.yield() }
+        session.submitFixtureText("read the menu")
+        for _ in 0..<80 { await Task.yield() }
+        XCTAssertEqual(session.taskState?.phase, .discussingMenu)
+        // One delayed tick drains camera/watchdog deadlines in chronological order.
+        clock.advance(12_000)
+        session.submitFixtureText("more")
+        XCTAssertEqual(session.phase, .active)
+        XCTAssertTrue(session.caption.contains("SIMULATED food"))
+        let perception = session.perception as! FixturePerception
+        perception.staleFrames = true
+        clock.advance(400)
+        XCTAssertEqual(session.phase, .paused)
+        XCTAssertTrue(session.message.contains("Tracking was lost"))
+        session.stop(.userEnd)
+    }
+}
+#endif
+
 @MainActor
 final class ManualAppClock: AppClock {
     var nowMs: Int64 = 1_000

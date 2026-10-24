@@ -16,29 +16,33 @@ private struct SettingsNavigationView: View {
     var body: some View {
         VStack(spacing: 0) {
             NavigationStack {
-                SettingsContents(dependencies: dependencies, session: session, preferences: dependencies.preferences)
-                    .navigationTitle("Settings")
-                    .safeAreaInset(edge: .bottom) {
-                        if dynamicTypeSize.isAccessibilitySize {
-                            Button { dismiss() } label: {
-                                Label("Done", systemImage: "checkmark")
-                                    .frame(maxWidth: .infinity, minHeight: 52)
-                            }
-                            .buttonStyle(.plain).foregroundStyle(Color.primary)
-                            .padding(12)
-                            .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16))
-                            .accessibilityIdentifier("settings.done")
-                            .padding().background(Color(uiColor: .systemBackground))
+                VStack(spacing: 0) {
+                    SettingsContents(dependencies: dependencies, session: session, preferences: dependencies.preferences)
+                        .clipped()
+                    if dynamicTypeSize.isAccessibilitySize {
+                        Button { dismiss() } label: {
+                            Label("Done", systemImage: "checkmark")
+                                .frame(maxWidth: .infinity, minHeight: 52)
+                        }
+                        .buttonStyle(.plain).foregroundStyle(Color.primary)
+                        .padding(12)
+                        .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16))
+                        .accessibilityIdentifier("settings.done")
+                        .padding().background(Color(uiColor: .systemBackground))
+                    }
+                }
+                .navigationTitle("Settings")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbarBackground(Color(uiColor: .systemBackground), for: .navigationBar)
+                .toolbarBackground(.visible, for: .navigationBar)
+                .toolbar {
+                    if !dynamicTypeSize.isAccessibilitySize {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Done") { dismiss() }
+                                .accessibilityIdentifier("settings.done")
                         }
                     }
-                    .toolbar {
-                        if !dynamicTypeSize.isAccessibilitySize {
-                            ToolbarItem(placement: .confirmationAction) {
-                                Button("Done") { dismiss() }
-                                    .accessibilityIdentifier("settings.done")
-                            }
-                        }
-                    }
+                }
             }
             if session.phase == .active || session.phase == .preparing || session.phase == .recovering {
                 Button { session.stop(.userPause) } label: {
@@ -142,50 +146,59 @@ struct CalibrationView: View {
     private let answers = ["Left", "Right", "Move left", "Move right", "Move up", "Move down", "Closer", "On target", "Success", "Stop", "Lost target or hand"]
     var body: some View {
         VStack(spacing: 0) {
-            Form {
-                if session.simulated { SimulationLabel() }
-                Section {
-                    Text("Practice each side and all nine patterns. Identify the side or meaning after each scheduled pattern. Assistance remains paused during calibration.")
+            calibrationForm
+            if session.calibrationIndex != nil {
+                stopButton
+            }
+        }
+        .navigationTitle("Calibration")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(Color(uiColor: .systemBackground), for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
+        .onDisappear { if session.calibrationIndex != nil { session.stopCalibration() } }
+    }
+
+    private var calibrationForm: some View {
+        Form {
+            if session.simulated { SimulationLabel() }
+            Section {
+                Text("Practice each side and all nine patterns. Identify the side or meaning after each scheduled pattern. Assistance remains paused during calibration.")
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("calibration.instructions")
+                if !session.calibrationMessage.isEmpty {
+                    Text(session.calibrationMessage)
                         .fixedSize(horizontal: false, vertical: true)
-                        .accessibilityIdentifier("calibration.instructions")
-                    if !session.calibrationMessage.isEmpty {
-                        Text(session.calibrationMessage)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .accessibilityIdentifier("calibration.message")
-                    }
-                    if session.calibrationIndex == nil {
-                        Button(action: session.beginCalibration) { Text("Begin calibration").foregroundStyle(Color.primary) }.frame(minHeight: 44).accessibilityIdentifier("calibration.start")
-                    } else {
-                        Text("Check \((session.calibrationIndex ?? 0) + 1) of 11")
-                            .accessibilityIdentifier("calibration.progress")
-                        Button(action: session.playCalibration) { Text("Repeat pattern").foregroundStyle(Color.primary) }
+                        .accessibilityIdentifier("calibration.message")
+                }
+                if session.calibrationIndex == nil {
+                    Button(action: session.beginCalibration) { Text("Begin calibration").foregroundStyle(Color.primary) }.frame(minHeight: 44).accessibilityIdentifier("calibration.start")
+                } else {
+                    Text("Check \((session.calibrationIndex ?? 0) + 1) of 11")
+                        .accessibilityIdentifier("calibration.progress")
+                    Button(action: session.playCalibration) { Text("Repeat pattern").foregroundStyle(Color.primary) }
+                        .frame(minHeight: 44)
+                        .accessibilityIdentifier("calibration.repeat")
+                    ForEach(answers, id: \.self) { answer in
+                        Button { session.answerCalibration(answer) } label: { Text(answer).foregroundStyle(Color.primary) }
                             .frame(minHeight: 44)
-                            .accessibilityIdentifier("calibration.repeat")
-                        ForEach(answers, id: \.self) { answer in
-                            Button { session.answerCalibration(answer) } label: { Text(answer).foregroundStyle(Color.primary) }
-                                .frame(minHeight: 44)
-                                .accessibilityIdentifier("calibration.answer.\(answer)")
-                        }
+                            .accessibilityIdentifier("calibration.answer.\(answer)")
                     }
                 }
             }
         }
         .clipped()
-        .safeAreaInset(edge: .bottom) {
-            if session.calibrationIndex != nil {
-                Button(role: .destructive, action: session.stopCalibration) {
-                    Label("Stop calibration", systemImage: "stop.circle")
-                        .frame(maxWidth: .infinity, minHeight: 52)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .buttonStyle(.borderedProminent).controlSize(.large)
-                .tint(AssistanceColors.primaryActionFill).foregroundStyle(.white)
-                .accessibilityIdentifier("calibration.stop")
-                .padding().background(Color(uiColor: .systemBackground))
-            }
+    }
+
+    private var stopButton: some View {
+        Button(role: .destructive, action: session.stopCalibration) {
+            Label("Stop calibration", systemImage: "stop.circle")
+                .frame(maxWidth: .infinity, minHeight: 52)
+                .fixedSize(horizontal: false, vertical: true)
         }
-        .navigationTitle("Calibration")
-            .onDisappear { if session.calibrationIndex != nil { session.stopCalibration() } }
+        .buttonStyle(.borderedProminent).controlSize(.large)
+        .tint(AssistanceColors.primaryActionFill).foregroundStyle(.white)
+        .accessibilityIdentifier("calibration.stop")
+        .padding().background(Color(uiColor: .systemBackground))
     }
 }
 
