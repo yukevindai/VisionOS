@@ -19,7 +19,7 @@ struct HomeView: View {
                                 .accessibilityAddTraits(.isHeader)
                             Text("Ask about what’s in front of you.").font(.body)
                                 .fixedSize(horizontal: false, vertical: true)
-                            if session.phase == .failed {
+                            if session.phase == .failed || session.phase == .ended {
                                 Text(session.message).foregroundStyle(.primary).accessibilityIdentifier("session.error")
                             }
                         }.padding(24).frame(maxWidth: 650)

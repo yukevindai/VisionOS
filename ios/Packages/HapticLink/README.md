@@ -6,6 +6,8 @@ Swift 5.9 package for iOS 17 / macOS 13. Foundation logic is independent of Core
 
 The repository supplies no confirmed H1 UUIDs, packet version, intensity/rate parameters, identity format, or generation reset/handshake policy. `HapticLinkConfiguration.unavailableH1` explicitly disables live discovery/output. There are no production UUID or firmware defaults. A Bluetooth connection and the baseline status packet cannot establish generation synchronization: status has no generation acknowledgment. `GenerationSynchronizationProof` is the adapter seam for H1's agreed handshake, not an implementation or claim that such a handshake exists.
 
+The hardware is described as Bluetooth, but its BLE/GATT compatibility still needs H1 confirmation. The implemented CoreBluetooth transport follows the specifications' proposed GATT contract; that is not evidence of compatibility with the actual board.
+
 All test hardware values are local synthetic fixtures. Passing these tests establishes app logic behavior; actuator onset, real Bluetooth behavior, independent 500 ms watchdog, TTL enforcement, disconnect silence, and 2 s continuous-on limit still require H1/device validation.
 
 ## App composition
@@ -48,6 +50,8 @@ func makeBands() throws -> HapticLinkController {
 After H1 confirms the contract, construct `H1Contract` with all three UUIDs, supported firmware revisions, all nine pattern parameter envelopes, stop/heartbeat parameters, and identity/generation policy descriptions. `CoreBluetoothBandTransport(configuration:knownPeripheralIDs:reconnectPolicy:identityVerifier:)` requires an H1 identity verifier; `HG-L`/`HG-R` names alone do not prove identity. Supply previously confirmed peripheral IDs from pairing metadata, and provide the Bluetooth purpose string in the app target. No background Bluetooth mode is assumed.
 
 `start()` binds event callbacks, starts discovery and automatic 20 ms maintenance ticks, and reconnects saved identities when Bluetooth powers on. Heartbeat dispatch targets 200 ms; this is app scheduling, not a real-time guarantee. Explicit side confirmation calls `assign(_:to:confirmedByUser:)`, which persists the pairing and connects that peripheral. Replacing a side requires `forget(_:)` first. Reconnecting rediscovers/validates services, write-without-response support, notification subscription, and a correctly sized supported-version status before readiness. It never replays a cached cue. Reconnect is bounded to three retries after the initial attempt, with configurable delay and connection deadline. `shutdown()` stops, disconnects and releases callbacks/timers; a subsequent `start()` rebinds them and still requires a new handshake/context.
+
+Confirming the same assigned band while it is ready or connecting leaves its connection intact, including the characteristic needed for immediate Stop. Repeated connect requests preserve an active retry budget; confirming a disconnected or failed pairing may explicitly retry.
 
 ## Generation and scheduler adapter
 

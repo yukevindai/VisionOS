@@ -148,6 +148,67 @@ final class TaskEngineTests: XCTestCase {
         XCTAssertEqual(h.send(.physical(TaskFixtures.physical(nowMs: h.now)), context: wrong), [.rejected(.wrongRequest)])
     }
 
+    func testOutOfOrderGuidanceCannotRequestActionAfterNewerStatus() {
+        var h = Harness(); h.start(); h.resolve(); h.acquire()
+        let pending = h.engine.state.pendingRequest!
+        h.now = 200
+        h.send(.guidance(mode: .hand, targetID: "simulated-button", status: .guiding,
+                         evidence: TaskFixtures.physical(nowMs: h.now)))
+        h.now = 250
+        let older = TaskFixtures.envelope(context: pending, eventID: "late-on-target", nowMs: 150)
+        let effects = h.engine.reduce(.receive(older, .guidance(mode: .hand, targetID: "simulated-button",
+                                      status: .onTarget, evidence: TaskFixtures.physical(nowMs: 150))), nowMs: h.now)
+        XCTAssertEqual(effects, [.rejected(.stale)])
+        XCTAssertEqual(h.engine.state.phase, .guiding)
+        XCTAssertEqual(h.engine.state.pendingRequest, pending)
+        XCTAssertNil(h.engine.state.result)
+
+        // Distinct events in the same millisecond remain valid.
+        let current = TaskFixtures.envelope(context: pending, eventID: "current-on-target", nowMs: 200)
+        let accepted = h.engine.reduce(.receive(current, .guidance(mode: .hand, targetID: "simulated-button",
+                                       status: .onTarget, evidence: TaskFixtures.physical(nowMs: 200))), nowMs: h.now)
+        XCTAssertEqual(h.engine.state.phase, .verifying)
+        XCTAssertTrue(accepted.contains { if case .requestVerification = $0 { return true }; return false })
+    }
+
+    func testRejectedGuidanceCannotConsumeValidEventOrAdvanceOrdering() {
+        for source in [EventSource.model, .r1] {
+            for reusesEventID in [false, true] {
+                var h = Harness(); h.start(); h.resolve(); h.acquire()
+                let pending = h.engine.state.pendingRequest!
+                let beforeRejection = h.engine.state
+                h.now = 250
+                let rejected = TaskFixtures.envelope(context: pending, eventID: "guidance-status", nowMs: 250, source: source)
+                let rejection = h.engine.reduce(.receive(rejected, .guidance(mode: .hand,
+                    targetID: source == .r1 ? "other-target" : "simulated-button", status: .onTarget,
+                    evidence: TaskFixtures.physical(nowMs: 250))), nowMs: h.now)
+                XCTAssertEqual(rejection, [.rejected(source == .r1 ? .wrongTarget : .wrongSource)])
+                XCTAssertEqual(h.engine.state, beforeRejection)
+
+                let valid = TaskFixtures.envelope(context: pending,
+                    eventID: reusesEventID ? "guidance-status" : "valid-guidance-status", nowMs: 200)
+                let effects = h.engine.reduce(.receive(valid, .guidance(mode: .hand, targetID: "simulated-button",
+                    status: .onTarget, evidence: TaskFixtures.physical(nowMs: 200))), nowMs: h.now)
+                XCTAssertEqual(h.engine.state.phase, .verifying)
+                XCTAssertTrue(effects.contains { if case .requestVerification = $0 { return true }; return false })
+            }
+        }
+    }
+
+    func testMissingGuidanceEvidenceStillStopsAndInvalidatesRequest() {
+        var h = Harness(); h.start(); h.resolve(); h.acquire()
+        let pending = h.engine.state.pendingRequest!
+        let effects = h.send(.guidance(mode: .hand, targetID: "simulated-button", status: .onTarget, evidence: nil))
+        XCTAssertEqual(h.engine.state.phase, .paused)
+        XCTAssertNil(h.engine.state.pendingRequest)
+        XCTAssertEqual(h.engine.state.context.generation, pending.task.generation + 1)
+        XCTAssertTrue(effects.contains(.rejected(.missingEvidence)))
+        XCTAssertTrue(effects.contains(.cancelWork(pending.task)))
+        XCTAssertTrue(effects.contains(.allStop(h.engine.state.context)))
+        XCTAssertEqual(h.send(.guidance(mode: .hand, targetID: "simulated-button", status: .onTarget,
+            evidence: TaskFixtures.physical(nowMs: h.now)), context: pending), [.rejected(.wrongContext)])
+    }
+
     func testCrossSessionAndTaskResponsesRejected() {
         var h = Harness(); h.start()
         for context in [TaskContext(sessionID: "other", taskID: "task", generation: 1),

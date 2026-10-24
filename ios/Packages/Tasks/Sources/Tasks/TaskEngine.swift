@@ -9,6 +9,7 @@ public struct TaskEngine: Sendable {
     private var sequence: UInt64 = 0
     private var seenIDs: [String] = []
     private var lastNow: Int64 = 0
+    private var lastEventMs: Int64?
     private var approachCompleted = false
     private var resumeConfirmationNeeded = false
     private var actionContext: RequestContext?
@@ -57,9 +58,14 @@ public struct TaskEngine: Sendable {
             return fail(.providerTimeout, "The request timed out. Please try again or ask someone nearby for help.")
         case .receive(let envelope, let response):
             if let rejection = validate(envelope, now: nowMs) { return [.rejected(rejection)] }
+            let effects = receive(response, source: envelope.source, now: nowMs)
+            if effects.count == 1, case .rejected = effects[0] { return effects }
+            // Rejected responses do not consume an event or move this request's watermark.
+            // A transition may have opened a new request with its own ordering history.
+            if state.pendingRequest == envelope.context { lastEventMs = envelope.monotonicMs }
             seenIDs.append(envelope.eventID)
             if seenIDs.count > 256 { seenIDs.removeFirst(seenIDs.count - 256) }
-            return receive(response, source: envelope.source, now: nowMs)
+            return effects
         }
     }
 
@@ -70,7 +76,8 @@ public struct TaskEngine: Sendable {
         guard !seenIDs.contains(envelope.eventID) else { return .duplicate }
         guard let pending = state.pendingRequest, pending == envelope.context else { return .wrongRequest }
         guard now < pending.expiresAtMs, now < envelope.expiresAtMs,
-              envelope.monotonicMs <= now, envelope.monotonicMs >= pending.issuedAtMs else { return .stale }
+              envelope.monotonicMs <= now, envelope.monotonicMs >= pending.issuedAtMs,
+              envelope.monotonicMs >= (lastEventMs ?? pending.issuedAtMs) else { return .stale }
         return nil
     }
 
@@ -120,6 +127,7 @@ public struct TaskEngine: Sendable {
         let context = RequestContext(task: state.context, requestID: "\(state.context.taskID):\(state.context.generation):\(sequence)",
                                      issuedAtMs: now, expiresAtMs: expiry.overflow ? Int64.max : expiry.partialValue)
         state.pendingRequest = context
+        lastEventMs = nil
         return context
     }
 

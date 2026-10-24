@@ -91,6 +91,12 @@ public struct BandReconnectPolicy: Equatable, Sendable {
         guard identityValid else {
             onEvent?(.state(peripheralID, .fault("Device identity has not been confirmed by H1's identity policy"))); return
         }
+        // Repeated pairing confirmation must not clear a usable Stop characteristic
+        // or reset the retry budget of an in-progress connection.
+        if requested.contains(peripheralID),
+           retryTasks[peripheralID] != nil || peripherals[peripheralID].map({ $0.state != .disconnected }) == true {
+            return
+        }
         requested.insert(peripheralID); retryCounts[peripheralID] = 0
         retryTasks.removeValue(forKey: peripheralID)?.cancel()
         if peripherals[peripheralID] == nil {
@@ -176,6 +182,7 @@ public struct BandReconnectPolicy: Equatable, Sendable {
         retryTasks[id] = Task { @MainActor [weak self, weak peripheral] in
             do { try await Task.sleep(nanoseconds: delay) } catch { return }
             guard let self, let peripheral, !Task.isCancelled else { return }
+            self.retryTasks.removeValue(forKey: id)
             self.attemptConnection(peripheral)
         }
     }

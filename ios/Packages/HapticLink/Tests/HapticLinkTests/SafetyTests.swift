@@ -256,6 +256,21 @@ final class SafetyTests: XCTestCase {
         }
     }
 
+    @MainActor func testPowerRecoveryRequiresFreshConnectionReadinessAndStatusBeforeProof() async throws {
+        let h = try Harness()
+        h.transport.onEvent?(.availability(.poweredOff))
+        h.transport.onEvent?(.availability(.poweredOn))
+        let proof = GenerationSynchronizationProof(source: .simulatedFixture,
+            challengeID: h.controller.synchronizationChallengeID,
+            peripheralIDs: [.left: h.left, .right: h.right], generation: 2,
+            nextSequences: [.left: 10, .right: 10])
+        XCTAssertThrowsError(try h.controller.acceptSynchronization(proof))
+        for id in [h.left, h.right] { h.transport.onEvent?(.state(id, .ready)) }
+        XCTAssertThrowsError(try h.controller.acceptSynchronization(proof))
+        for id in [h.left, h.right] { h.transport.onEvent?(.status(id, Data([80, 1, 0, 0, 0]))) }
+        XCTAssertNoThrow(try h.controller.acceptSynchronization(proof))
+    }
+
     @MainActor func testSideAssignmentExplicitNoDuplicatesNoSilentSwapsAndRePairClearsCalibration() async throws {
         let h = try Harness()
         XCTAssertThrowsError(try h.controller.assign(h.left, to: .right, confirmedByUser: true))
@@ -265,6 +280,35 @@ final class SafetyTests: XCTestCase {
         let replacement = UUID(); try h.controller.assign(replacement, to: .left, confirmedByUser: true)
         XCTAssertEqual(h.controller.pairings[.left]?.peripheralID, replacement)
         XCTAssertEqual(h.controller.pairings[.left]?.calibrationCompleted, false)
+    }
+
+    @MainActor func testConfirmingExistingReadyPairingDoesNotRestartConnectionDuringOutput() async throws {
+        let h = try Harness()
+        XCTAssertEqual(h.controller.submit(h.release()), .sentToTransport)
+        let requests = h.transport.connectionRequests
+        let challenge = h.controller.synchronizationChallengeID
+        try h.controller.assign(h.left, to: .left, confirmedByUser: true)
+        XCTAssertEqual(h.transport.connectionRequests, requests)
+        XCTAssertEqual(h.controller.synchronizationChallengeID, challenge)
+        XCTAssertEqual(h.controller.context, h.context)
+        XCTAssertTrue(h.controller.hasEligibleOutput)
+    }
+
+    @MainActor func testConfirmingExistingPairingRetriesOnlyAfterConnectionFailure() async throws {
+        let h = try Harness()
+        for state: BandLinkState in [.connecting, .discoveringServices, .subscribing, .reconnecting(attempt: 1)] {
+            h.transport.onEvent?(.state(h.left, state))
+            let requests = h.transport.connectionRequests
+            try h.controller.assign(h.left, to: .left, confirmedByUser: true)
+            XCTAssertEqual(h.transport.connectionRequests, requests, "Do not restart \(state)")
+        }
+        for state: BandLinkState in [.disconnected, .fault("Connection failed")] {
+            h.transport.onEvent?(.state(h.left, state))
+            let count = h.transport.connectionRequests.count
+            try h.controller.assign(h.left, to: .left, confirmedByUser: true)
+            XCTAssertEqual(h.transport.connectionRequests.count, count + 1)
+            XCTAssertEqual(h.transport.connectionRequests.last, h.left)
+        }
     }
 
     @MainActor func testNewProcessNeverLoadsGenerationAndFirmwareChangeInvalidatesCalibration() async throws {
@@ -468,6 +512,22 @@ final class SafetyTests: XCTestCase {
         XCTAssertEqual(commands.filter { $0.0 == h.right }.map { $0.1.patternID }, [3, 0])
         XCTAssertFalse(h.controller.hasEligibleOutput)
         XCTAssertNil(h.controller.context)
+    }
+
+    @MainActor func testOutputExpiryDuringFirstHeartbeatPreventsOtherWristKeepalive() async throws {
+        let h = try Harness()
+        _ = h.controller.submit(h.release(pattern: 3, sides: [.left, .right]))
+        h.transport.afterWrite = { data in
+            if Array(data)[5] == 255 { h.clock.advance(0.101) }
+        }
+        h.clock.advance(0.201); h.controller.tick()
+        let commands = try h.transport.commands()
+        XCTAssertEqual(commands.filter { $0.0 == h.left }.map { $0.1.patternID }, [3, 255, 0])
+        XCTAssertEqual(commands.filter { $0.0 == h.right }.map { $0.1.patternID }, [3, 0])
+        XCTAssertFalse(h.controller.hasEligibleOutput)
+        let count = h.transport.writes.count
+        h.controller.tick()
+        XCTAssertEqual(h.transport.writes.count, count)
     }
 
     @MainActor func testStopDuringDirectionChangeStopPreventsNewMovement() async throws {

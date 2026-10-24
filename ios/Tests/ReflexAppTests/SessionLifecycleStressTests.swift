@@ -233,6 +233,65 @@ final class SessionLifecycleStressTests: XCTestCase {
         XCTAssertEqual(clock.pendingCount, 0)
     }
 
+    func testCancelledStartupBlocksNewStartsUntilAdapterReturns() async {
+        let transport = ControlledConversation()
+        transport.holdStart = true
+        let h = AdapterCompatibilityHarness(conversation: transport)
+        defer { h.session.stop(.userEnd); transport.releaseAll() }
+        let entered = expectation(description: "Initial startup is held")
+        transport.onStart = { entered.fulfill() }
+        h.session.start()
+        await fulfillment(of: [entered], timeout: 2)
+        transport.onStart = nil
+        h.session.stop(.userEnd)
+        for _ in 0..<20 {
+            h.session.start()
+            await drainActorTurn()
+            h.session.stop(.userEnd)
+        }
+        XCTAssertEqual(transport.pendingStartCount, 1)
+        XCTAssertEqual(transport.startedContexts.count, 1)
+        XCTAssertEqual(h.session.phase, .ended)
+        transport.releaseAll()
+        await drainActorTurn()
+        XCTAssertEqual(h.session.phase, .ended, "Late startup cannot revive the ended session")
+        transport.holdStart = false
+        await start(h)
+        XCTAssertEqual(transport.startedContexts.count, 2)
+    }
+
+    func testReconnectTimeoutDoesNotOverlapNoncooperativeStart() async {
+        let h = AdapterCompatibilityHarness()
+        defer { h.session.stop(.userEnd); h.conversation.releaseAll() }
+        await start(h)
+        h.conversation.holdStart = true
+        h.conversation.emit(.disconnected)
+        let entered = expectation(description: "Reconnect startup is held")
+        h.conversation.onStart = { entered.fulfill() }
+        h.clock.advance(250)
+        await fulfillment(of: [entered], timeout: 2)
+        h.conversation.onStart = nil
+        for _ in 0..<10 {
+            h.clock.advance(10_000)
+            await drainActorTurn()
+        }
+        XCTAssertEqual(h.conversation.pendingStartCount, 1)
+        XCTAssertEqual(h.conversation.startedContexts.count, 2)
+        XCTAssertEqual(h.session.phase, .paused)
+        XCTAssertFalse(h.session.capabilities.conversation.usable)
+        h.session.stop(.userEnd)
+        h.session.start()
+        await drainActorTurn()
+        XCTAssertEqual(h.session.phase, .ended)
+        XCTAssertEqual(h.conversation.pendingStartCount, 1)
+        h.conversation.releaseAll()
+        await drainActorTurn()
+        XCTAssertEqual(h.session.phase, .ended)
+        h.conversation.holdStart = false
+        await start(h)
+        XCTAssertEqual(h.conversation.startedContexts.count, 3)
+    }
+
     func testNoncooperativeTargetRequestsStayBoundedAcrossTaskReplacement() async {
         let clock = ManualAppClock(), evidence = ControlledTargetEvidence(clock: ManualAppClock())
         let h = AdapterCompatibilityHarness(clock: clock, evidenceAdapter: evidence)

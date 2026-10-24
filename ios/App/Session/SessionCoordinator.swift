@@ -31,6 +31,7 @@ final class SessionCoordinator: ObservableObject {
     private var engine: TaskEngine?
     private(set) var context: SessionContext?
     private var startWork: Task<Void, Never>?
+    private var adapterStartInFlight = false
     private var requestWork: [RequestContext: Task<Void, Never>] = [:]
     private var deadline: ScheduledWork?
     private var frameWatchdog: ScheduledWork?
@@ -119,6 +120,10 @@ final class SessionCoordinator: ObservableObject {
 
     func start() {
         guard phase == .idle || phase == .ended || phase == .failed else { return }
+        guard !adapterStartInFlight else {
+            message = "The previous connection attempt is still stopping. Try Start again shortly."
+            return
+        }
         guard preferences.setupComplete else { showSetup = true; return }
         permissionState = permissions.current()
         guard !requiresPermissions || permissionState.ready else { showSetup = true; message = permissionState.explanation; return }
@@ -143,8 +148,11 @@ final class SessionCoordinator: ObservableObject {
             self.closeAdapters()
             self.phase = .failed; self.message = "Starting assistance timed out. Try again when the connection is available."
         }
+        adapterStartInFlight = true
         startWork = Task { [weak self] in
+            defer { self?.adapterStartInFlight = false }
             do {
+                try Task.checkCancellation()
                 let ready = try await perception.start(context: context, policy: CameraPolicy())
                 if let self {
                     guard self.startupEpoch == epoch, self.phase == .preparing, !Task.isCancelled else { return }
@@ -390,6 +398,12 @@ private extension SessionCoordinator {
         let token = UUID(); recoveryToken = token
         recoveryRetry = clock.schedule(afterMs: delay) { [weak self] in
             guard let self, self.phase == .recovering, self.recoveryToken == token else { return }
+            guard !self.adapterStartInFlight else {
+                self.phase = .paused; self.activity = .paused
+                self.capabilities.conversation = .unavailable("The previous connection attempt is still stopping. End assistance, then try Start again shortly.")
+                self.message = self.capabilities.conversation.label
+                return
+            }
             let conversation = self.conversation
             conversation.end(context: context)
             self.recoveryDeadline = self.clock.schedule(afterMs: self.configuration.startupTimeoutMs) { [weak self] in
@@ -397,8 +411,11 @@ private extension SessionCoordinator {
                 self.recoveryWork?.cancel(); self.recoveryWork = nil
                 self.scheduleRecoveryAttempt()
             }
+            self.adapterStartInFlight = true
             self.recoveryWork = Task { [weak self] in
+                defer { self?.adapterStartInFlight = false }
                 do {
+                    try Task.checkCancellation()
                     try await conversation.start(context: context, audioInput: input)
                     guard !Task.isCancelled, let self, self.phase == .recovering, self.recoveryToken == token else { return }
                     conversation.setMicrophoneMuted(self.microphoneMuted)

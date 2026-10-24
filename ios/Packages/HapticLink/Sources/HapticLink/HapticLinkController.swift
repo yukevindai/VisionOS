@@ -93,7 +93,14 @@ import Foundation
         if let existing = pairings[side], existing.peripheralID != peripheralID {
             throw HapticLinkError.sideAlreadyAssigned(side)
         }
-        if pairings[side]?.peripheralID == peripheralID { transport.connect(peripheralID); return }
+        if pairings[side]?.peripheralID == peripheralID {
+            switch linkStates[peripheralID] {
+            case .connecting, .discoveringServices, .subscribing, .ready, .reconnecting:
+                return
+            default:
+                transport.connect(peripheralID); return
+            }
+        }
         _ = allStop(reason: "pairing_changed")
         var updated = pairings
         updated[side] = PairingMetadata(peripheralID: peripheralID, side: side)
@@ -210,27 +217,37 @@ import Foundation
     }
 
     public func tick() {
+        expireOutputs()
+        flush()
+        guard isSynchronized, let generation = context?.generation,
+              pendingStops.isEmpty, !activeOutputs.isEmpty,
+              lastHeartbeat.map({ clock.now - $0 >= heartbeatInterval }) ?? true,
+              let contract = configuration.contract else { return }
+        let sides = activeOutputs.keys.sorted { $0.rawValue < $1.rawValue }
+        guard sides.allSatisfy({ ready($0) && transport.canWrite(pairings[$0]!.peripheralID) }) else { return }
+        for side in sides {
+            // A synchronous transport callback may cross a deadline between wrists.
+            expireOutputs()
+            flushStops()
+            guard isSynchronized, context?.generation == generation,
+                  pendingStops.isEmpty, activeOutputs[side] != nil else { return }
+            guard send(contract.heartbeat, generation: generation, side: side, reserveStop: true) else {
+                pauseForSafety("heartbeat_sequence_or_transport_failure"); return
+            }
+        }
+        expireOutputs()
+        flushStops()
+        guard context?.generation == generation else { return }
+        lastHeartbeat = clock.now
+    }
+
+    private func expireOutputs() {
         let now = clock.now
         for (side, output) in activeOutputs where output.expiresAt <= now {
             activeOutputs.removeValue(forKey: side)
             if let generation = context?.generation { pendingStops[side] = generation }
             record("output_expired", side: side)
         }
-        flush()
-        guard isSynchronized, let generation = context?.generation,
-              pendingStops.isEmpty, !activeOutputs.isEmpty,
-              lastHeartbeat.map({ now - $0 >= heartbeatInterval }) ?? true,
-              let contract = configuration.contract else { return }
-        let sides = activeOutputs.keys.sorted { $0.rawValue < $1.rawValue }
-        guard sides.allSatisfy({ ready($0) && transport.canWrite(pairings[$0]!.peripheralID) }) else { return }
-        for side in sides {
-            guard isSynchronized, context?.generation == generation, activeOutputs[side] != nil else { return }
-            guard send(contract.heartbeat, generation: generation, side: side, reserveStop: true) else {
-                pauseForSafety("heartbeat_sequence_or_transport_failure"); return
-            }
-        }
-        guard context?.generation == generation else { return }
-        lastHeartbeat = now
     }
 
     private func validate(_ release: ScheduledHapticRelease) throws {
@@ -361,7 +378,10 @@ import Foundation
         case .availability(let value):
             let previous = availability
             availability = value
-            if value != .poweredOn { pauseForSafety("bluetooth_unavailable") }
+            if value != .poweredOn {
+                pauseForSafety("bluetooth_unavailable")
+                statuses.removeAll(); linkStates.removeAll()
+            }
             else if previous != .poweredOn {
                 for metadata in pairings.values { transport.connect(metadata.peripheralID) }
             }
