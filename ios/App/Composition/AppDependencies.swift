@@ -136,7 +136,7 @@ final class AppDependencies: ObservableObject {
             audio?.onEvent?(.init(context: context, eventID: UUID().uuidString, payload: .disconnected))
         }
         return LiveIntegrationBundle(perception: perception, speech: audio, conversation: audio,
-            evidence: OnDeviceTargetEvidenceClient(clock: clock),
+            evidence: GeminiObjectEvidenceClient(reader: try? ConvexObjectClient.live(), clock: clock),
             framePolicy: FrameDeliveryPolicy(minimumIntervalMs: 250, maximumEncodedBytes: 512 * 1_024))
     }
 }

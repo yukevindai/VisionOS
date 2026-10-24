@@ -164,7 +164,7 @@ struct HomeView: View {
                         Text(dependencies.simulated ? "Try simulated assistance." : "Voice assistance starts right away.")
                             .font(.title3.weight(.semibold)).multilineTextAlignment(.center)
                             .fixedSize(horizontal: false, vertical: true)
-                        Text(dependencies.simulated ? "No real camera, microphone or wristbands." : "Ask to find a cup, can, bottle or bowl.")
+                        Text(dependencies.simulated ? "No real camera, microphone or wristbands." : "Describe the object you want to find.")
                             .font(.body).foregroundStyle(AssistanceColors.secondaryText).multilineTextAlignment(.center)
                             .fixedSize(horizontal: false, vertical: true)
                         Spacer(minLength: 24)

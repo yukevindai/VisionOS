@@ -36,7 +36,7 @@ private final class NoRedirects: NSObject, URLSessionTaskDelegate {
 }
 
 @MainActor
-final class ConvexNativeMediaBackend: NativeMediaBackend, R3ScreenReading {
+final class ConvexNativeMediaBackend: NativeMediaBackend, R3ScreenReading, R3ObjectReading {
     var onIdentityInvalidated: (() -> Void)?
     private let origin: URL
     private let identity: any NativeMediaIdentityProviding
@@ -137,6 +137,63 @@ final class ConvexNativeMediaBackend: NativeMediaBackend, R3ScreenReading {
             throw NativeMediaTransportError.invalidResponse
         }
         return model
+    }
+
+    func findObject(image: Data, query: String, frameID: String,
+                    capturedAtUTCms: Int64, requestID: String) async throws -> GeminiObjectRecognition {
+        try Task.checkCancellation()
+        let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty, query.utf16.count <= 500,
+              !query.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }),
+              !image.isEmpty, image.count <= 512 * 1024,
+              capturedAtUTCms >= 0, capturedAtUTCms <= Int64(Self.maxSafeInteger) else {
+            throw NativeMediaTransportError.invalidRequest
+        }
+        try validateNonce(frameID)
+        try validateNonce(requestID)
+        let rawResult: Any
+        do {
+            rawResult = try await call("vision:findObject", kind: "action", args: [
+                "imageBase64": image.base64EncodedString(), "query": query,
+                "frameId": frameID, "capturedAtMs": capturedAtUTCms, "requestId": requestID
+            ], maximumResponseBytes: 256 * 1024, requestTimeout: 5)
+        } catch {
+            try Task.checkCancellation()
+            throw error
+        }
+        try Task.checkCancellation()
+        let result = try object(rawResult)
+        guard try string(result, "requestId") == requestID,
+              try string(result, "mode") == "REAL_API",
+              let status = GeminiObjectRecognition.Status(rawValue: try string(result, "status")),
+              let raw = result["screenModel"], JSONSerialization.isValidJSONObject(raw) else {
+            throw NativeMediaTransportError.invalidResponse
+        }
+        let model: Targets.ScreenModel
+        do {
+            model = try JSONDecoder().decode(Targets.ScreenModel.self,
+                from: JSONSerialization.data(withJSONObject: raw))
+        } catch { throw NativeMediaTransportError.invalidResponse }
+        guard model.schemaVersion == 3, model.frameId == frameID,
+              model.capturedAtMs == capturedAtUTCms, model.source == .visionModel,
+              model.evidence?.live == true, model.evidence?.provider == "gemini" else {
+            throw NativeMediaTransportError.invalidResponse
+        }
+        let selectedObjectId: String?
+        if status == .selected {
+            let id = try string(result, "selectedObjectId")
+            guard !id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  model.controls.filter({ $0.id == id }).count == 1 else {
+                throw NativeMediaTransportError.invalidResponse
+            }
+            selectedObjectId = id
+        } else {
+            guard result["selectedObjectId"] == nil || result["selectedObjectId"] is NSNull else {
+                throw NativeMediaTransportError.invalidResponse
+            }
+            selectedObjectId = nil
+        }
+        return GeminiObjectRecognition(status: status, selectedObjectId: selectedObjectId, screenModel: model)
     }
 
     func createInvite() async throws -> NativeOwnerInvite {
