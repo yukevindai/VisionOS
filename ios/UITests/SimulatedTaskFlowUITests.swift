@@ -122,6 +122,7 @@ final class SimulatedTaskFlowUITests: XCTestCase {
             app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
         }
         app.launch()
+        selectBlindRole(in: app)
         XCTAssertTrue(app.buttons["home.start"].waitForExistence(timeout: 5))
         app.buttons["home.start"].tap()
         XCTAssertTrue(app.buttons["session.end"].waitForExistence(timeout: 5))

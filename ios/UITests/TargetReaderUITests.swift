@@ -7,6 +7,8 @@ final class TargetReaderUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["--uitesting"]
         app.launch()
+        selectBlindRole(in: app)
+        openHomeTools(in: app)
         let entry = app.buttons["home.targetReader"]
         XCTAssertTrue(entry.waitForExistence(timeout: 5))
         entry.tap()
@@ -23,6 +25,7 @@ final class TargetReaderUITests: XCTestCase {
         add(attachment)
         close.tap()
         XCTAssertTrue(entry.waitForExistence(timeout: 5))
+        app.buttons["home.tools.close"].tap()
         XCTAssertTrue(app.buttons["home.start"].exists)
         XCTAssertFalse(app.buttons["session.end"].exists)
     }
@@ -31,6 +34,7 @@ final class TargetReaderUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["--uitesting", "--simulate"]
         app.launch()
+        selectBlindRole(in: app)
         XCTAssertTrue(app.buttons["home.start"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["simulation.banner"].exists)
         XCTAssertFalse(app.buttons["home.targetReader"].exists)

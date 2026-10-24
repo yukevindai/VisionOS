@@ -66,6 +66,7 @@ final class RecoveryTaskFlowUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["--simulate", "--uitesting", "--ui-task-scenario", scenario]
         app.launch()
+        selectBlindRole(in: app)
         XCTAssertTrue(app.buttons["home.start"].waitForExistence(timeout: 5))
         app.buttons["home.start"].tap()
         XCTAssertTrue(app.buttons["session.end"].waitForExistence(timeout: 5))
