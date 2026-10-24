@@ -33,7 +33,7 @@ def shape_depth(points,K):
     return nominal,tip/nominal
 
 
-def measured_palm(frame,points):
+def measured_palm(frame,points,diagnostics=None):
     palm=points[PALM_IDS]
     center=palm.mean(0)
     sites=np.concatenate((center[None],center+.5*(palm-center),center+.75*(palm-center)))
@@ -41,6 +41,10 @@ def measured_palm(frame,points):
     dh,dw=frame.depth.shape
     xy=np.rint(sites).astype(int)
     inside=(xy[:,0]>=0)&(xy[:,0]<w)&(xy[:,1]>=0)&(xy[:,1]<h)
+    if diagnostics is not None:
+        diagnostics.update(sample_count=len(sites),in_image_count=int(inside.sum()),
+                           confidence_available=frame.confidence is not None,
+                           valid_count=0,raw_depth_m=[],confidence_values=[])
     if inside.sum()<4:
         return None
     xy=xy[inside]
@@ -49,6 +53,10 @@ def measured_palm(frame,points):
     good=np.isfinite(values)&(values>.15)&(values<4.)
     if frame.confidence is not None:
         good &= frame.confidence[uv[:,1],uv[:,0]]>=1
+    if diagnostics is not None:
+        diagnostics.update(valid_count=int(good.sum()),
+                           raw_depth_m=[float(v) if np.isfinite(v) else None for v in values],
+                           confidence_values=[] if frame.confidence is None else frame.confidence[uv[:,1],uv[:,0]].tolist())
     if good.sum()/len(sites)<.4:
         return None
     return float(np.median(values[good]))
@@ -80,27 +88,41 @@ class HandDepthFusion:
         self.lidar_weight=0.
         self.last=None
         self.filter=MetricFilter()
+        self.diagnostics={}
 
     def resolve(self,frame,points,t):
+        self.diagnostics={'frame_id':frame.id if hasattr(frame,'id') else None,
+                          'accepted':False}
         geometry=shape_depth(points,frame.K)
         if geometry is None:
+            self.diagnostics['rejection']='invalid_shape'
             return None,None,'invalid hand geometry'
         nominal,tip_ratio=geometry
-        lidar=measured_palm(frame,points)
+        lidar=measured_palm(frame,points,self.diagnostics)
+        self.diagnostics.update(lidar_m=lidar,nominal_shape_m=nominal)
         arm=points[0]-points[9]
         if np.linalg.norm(arm)>1e-6 and arm[1]/np.linalg.norm(arm)<-.25:
+            self.diagnostics['rejection']='forearm_orientation'
             return None,None,'forearm orientation rejected'
         calibration=float(np.median(self.scales)) if len(self.scales)>=10 else 1.
         size=nominal*calibration
+        self.diagnostics.update(calibrated_shape_m=size,agreement_limit_m=max(.08,.3*size))
         if lidar is not None and lidar>1.5*size+.05:
+            self.diagnostics['rejection']='depth_behind_shape'
             return None,None,'palm depth is behind hand geometry'
         if (lidar if lidar is not None else size)>.9:
+            self.diagnostics['rejection']='beyond_0.9m'
             return None,None,'hand beyond reference reach limit'
         if lidar is not None and .25<=lidar<=.8 and .6<lidar/nominal<1.6:
             self.scales.append(lidar/nominal)
             calibration=float(np.median(self.scales)) if len(self.scales)>=10 else 1.
             size=nominal*calibration
         accepted=lidar is not None and .22<=lidar<=.9 and abs(lidar-size)<=max(.08,.3*size)
+        rejection=('insufficient_valid_palm_samples' if lidar is None else
+                   'outside_0.22_to_0.9m' if not .22<=lidar<=.9 else
+                   'lidar_shape_disagreement' if not accepted else None)
+        self.diagnostics.update(accepted=bool(accepted),rejection=rejection,
+                                calibrated_shape_m=size,agreement_limit_m=max(.08,.3*size))
         fresh=self.last is None or not 0<t-self.last<=.5
         dt=1. if self.last is None else max(0.,t-self.last)
         self.last=t
@@ -115,6 +137,7 @@ class HandDepthFusion:
         z=(size+self.correction)*tip_ratio
         point=backproject(points[8],z,frame.K)
         if not accepted:
-            return None,point,'shape-only estimate: no accepted current palm LiDAR'
+            summary=f'{rejection}; LiDAR={lidar if lidar is None else round(lidar,3)}m, shape={size:.3f}m, support={self.diagnostics["valid_count"]}/11'
+            return None,point,'shape-only estimate: no accepted current palm LiDAR; '+summary
         point=self.filter.update(point,t)
         return Measurement(point,.05,11,'palm LiDAR + hand geometry (fused estimate)'),None,'LiDAR-fused fingertip estimate'

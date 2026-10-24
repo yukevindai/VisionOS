@@ -1,0 +1,50 @@
+# Independent DeskGuide: cleanup and acquisition repair
+
+Implementation updated; user hardware verification pending. No phone connection, live recording, audible playback, new model, alternate detector or manual-selection workflow was introduced. The separate testing_ver_calhack reference project was not modified.
+
+## Demonstrated cause and scope of the repair
+
+Actual latest available session: logs/session-1792831408416202700.jsonl (296 frames). Its recorded detector ran on every processed frame. There were 190 frames with returned class-41 candidates and 106 with no candidate. ALL 15 SEARCHING frames had zero returned class-41 candidates. A depth rejection would leave a detected box in VISIBLE/VERIFYING/UNCERTAIN states; it does not explain these 15 SEARCHING frames. The current paired-frame path has no delayed asynchronous result mailbox, so the previous stale-result discard failure is not the explanation for this session.
+
+The old log lacks raw boxes, other class scores, target instance identity, object flow outcome and reset counters. It cannot establish which object those 190 candidate frames contained or why the model missed the visible Pepsi can in the user's specific screenshot. It would be inaccurate to claim a proven preprocessing mismatch, wrong class filter or physical depth cause. The class/input/confidence and preprocessing match the audited configuration, and the known existing screenshot still produces the can as cup/41 at 0.4567316 confidence in the independent runtime.
+
+Two actual implementation bottlenecks were established:
+
+1. Visual object tracking was rejected as soon as the last neural detection was 250 ms old. At the reported 3.9 FPS, the average cycle is about 256 ms, so a single missed detection can discard otherwise supported LK tracking. A deterministic offline regression using an unchanged textured target and a 280 ms neural miss reproduces the old SEARCHING failure even with valid current depth. The repaired path remains TRACKED with current geometry, rejects missing depth, and drops the target when current image support fails.
+2. YOLO ran at input 640 on every processed frame and the loop waited for it. In the existing session, median object inference was 179.1 ms versus 65.5 ms for hand inference and 203.0 ms overall processing. Because the two inference stages overlap, these medians must not be summed. This is the dominant measured stage; 140/296 outputs already exceeded the 300 ms source-age gate. GUI display age can grow further while waiting for the next result. These are PRE-REPAIR measurements, not a post-repair FPS claim.
+
+## Changes
+
+- config.json: retain YOLO11s, 640 input, confidence 0.2, CPU float32 and eight Torch threads. Refresh object detection at a nominal 350 ms interval after the previous completed detection while tracking, search at the existing cadence governor's 100 ms setting when lost, and bound semantic identity at 0.9 s without neural reconfirmation. Hand inference cadence remains unchanged. No smaller model or resolution was substituted.
+- deskguide/tracking.py: use existing checked LK/RANSAC between neural detections, rather than expiring all visual support at 250 ms. Each tracked frame reuses the existing front-surface depth and movement-confirmation function exactly once. Optical flow is not relabeled as a new YOLO detection; last_neural remains the real neural timestamp. Current image support, hand-occlusion checks, current paired depth and movement confirmation remain mandatory. The 0.9 s identity lifetime does NOT extend the 300 ms physical-observation/audio deadline. Unsupported/occluded/predicted anchors cannot guide.
+- deskguide/models.py: retain the established independent MediaPipe wrapper and Google hand task, using the official public CPU Tasks API. It preserves MediaPipe 1.1.1, VIDEO mode, two hands, 0.3 thresholds, 160-pixel replicated padding, landmark mapping and index tip 8 used by the working local wrapper. No hand geometry equations or filters changed. Removed the external-source adapter loader and the unused legacy NanoDet adapter from active runtime code.
+- YOLO uses one inference and the same class-aware NMS. All post-NMS classes are recorded before selecting class 41 in the adapter, allowing wrong-category output to be diagnosed without a second model invocation. The known screenshot retains the same class-41 score. Raw diagnostics mean returned post-NMS boxes, not unlogged pre-NMS tensor logits or below-threshold scores.
+- deskguide/engine.py: log input shape/orientation, task/pose generation, pose validity, detector_ran, bounded raw post-NMS boxes/class IDs/scores, target boxes, confidence threshold, inference-stage timings, reach/continuity ranking, flow support, reset count, confirmation count and target-depth rejection. No extra debug text is added to the UI. Acquisition and decoding still use separate single overwrite slots. No queued inference backlog was added.
+- deskguide/app.py: remove the research banner/option, model-class attribution and verbose hand-state/confidence debug messages. Retain the layout, 21 landmarks, fingertip, cm distance and directions. Ordinary labels now show Hand tracking ACTIVE/LOST, Depth LIDAR/ESTIMATED/UNAVAILABLE and Guidance ACTIVE/PAUSED, plus target state. Source-age and model diagnostics remain internal or in the existing performance readout.
+- requirements.txt / requirements.lock.txt: MediaPipe 1.1.1 is pinned in the project's own environment. Other inference settings and existing hand geometry/depth logic remain unchanged.
+- .venv/pyvenv.cfg now uses a project-local .runtime/python installation of the existing PSF-licensed Python 3.12.15 distribution. It no longer needs the interpreter that happened to be installed under the reference folder. The exact installed licensed MediaPipe 1.1.1 package was transferred using a local wheel, with its publisher notices. No dependency download or original Proprio source transfer was needed. pip check passes. Runtime and environment binaries are local/ignored, not committed.
+- Retired .local_reference adapter/launcher and the optional evaluation comparison tools are kept in ignored .history for accurate local history. They are removed from active source/launch paths and not included in the submission checkout. Git history was not rewritten. Existing historical validation documents remain labeled as superseded.
+
+## Source / asset provenance audit
+
+| Item | Current origin / terms | External Proprio dependency? |
+|---|---|---|
+| Hand model wrapper, fingertip lifecycle, palm geometry, depth fusion/filtering | Independently authored DeskGuide integration and previously validated numeric algorithms; standard model-keypoint convention and documented geometric/filtering methods | No |
+| MediaPipe 1.1.1 and Google hand_landmarker.task | Third-party Apache-2.0 package/model provenance and retained notices; task originally downloaded from Google's published model bucket | No |
+| YOLO inference and yolo11s.pt | Actual Ultralytics 8.4.183 implementation and publisher weights, AGPL-3.0; checkpoint originally downloaded from official publisher | No |
+| NumPy / OpenCV / Pillow / sounddevice / PortAudio / psutil | Existing licensed third-party libraries with retained notices | No |
+| Python 3.12.15 | PSF-licensed standalone interpreter copied from an existing installation, with LICENSE.txt/Tcl/Tk notices retained in .runtime | No |
+| RGB-D receiver, object selection/contact/tracking, guidance policy and generated audio | Independently authored DeskGuide code, with public protocol/algorithm context documented in existing provenance records | No |
+| Former local hands.py adapter | Previously invoked original external Proprio code only for explicit local research; upstream redistribution permission was never established | Retired; no active import, no copied upstream implementation |
+| Former comparison workers | Our orchestration importing the external baseline for comparison | Retired and not runtime dependencies |
+| Proprio speech clips, artwork, UI source, protected geometry source | Not copied into DeskGuide | None included |
+| Historical numeric fixture and evaluation results | Observations/data from earlier authorized comparisons, accurately identified | Test data only, no runtime source dependency |
+
+The independently authored MIT license does not relicense third-party packages/models. Ultralytics AGPL requirements remain applicable; independence from Proprio is not a claim that the whole dependency stack is permissively licensed. Retired local import use is not erased or misrepresented. No upstream copyright notice was removed. The native iOS Reflex source was not modified by this Windows prototype cleanup.
+
+## Checks and current limits
+
+- 36 targeted automated tests pass, including the 280 ms detector-miss regression, current-depth/loss safety, detector class filtering/diagnostic output, reduced neural invocation count, hand geometry fixture, 21-landmark rendering, measured/estimated distance UI and expiring guidance behavior.
+- Independent runtime smoke: one existing screenshot returns Pepsi can cup/41 at 0.4567; one existing RGB-D frame produces 21 landmarks and a LiDAR-fused fingertip using the independent wrapper and project-installed MediaPipe 1.1.1. Logs: logs/independent-runtime-smoke.json. This is not a live capture or physical accuracy result.
+- Runtime import paths/base prefix were checked: no testing_ver_calhack dependency. pip check passes. The hand task and YOLO checkpoint remain unchanged, with official URLs/hashes in models.lock.json.
+- No model recall claim is made for the unsaved live image. General COCO can recognition can miss views or select another cup-like object; the new raw diagnostics expose that distinction. Nominal scheduling does not guarantee a fixed FPS, particularly during acquisition/reacquisition. Wi-Fi jitter, thermal throttling and reflective/low-confidence depth can still pause guidance. The 300 ms rule is unchanged. Real camera tracking, correct instance selection, sustained latency and audible guidance remain UNVERIFIED until the user tests.

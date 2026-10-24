@@ -21,6 +21,7 @@ class Frame:
     confidence: np.ndarray | None
     epoch: int = 0
     relative_lag: float = 0.
+    decode_ms: float = 0.
 
 
 def exact(sock, count):
@@ -33,7 +34,8 @@ def exact(sock, count):
     return bytes(chunks)
 
 
-def read_frame(sock):
+def read_packet(sock):
+    """Drain one complete paired packet without decoding its JPEG."""
     prefix = exact(sock, 6)
     if prefix[:5] != b'REC3D' or prefix[5] not in (1, 2):
         raise ValueError('Unsupported PathOn protocol; expected REC3D v1/v2')
@@ -48,9 +50,17 @@ def read_frame(sock):
     K = np.frombuffer(exact(sock, 36), '<f4').reshape(3, 3).copy()
     pose = np.frombuffer(exact(sock, 64), '<f4').reshape(4, 4).copy()
     depth = np.frombuffer(exact(sock, ds), '<f4').reshape(ht, w).copy()
-    color = cv2.imdecode(np.frombuffer(exact(sock, rs), np.uint8), cv2.IMREAD_COLOR)
+    jpeg = exact(sock, rs)
     conf = np.frombuffer(exact(sock, cs), np.uint8).reshape(ht, w).copy() if cs else None
     exact(sock, ims)
+    received=time.monotonic()  # last wire byte, BEFORE decoding/processing
+    return fid,ts,K,pose,depth,jpeg,conf,version,h,received
+
+
+def decode_packet(packet):
+    fid,ts,K,pose,depth,jpeg,conf,version,h,received=packet
+    started=time.monotonic()
+    color=cv2.imdecode(np.frombuffer(jpeg,np.uint8),cv2.IMREAD_COLOR)
     if (color is None or not np.isfinite(K).all() or min(K[0, 0], K[1, 1]) <= 0
             or not np.allclose(K[2],[0,0,1],atol=.001) or abs(np.linalg.det(K)) < .001):
         raise ValueError('Invalid JPEG/intrinsics')
@@ -62,7 +72,13 @@ def read_frame(sock):
     valid = (np.isfinite(pose).all() and np.allclose(pose[3], [0, 0, 0, 1], atol=.001)
              and np.allclose(pose[:3, :3].T @ pose[:3, :3], np.eye(3), atol=.02)
              and np.linalg.det(pose[:3, :3]) > .98)
-    return Frame(fid, ts, time.monotonic(), color, depth, K, pose if valid else None, conf)
+    return Frame(fid,ts,received,color,depth,K,pose if valid else None,conf,
+                 decode_ms=(time.monotonic()-started)*1000)
+
+
+def read_frame(sock):
+    """Synchronous reader retained for files and protocol smoke checks."""
+    return decode_packet(read_packet(sock))
 
 
 class Phone:
@@ -75,10 +91,37 @@ class Phone:
         self.sensor_fps = 0.
         self.stop_event = threading.Event()
         self.sock = None
+        self.packet=None
+        self.packet_ready=threading.Event()
+        self.connection_epoch=0
+        self.decode_thread=threading.Thread(target=self.decode,name='phone-decode',daemon=True)
         self.thread = threading.Thread(target=self.run, daemon=True)
 
     def start(self):
+        self.decode_thread.start()
         self.thread.start()
+
+    def decode(self):
+        previous=None
+        while not self.stop_event.is_set():
+            self.packet_ready.wait(.05)
+            self.packet_ready.clear()
+            item=self.packet
+            if item is None or item is previous:
+                continue
+            previous=item
+            packet,epoch,lag=item
+            try:
+                f=decode_packet(packet)
+            except (ValueError,cv2.error) as exc:
+                self.status=str(exc)
+                self.latest=None
+                continue
+            # An in-flight decode from a disconnected phone cannot reappear.
+            if epoch==self.connection_epoch and not self.stop_event.is_set():
+                f.epoch=epoch
+                f.relative_lag=lag
+                self.latest=f
 
     def run(self):
         epoch = 0
@@ -94,47 +137,56 @@ class Phone:
                     sock.settimeout(3)
                     sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
                     epoch += 1
+                    self.connection_epoch=epoch
                     previous = None
                     last_ts = None
-                    clock_floor = float('inf')
+                    clock_floor=float('inf')
                     arrivals=deque()
                     sensor_times=deque(maxlen=60)
                     while not self.stop_event.is_set():
-                        f = read_frame(sock)
-                        if last_ts is not None and f.timestamp <= last_ts:
+                        packet=read_packet(sock)
+                        timestamp,received=packet[1],packet[-1]
+                        if last_ts is not None and timestamp <= last_ts:
                             raise ValueError('Nonmonotonic sensor timestamp')
-                        last_ts = f.timestamp
-                        f.epoch = epoch
-                        offset = f.received-f.timestamp
-                        clock_floor = min(clock_floor,offset)
-                        f.relative_lag = max(0.,offset-clock_floor)
-                        arrivals.append(f.received)
+                        last_ts=timestamp
+                        offset=received-timestamp
+                        clock_floor=min(clock_floor,offset)
+                        # Retain the conservative floor for this connection;
+                        # sustained network delay must not age out of the gate.
+                        lag=max(0.,offset-clock_floor)
+                        arrivals.append(received)
                         while len(arrivals)>2 and arrivals[-1]-arrivals[0]>1.:
                             arrivals.popleft()
                         if len(arrivals)>1 and arrivals[-1]-arrivals[0]>.05:
                             self.fps=(len(arrivals)-1)/(arrivals[-1]-arrivals[0])
-                        sensor_times.append(f.timestamp)
+                        sensor_times.append(timestamp)
                         if len(sensor_times)>1:
                             self.sensor_fps=(len(sensor_times)-1)/(sensor_times[-1]-sensor_times[0])
-                        previous = f.received
-                        self.latest = f  # single overwrite slot, no frame queue
+                        # Overwrite compressed packets too: CPU decoding never
+                        # prevents the socket reader draining the TCP stream.
+                        self.packet=(packet,epoch,lag)
+                        self.packet_ready.set()
                         self.status = ('USB' if self.usb else 'Wi-Fi')+' connected / paired RGB-D packet'
             except (OSError, ValueError, ConnectionError) as exc:
                 if self.stop_event.is_set():
                     self.status='Stopped'
                     break
                 self.status = str(exc)
+                self.connection_epoch=-1
+                self.packet=None
                 self.latest = None
                 self.stop_event.wait(1)
 
     def close(self):
         self.stop_event.set()
+        self.packet_ready.set()
         if self.sock:
             try:
                 self.sock.shutdown(socket.SHUT_RDWR)
             except OSError:
                 pass
         self.thread.join(timeout=4)
+        self.decode_thread.join(timeout=4)
 
 
 def prepare(frame, max_width=960, rotation=0):

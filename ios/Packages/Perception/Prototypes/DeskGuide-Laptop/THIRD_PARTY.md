@@ -1,4 +1,22 @@
+# Current provenance status
+
+DeskGuide no longer loads or launches the external Proprio project. The optional external hands.py research adapter and comparison workers are retired in ignored local history; their prior use remains accurately described in historical records below. Active wrappers/geometry/guidance are independently authored. No upstream implementation or audio/artwork was copied into the active runtime.
+
+The project now installs MediaPipe 1.1.1 (Apache-2.0), preserving the previously working library version/configuration through its public API. It uses a project-local PSF-licensed Python 3.12.15 runtime with its original LICENSE.txt and bundled Tcl/Tk notices; local runtime binaries are ignored. The package/runtime were transferred from existing licensed installations, not from Proprio upstream source. Publisher notices are retained in installed distributions, models/MEDIAPIPE-LICENSE and third_party/ULTRALYTICS-AGPL-3.0.txt.
+
+Ultralytics/YOLO11s remain AGPL-3.0. Original MIT code does not relicense these dependencies. See [CLEANUP_AND_ACQUISITION.md](CLEANUP_AND_ACQUISITION.md) for the full source/asset audit and remaining limits.
+
+---
+
+# Historical provenance records (superseded configurations)
+
+# Explicit local-only reference use
+
+The ignored .local_reference adapter may load the original external Proprio hands.py detector in place for user-authorized local research. Upstream copying/distribution permission is unestablished; the original source is not copied, edited or included in Reflex. This explicit local mode is borrowed reference functionality and is labeled as such. The normal independent path remains available. See [REFERENCE_RUN_FINDINGS.md](REFERENCE_RUN_FINDINGS.md) for the current component boundary; older no-import descriptions below refer to that independent path.
+
 # Licensing and provenance
+
+Current automatic can mode uses the existing Ultralytics YOLO11s weights (AGPL-3.0), OpenCV tracking and the existing hand task. No new model was added. The publisher license was transferred from the reference installation to third_party/ULTRALYTICS-AGPL-3.0.txt. Manual selection is disabled in the application. Reference configuration and principles were independently implemented; upstream source was not copied/imported.
 
 Original DeskGuide Laptop code is MIT (LICENSE). This does not relicense third-party dependencies or model assets.
 
@@ -25,3 +43,5 @@ The REC3D protocol adapter originated in our independently authored ObjectReachL
 USB follow-up: `deskguide/usb.py` is an independent standard-library plist/socket implementation interoperating with Apple's installed Windows USB service. The [libusbmuxd protocol client](https://github.com/libimobiledevice/libusbmuxd) was consulted for framing and message-field facts. Its LGPL library is neither imported nor copied. Apple's driver/software remains separately installed under Apple's terms.
 
 The existing Proprio evaluation directory is untouched. No Proprio source functions, weights copied from Proprio, voice assets, graphics or UI source are included in the feature. Isolated evaluation workers import the existing baseline only for user-authorized comparison; production code never imports it. YOLO weights were independently downloaded from the official publisher. Public Proprio architecture provided problem context, not implementation code. This rebuild is not represented as the old DeskGuide V4 or pre-hackathon submission source.
+
+Current component-by-component source/asset audit and non-reuse decisions: [REFERENCE_INTEGRATION.md](REFERENCE_INTEGRATION.md).

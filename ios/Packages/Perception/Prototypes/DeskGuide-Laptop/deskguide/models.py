@@ -1,5 +1,4 @@
-"""CPU model adapters. No import path includes the Proprio evaluation."""
-import importlib.util
+"""Independently authored adapters for licensed CPU inference libraries."""
 from pathlib import Path
 import time
 import cv2
@@ -7,57 +6,22 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
 MODELS = ROOT/'models'
-CLASSES = {'cup':41,'bottle':39,'bowl':45}
-
-
-class ArchivedNanoDet:
-    def __init__(self,threshold=.4):
-        spec = importlib.util.spec_from_file_location('deskguide_zoo_decoder',MODELS/'nanodet.py')
-        mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(mod)
-        self.decoder = mod.NanoDet(str(MODELS/'nanodet.onnx'),prob_threshold=threshold)
-        self.threshold = threshold
-        self.last_ms = 0.
-
-    def detect(self,image,target):
-        start = time.perf_counter()
-        h,w = image.shape[:2]
-        # Aspect-preserving letterbox with reversible pixel mapping.
-        scale = min(416/w,416/h)
-        rw,rh = round(w*scale),round(h*scale)
-        dx,dy = (416-rw)//2,(416-rh)//2
-        padded = np.full((416,416,3),114,np.uint8)
-        padded[dy:dy+rh,dx:dx+rw] = cv2.resize(image,(rw,rh))
-        decoder = self.decoder
-        decoder.net.setInput(decoder.pre_process(padded))
-        outputs = decoder.net.forward(decoder.net.getUnconnectedOutLayersNames())
-        scores = sorted((x for x in outputs if x.shape[-1]==80),key=lambda x:-x.shape[-2])
-        boxes = {x.shape[-2]:x for x in outputs if x.shape[-1]==32}
-        if not scores or any(x.shape[-2] not in boxes for x in scores):
-            raise ValueError('Unsupported NanoDet output tensors')
-        result = decoder.post_process([v for score in scores for v in (score,boxes[score.shape[-2]])])
-        found=[]
-        for row in result:
-            if int(row[5])!=CLASSES[target] or row[4]<self.threshold:
-                continue
-            box = (row[:4]-[dx,dy,dx,dy])/scale
-            box = np.clip(box,[0,0,0,0],[w-1,h-1,w-1,h-1])
-            if min(box[2:]-box[:2])>=8:
-                found.append((box,float(row[4])))
-        self.last_ms = (time.perf_counter()-start)*1000
-        return found
+# This specific can is observed as COCO cup (41) in the reference screenshot.
+# 'can' is the user's target name, not a claim that COCO has a can category.
+CLASSES = {'can':41,'cup':41,'bottle':39,'bowl':45}
 
 
 class HandDetector:
     def __init__(self):
         import mediapipe as mp
+        from mediapipe.tasks.python import BaseOptions,vision
         self.mp = mp
-        options = mp.tasks.vision.HandLandmarkerOptions(
-            base_options=mp.tasks.BaseOptions(model_asset_path=str(MODELS/'hand_landmarker.task')),
-            running_mode=mp.tasks.vision.RunningMode.VIDEO,num_hands=2,
+        options = vision.HandLandmarkerOptions(
+            base_options=BaseOptions(model_asset_path=str(MODELS/'hand_landmarker.task'),delegate=BaseOptions.Delegate.CPU),
+            running_mode=vision.RunningMode.VIDEO,num_hands=2,
             min_hand_detection_confidence=.3,min_hand_presence_confidence=.3,
             min_tracking_confidence=.3)
-        self.model = mp.tasks.vision.HandLandmarker.create_from_options(options)
+        self.model = vision.HandLandmarker.create_from_options(options)
         self.last_ms=0.
         self.last_timestamp=-1
         self.origin=time.monotonic()
@@ -66,7 +30,7 @@ class HandDetector:
         start = time.perf_counter()
         h,w=image.shape[:2]
         rgb = cv2.cvtColor(image,cv2.COLOR_BGR2RGB)
-        # Single audited Option-2 configuration, with inverse pixel mapping.
+        # Replicated border supports hands at the edge; map pixels back afterwards.
         margin=160
         rgb=cv2.copyMakeBorder(rgb,margin,margin,margin,margin,cv2.BORDER_REPLICATE)
         timestamp=max(self.last_timestamp+1,round((time.monotonic()-self.origin)*1000) if timestamp_ms is None else int(timestamp_ms))
@@ -83,6 +47,9 @@ class HandDetector:
     def close(self):
         self.model.close()
 
+    def detect_at(self,image,received):
+        return self.detect(image,timestamp_ms=round(received*1000))
+
 
 class ObjectDetector:
     """Same third-party COCO detector/settings as the audited working baseline.
@@ -90,24 +57,42 @@ class ObjectDetector:
     Ultralytics and its weights are AGPL-3.0; see THIRD_PARTY.md. This adapter
     is independently authored and never loads an evaluation-source module.
     """
-    def __init__(self,threshold=.2):
+    def __init__(self,threshold=.2,cpu_threads=8):
         import os
         os.environ.setdefault('YOLO_CONFIG_DIR',str(ROOT/'logs'/'yolo-settings'))
         from ultralytics import YOLO
+        import torch
+        self.torch=torch
+        self.cpu_threads=max(1,int(cpu_threads))
+        torch.set_num_threads(self.cpu_threads)
         path=MODELS/'yolo11s.pt'
         if not path.exists():
             raise FileNotFoundError('Run setup_models.py to fetch the licensed yolo11s.pt asset')
         self.model=YOLO(str(path))
-        self.threshold=.2
+        self.threshold=threshold
         self.last_ms=0.
+        self.diagnostics={}
 
     def detect(self,image,target):
         start=time.perf_counter()
-        results=self.model.predict(image,device='cpu',imgsz=640,conf=.2,classes=[CLASSES[target]],
+        # Ultralytics initializes its own CPU thread count on first predict.
+        # Use the configured CPU budget, preserving the established model/input.
+        self.torch.set_num_threads(self.cpu_threads)
+        results=self.model.predict(image,device='cpu',imgsz=640,conf=self.threshold,classes=None,
+                                   iou=.7,agnostic_nms=False,max_det=300,rect=True,half=False,quantize=None,
                                    verbose=False,save=False)[0]
         rows=[]
+        raw=[]
         if results.boxes is not None:
-            for coordinates,score in zip(results.boxes.xyxy.cpu().numpy(),results.boxes.conf.cpu().numpy()):
-                rows.append((coordinates.astype(float),float(score)))
+            for coordinates,score,category in zip(results.boxes.xyxy.cpu().numpy(),results.boxes.conf.cpu().numpy(),results.boxes.cls.cpu().numpy()):
+                category=int(category)
+                raw.append(dict(box=coordinates.tolist(),score=float(score),class_id=category))
+                if category==CLASSES[target]:
+                    rows.append((coordinates.astype(float),float(score)))
         self.last_ms=(time.perf_counter()-start)*1000
+        self.diagnostics=dict(input_shape=list(image.shape),imgsz=640,confidence_threshold=self.threshold,
+                              requested_class=CLASSES[target],raw_post_nms=raw[:20],
+                              target_boxes=[dict(box=b.tolist(),score=s) for b,s in rows],
+                              result='target_found' if rows else 'no_target_class_above_threshold',
+                              stage_ms=getattr(results,'speed',None))
         return sorted(rows,key=lambda row:-row[1])

@@ -17,6 +17,8 @@ class Audio:
         self.underruns=0
         self.stream=None
         self.status='OFF'
+        self.was_valid=False
+        self.axis=0
 
     def start(self):
         import sounddevice as sd
@@ -40,10 +42,13 @@ class Audio:
         valid=command is not None and now<command[0] and not self.muted
         complete=now<self.complete_until and not self.muted
         target_gain=self.volume if valid or complete else 0.
-        ramp=np.linspace(self.gain,target_gain,frames)
+        # A stop/expired command goes silent in this callback. Do not fade an
+        # obsolete directional cue into the following audio block.
+        ramp=np.linspace(self.gain,target_gain,frames) if valid or complete else np.zeros(frames)
         self.gain=target_gain
-        # Cycle axis slots: horizontal, vertical, depth. Pitch/chirp identifies each slot.
-        slot=int(self.sample/48000/.3)%3
+        # Emit one current correction. A 900ms axis cycle could spend an entire
+        # short-lived command waiting for the relevant direction's slot.
+        slot=self.axis
         self.sample+=frames
         pan=0.
         pitch=600.
@@ -51,6 +56,12 @@ class Audio:
         chirp=0.
         if valid:
             _,delta,distance=command
+            strongest=int(np.argmax(np.abs(delta)))
+            if not self.was_valid or abs(delta[strongest])>1.25*abs(delta[self.axis]):
+                self.axis=strongest
+            slot=self.axis
+            if not self.was_valid:
+                self.beat=0.  # audible pulse starts when valid guidance resumes
             rate=1.5+6*np.clip(1-distance/.8,0,1)
             if slot==0:
                 pan=float(np.clip(delta[0]/.04,-1,1))
@@ -61,7 +72,12 @@ class Audio:
             else:
                 pitch=1250. if delta[2]>0 else 250.
             if abs(delta[slot])<.025:
-                ramp*=.25
+                ramp*=0.
+        self.was_valid=valid
+        if valid:
+            # Also expire within a callback block, rather than extending a
+            # 300ms evidence deadline by the audio block's duration.
+            ramp[np.arange(frames)/48000>=max(0.,command[0]-now)]=0.
         if complete:
             pitch,rate=1046.,5.
         t=np.arange(frames)/48000

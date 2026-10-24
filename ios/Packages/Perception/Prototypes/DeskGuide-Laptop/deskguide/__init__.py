@@ -1,1 +1,1 @@
-"""DeskGuide Laptop: CPU RGB-D reaching research application."""
+"""DeskGuide Laptop: CPU RGB-D hand guidance."""
