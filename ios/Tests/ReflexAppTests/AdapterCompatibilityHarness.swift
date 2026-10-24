@@ -24,7 +24,6 @@ final class AdapterCompatibilityHarness {
         perception = FixturePerception(clock: clock)
         speech = RecordingSpeechScheduler()
         let preferences = UserPreferences(defaults: UserDefaults(suiteName: UUID().uuidString)!)
-        preferences.setupComplete = true
         session = SessionCoordinator(simulated: true, preferences: preferences, diagnostics: Diagnostics(capacity: 16),
             bands: BandService(controller: nil, simulated: true, clock: clock), clock: clock,
             perception: perceptionAdapter ?? perception, speech: speechAdapter ?? speech,

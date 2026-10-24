@@ -36,7 +36,6 @@ final class UITestAppClockTests: XCTestCase {
         let clock = UITestAppClock(automaticallyAdvances: false)
         let dependencies = AppDependencies(simulated: true, clock: clock,
             defaults: UserDefaults(suiteName: UUID().uuidString)!)
-        dependencies.preferences.setupComplete = true
         let session = dependencies.session
         session.start()
         for _ in 0..<80 { await Task.yield() }
@@ -98,6 +97,23 @@ private final class DelayedEvidence: TargetEvidenceClient {
 }
 
 @MainActor
+private final class DeferredPermissionClient: PermissionClient {
+    var state = PermissionState(cameraAuthorization: .notDetermined, microphoneAuthorization: .notDetermined)
+    var requestCount = 0
+    private var completion: CheckedContinuation<PermissionState, Never>?
+    func current() -> PermissionState { state }
+    func request() async -> PermissionState {
+        requestCount += 1
+        return await withCheckedContinuation { completion = $0 }
+    }
+    func complete(_ state: PermissionState = .init(camera: true, microphone: true)) {
+        self.state = state
+        completion?.resume(returning: state)
+        completion = nil
+    }
+}
+
+@MainActor
 final class SessionCoordinatorTests: XCTestCase {
     private struct Harness {
         let session: SessionCoordinator
@@ -107,15 +123,15 @@ final class SessionCoordinatorTests: XCTestCase {
         let speech: FixtureSpeech
     }
     private func makeHarness(evidence: (any TargetEvidenceClient)? = nil, clock: ManualAppClock? = nil,
-                             permission: PermissionState = .init(camera: true, microphone: true), simulated: Bool = true) -> Harness {
+                             permission: PermissionState = .init(camera: true, microphone: true), simulated: Bool = true,
+                             permissionClient: (any PermissionClient)? = nil) -> Harness {
         let clock = clock ?? ManualAppClock()
         let prefs = UserPreferences(defaults: UserDefaults(suiteName: UUID().uuidString)!)
-        prefs.setupComplete = true
         let perception = FixturePerception(clock: clock), speech = FixtureSpeech(audible: false), conversation = FixtureConversation()
         let session = SessionCoordinator(simulated: simulated, preferences: prefs, diagnostics: Diagnostics(capacity: 8),
             bands: BandService(controller: nil, simulated: simulated, clock: clock), clock: clock,
             perception: perception, speech: speech, conversation: conversation,
-            evidence: evidence ?? FixtureEvidence(clock: clock), permissions: FixturePermissionClient(state: permission))
+            evidence: evidence ?? FixtureEvidence(clock: clock), permissions: permissionClient ?? FixturePermissionClient(state: permission))
         return .init(session: session, clock: clock, perception: perception, conversation: conversation, speech: speech)
     }
     private func settle() async { for _ in 0..<80 { await Task.yield() } }
@@ -210,10 +226,99 @@ final class SessionCoordinatorTests: XCTestCase {
     func testDeniedPermissionsDoNotStartAdapters() async {
         let h = makeHarness(permission: .init(camera: false, microphone: true), simulated: false)
         h.session.start(); await settle()
-        XCTAssertTrue(h.session.showSetup)
-        XCTAssertEqual(h.session.phase, .idle)
+        XCTAssertTrue(h.session.message.contains("Camera access is denied"))
+        XCTAssertEqual(h.session.phase, .failed)
         XCTAssertNil(h.perception.context)
     }
+    func testFirstCallStartsWithoutSetupOrWristbands() async {
+        let h = makeHarness(simulated: false)
+        h.session.start(); await settle()
+        XCTAssertEqual(h.session.phase, .active)
+        XCTAssertNotNil(h.perception.context)
+        XCTAssertNil(h.session.preferences.calibratedPairSignature)
+        h.session.stop(.userEnd)
+    }
+
+    func testPermissionGrantContinuesOriginalCallOnlyAfterActivation() async {
+        let permissions = DeferredPermissionClient()
+        let h = makeHarness(simulated: false, permissionClient: permissions)
+        h.session.start(); h.session.start(); await settle()
+        XCTAssertEqual(permissions.requestCount, 1)
+        XCTAssertNil(h.perception.context)
+        h.session.becameInactive()
+        h.clock.advance(60_000)
+        XCTAssertEqual(h.session.phase, .preparing, "Reading a permission prompt must not consume the adapter startup deadline")
+        permissions.complete(); await settle()
+        XCTAssertEqual(h.session.phase, .preparing)
+        XCTAssertNil(h.perception.context)
+        h.session.becameActive(); await settle()
+        XCTAssertEqual(h.session.phase, .active)
+        XCTAssertNotNil(h.perception.context)
+        XCTAssertEqual(permissions.requestCount, 1)
+        h.session.stop(.userEnd)
+    }
+
+    func testImmediateEndDoesNotOpenPermissionPrompts() async {
+        let permissions = DeferredPermissionClient()
+        let h = makeHarness(simulated: false, permissionClient: permissions)
+        h.session.start()
+        h.session.stop(.userEnd)
+        await settle()
+        XCTAssertEqual(permissions.requestCount, 0)
+        XCTAssertFalse(h.session.requestingPermissions)
+        XCTAssertEqual(h.session.phase, .ended)
+        XCTAssertNil(h.perception.context)
+    }
+
+    func testEndingDuringPermissionPromptRejectsLateGrant() async {
+        let permissions = DeferredPermissionClient()
+        let h = makeHarness(simulated: false, permissionClient: permissions)
+        h.session.start(); await settle()
+        h.session.stop(.userEnd)
+        h.session.start()
+        XCTAssertEqual(permissions.requestCount, 1)
+        permissions.complete(); h.session.becameActive(); await settle()
+        XCTAssertEqual(h.session.phase, .ended)
+        XCTAssertNil(h.perception.context)
+        h.session.start(); await settle()
+        XCTAssertEqual(h.session.phase, .active)
+        h.session.stop(.userEnd)
+    }
+
+    func testBackgroundDuringPermissionPromptRequiresAnotherCall() async {
+        let permissions = DeferredPermissionClient()
+        let h = makeHarness(simulated: false, permissionClient: permissions)
+        h.session.start(); await settle()
+        h.session.backgrounded()
+        permissions.complete(); h.session.becameActive(); await settle()
+        XCTAssertEqual(h.session.phase, .ended)
+        XCTAssertNil(h.perception.context)
+        h.session.start(); await settle()
+        XCTAssertEqual(h.session.phase, .active)
+        h.session.stop(.userEnd)
+    }
+
+    func testPermissionDenialShowsFailureWithoutStartingAdapters() async {
+        let permissions = DeferredPermissionClient()
+        let h = makeHarness(simulated: false, permissionClient: permissions)
+        h.session.start(); await settle()
+        permissions.complete(.init(camera: true, microphone: false)); await settle()
+        XCTAssertEqual(h.session.phase, .failed)
+        XCTAssertTrue(h.session.message.contains("Microphone access is denied"))
+        XCTAssertNil(h.perception.context)
+        XCTAssertFalse(h.session.requestingPermissions)
+    }
+
+    func testInactivityStillPausesAnActiveCall() async {
+        let h = makeHarness(simulated: false)
+        h.session.start(); await settle()
+        h.session.becameInactive()
+        XCTAssertEqual(h.session.phase, .paused)
+        h.session.becameActive()
+        XCTAssertEqual(h.session.phase, .paused)
+        h.session.stop(.userEnd)
+    }
+
     func testPhysicalGuidanceIsBlockedWithoutLocalSpokenStopInLiveMode() async {
         let h = makeHarness(simulated: false); h.session.start(); await settle()
         h.session.submitTask(.init(id: "task", kind: .button, query: "Blue button"))

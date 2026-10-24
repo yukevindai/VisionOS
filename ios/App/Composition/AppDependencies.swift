@@ -53,7 +53,6 @@ final class AppDependencies: ObservableObject {
         self.defaults = preferenceDefaults
         preferences = UserPreferences(defaults: preferenceDefaults)
         diagnostics = Diagnostics()
-        if ProcessInfo.processInfo.arguments.contains("--simulate") { preferences.setupComplete = true }
         session = Self.compose(simulated: simulated, preferences: preferences, diagnostics: diagnostics,
                                live: live, clock: clock, permissionOverride: permissions, defaults: preferenceDefaults)
     }

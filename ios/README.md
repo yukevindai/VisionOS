@@ -19,6 +19,20 @@ python3 ios/Scripts/generate_project.py
 
 The generated `.xcodeproj` is included with the source and opens without running that script on a fresh clone. The script uses only Python's standard library.
 
+## Start a call
+
+Choose the assisted role and tap **Call**. Reflex requests any missing camera,
+microphone and speech-recognition permissions, then starts assistance automatically.
+There is no mandatory setup screen or speech-only Continue button. If access is
+denied, the home screen explains which permission is missing and offers **Open
+Settings**; return and tap Call again after changing access.
+
+Guiding hand and phone position remain optional settings (initial defaults: right
+hand and handheld). Wristband pairing and calibration remain in Settings and do
+not block a voice session. Existing calibration and movement-readiness checks
+still apply. Ending the call or backgrounding the app during a permission request
+cancels startup; a late permission response cannot restart it.
+
 ## Prepare the native object model
 
 The native object path uses the same hash-pinned YOLO11s weights as the R1 prototype, exported to Core ML with non-maximum suppression and the original COCO labels. The compiled binary is ignored by Git. A fresh clone must prepare it before running local object recognition or the bundled-model test.
