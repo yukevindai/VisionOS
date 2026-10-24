@@ -65,3 +65,18 @@ The interactive region is preferred. The prompt asks for the pressable surface (
 To keep a model tied to the phone's frame, `POST /v1/select` accepts optional `frameId` and `capturedAtMs` and passes them through unchanged. Without them, a new frame ID and the backend's receive time are used.
 
 Out of scope here: Convex, Cartesia, the phone-side client, LiDAR and full kiosk ordering.
+
+## Windows live camera experiment
+
+See [LIVE_CAMERA.md](LIVE_CAMERA.md) for PathOn connection instructions, on-demand capture,
+frozen target overlays, desktop ROI fallback and recorded transform metadata. Start from the
+outer workspace with `powershell -NoProfile -ExecutionPolicy Bypass -File .\VisionOS\backend\start-live-camera.ps1`.
+This desktop experiment has no movement/audio/haptic outputs and does not replace native R1.
+
+## Continuous live 2D tracking
+
+[Windows tracking instructions](LIVE_TRACKING.md) describe the new **Find & Track** tool:
+`powershell -NoProfile -ExecutionPolicy Bypass -File .\VisionOS\backend\start-live-tracking.ps1`.
+It matches Gemini's historical reference to current camera frames before drawing a live box,
+hides lost/stale targets, and bounds automatic re-identification requests. The frozen camera
+program remains available unchanged. This is a visual test, not native R1 or movement guidance.
