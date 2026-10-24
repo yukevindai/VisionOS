@@ -1,7 +1,3 @@
-"""Platform-neutral guidance policy; deliberately no NumPy, UI or device imports.
-
-This is a reference for the future native Swift implementation, not an iOS runtime.
-"""
 from dataclasses import dataclass
 import math
 
@@ -15,13 +11,6 @@ class GuidanceDecision:
 
 def evaluate(target,finger,object_state,frame_age_s,max_age_s=.2,completed=False,
              *,hazard_active=False,task_generation=None,evidence_generation=None):
-    """Right/down/forward optical coordinates; inputs must be measured meters.
-
-    Missing/rejected/shape-only geometry must be passed as None by the adapter.
-    A LiDAR-anchored fused estimate requires accepted current LiDAR support;
-    it must retain its source/uncertainty label and is not direct tip depth.
-    Predicted anchors never enable precision cues.
-    """
     if hazard_active:
         return GuidanceDecision(None,None,'hazard_stop')
     if task_generation is not None and task_generation!=evidence_generation:

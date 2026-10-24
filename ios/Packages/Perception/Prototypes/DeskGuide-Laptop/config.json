@@ -1,16 +1,17 @@
 {
   "host": null,
   "port": 8888,
-  "target": "cup",
+  "target": "can",
+  "detection_mode": "automatic",
   "max_width": 960,
   "rotation": 90,
   "opencv_threads": 2,
-  "object_interval_ms": 0,
+  "torch_threads": 8,
+  "object_interval_ms": 350,
   "hand_interval_ms": 0,
-  "reacquire_interval_ms": 0,
+  "reacquire_interval_ms": 100,
+  "object_identity_age_s": 0.9,
   "max_frame_age_ms": 300,
   "max_anchor_age_s": 8,
-  "object_score": 0.2,
-  "audio_volume": 0.12,
-  "audio_device": null
+  "object_score": 0.2
 }

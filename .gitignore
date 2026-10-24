@@ -22,3 +22,23 @@ ios/Config/Local.xcconfig
 
 # macOS file metadata
 .DS_Store
+
+# Local research, secrets, recordings and developer environments
+.local-research/
+**/.local-research/
+.venv/
+.history/
+.runtime/
+.local_reference/
+__pycache__/
+.env
+.env.*
+!.env.example
+recordings/
+*.pt
+*.onnx
+*.task
+*.npz
+
+# Generated from the hash-pinned teammate model; prepare_native_model.py rebuilds it
+/ios/Resources/Models/*.mlmodelc/

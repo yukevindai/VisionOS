@@ -1,0 +1,24 @@
+{
+  "fixture": "SIMULATED_ordering_kiosk",
+  "request": "Find the Big Mac",
+  "expected": {
+    "status": "SELECTED",
+    "request": "Find the Big Mac",
+    "frameId": "SIMULATED-kiosk-frame-0001",
+    "source": "SIMULATED",
+    "candidateIds": [],
+    "target": {
+      "targetId": "item-big-mac",
+      "label": "Big Mac",
+      "elementType": "menuItem",
+      "imageRegion": { "x": 0.05, "y": 0.20, "width": 0.28, "height": 0.18 },
+      "coordinateSystem": "normalizedImageTopLeft",
+      "frameId": "SIMULATED-kiosk-frame-0001",
+      "capturedAtMs": 1792800005000,
+      "panelType": "orderingKiosk",
+      "confidence": 0.94,
+      "source": "SIMULATED",
+      "match": "exact"
+    }
+  }
+}

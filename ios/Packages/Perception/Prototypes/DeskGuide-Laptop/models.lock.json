@@ -1,19 +1,4 @@
 {
-  "nanodet.onnx": {
-    "url": "https://github.com/opencv/opencv_zoo/raw/refs/heads/main/models/object_detection_nanodet/object_detection_nanodet_2022nov.onnx",
-    "sha256": "4b82da9944b88577175ee23a459dce2e26e6e4be573def65b1055dc2d9720186",
-    "bytes": 3800954
-  },
-  "nanodet.py": {
-    "url": "https://raw.githubusercontent.com/opencv/opencv_zoo/main/models/object_detection_nanodet/nanodet.py",
-    "sha256": "5ba84922eaefdc48d0066cffdfb721d0d434c5f3b92213563161e00da26cea1b",
-    "bytes": 4874
-  },
-  "NANODET-LICENSE": {
-    "url": "https://raw.githubusercontent.com/opencv/opencv_zoo/main/models/object_detection_nanodet/LICENSE",
-    "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
-    "bytes": 11358
-  },
   "hand_landmarker.task": {
     "url": "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
     "sha256": "fbc2a30080c3c557093b5ddfc334698132eb341044ccee322ccf8bcf3607cde1",

@@ -1,4 +1,3 @@
-"""Numeric reference observations, without importing the comparison runtime."""
 import json
 from pathlib import Path
 from types import SimpleNamespace

@@ -15,7 +15,6 @@ class DepthContinuity(unittest.TestCase):
         f.depth[6,8]=.4
         f.depth[6,7]=.4
         f.depth[5,8]=.4
-        # RGB x=35 lies inside low-res cell 8, not cell 9.
         m=fingertip_depth(f,[35,24])
         self.assertIsNotNone(m)
         self.assertAlmostEqual(m.xyz[2],.4,places=5)

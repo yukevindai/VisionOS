@@ -1,4 +1,5 @@
 import Foundation
+import Targets
 
 // These are R2 adapter projections, not additions to the shared wire schema.
 public enum TaskKind: String, Codable, Sendable { case button, object, kiosk, wallMenu, door, approach }
@@ -66,15 +67,7 @@ public struct EventEnvelope: Equatable, Sendable {
         self.monotonicMs = monotonicMs; self.expiresAtMs = expiresAtMs; self.source = source
     }
 }
-public struct ImageRegion: Equatable, Sendable {
-    public let x: Double, y: Double, width: Double, height: Double
-    public init(x: Double, y: Double, width: Double, height: Double) {
-        self.x = x; self.y = y; self.width = width; self.height = height
-    }
-    public var isValid: Bool {
-        [x,y,width,height].allSatisfy(\.isFinite) && x >= 0 && y >= 0 && width > 0 && height > 0 && x + width <= 1 && y + height <= 1
-    }
-}
+public typealias ImageRegion = Targets.BoundingBox
 public enum TargetKind: String, Sendable { case button, object, screenControl, handle, opener, door }
 public enum ControlSafety: String, Sendable { case ordinary, ambiguous, emergency, payment, purchaseAuthorization, unknownCheckout }
 public struct ResolvedTarget: Equatable, Sendable {
@@ -149,7 +142,7 @@ public struct VerificationEvidence: Equatable, Sendable {
 }
 public enum VerificationOutcome: Equatable, Sendable { case observed(VerificationEvidence), unavailable, uncertain, failed, doorBlocked }
 public enum GuidanceStatus: String, Sendable { case guiding, onTarget, lost, failed }
-public struct ScreenModel: Equatable, Sendable {
+public struct TaskScreen: Equatable, Sendable {
     public let id: String
     public let frameID: String
     public let title: String
@@ -192,7 +185,7 @@ public enum TaskResponse: Equatable, Sendable {
     case physical(PhysicalEvidence)
     case guidance(mode: GuidanceMode, targetID: String, status: GuidanceStatus, evidence: PhysicalEvidence?)
     case verification(VerificationOutcome)
-    case screen(ScreenModel)
+    case screen(TaskScreen)
     case screenChanged
     case menu(MenuContent)
     case menuAnswer(String)
@@ -251,7 +244,7 @@ public struct TaskState: Equatable, Sendable {
     public internal(set) var target: ResolvedTarget?
     public internal(set) var pendingRequest: RequestContext?
     public internal(set) var confirmation: PendingConfirmation?
-    public internal(set) var screen: ScreenModel?
+    public internal(set) var screen: TaskScreen?
     public internal(set) var menu: MenuContent?
     public internal(set) var retries = 0
     public internal(set) var result: TaskResult?

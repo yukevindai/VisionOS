@@ -1,0 +1,11 @@
+# Native measured hand guidance
+
+Foundation-only iPhone/macOS Swift package ported from the team's existing `Perception/Prototypes/DeskGuide-Laptop/deskguide/guidance_core.py`, `guidance.py`, and measured parts of `geometry.py`. The Python prototype remains unchanged. The app supplies actual ARKit depth, confidence, intrinsics, current Vision observations, frame time, task generation and output scheduling.
+
+`GuideGeometry` samples center-supported fingertip depth and a front-surface target population, projects/backprojects optical camera points and converts ARKit camera/world coordinates explicitly. Image points are pixels in the raw camera image associated with the depth map and intrinsics. Native Vision orientation transforms must be inverted before sampling. Optical axes are right/down/forward; `world` and `camera` take a row-major ARKit camera-to-world matrix.
+
+`GuideController` preserves the reference's target-minus-fingertip delta, dominant-axis direction, 2.5 cm tolerance and 1.25 axis hysteresis. Cue validity ends at the earlier of 180 ms after computation and 300 ms after observation. Invalid, missing, stale, future, predicted or estimated evidence stops guidance. Hazard and generation mismatch also stop. The iPhone port deliberately requires an available, confidence-qualified depth plane; the Python reference's optional-confidence fallback is not eligible here.
+
+Alignment held over 300 ms of fresh measured observations yields `onTarget`; this reports alignment only. It does not verify contact, a press, grasp, payment, free space, or passage. R2 still requests the action and requires observed verification or explicit user confirmation. No speech, camera, networking, haptics or hardware driver exists in this package.
+
+Run `swift test --package-path ios/Packages/Guidance`. Numerical parity fixtures are **SIMULATED** and contain source hashes. Regenerate them by running `Scripts/generate_reference.py` with Python and NumPy; the script executes the unchanged teammate reference functions. Tests cover direction signs, hysteresis, measured depth geometry, pose/projection math, expiry, invalid evidence and measured alignment dwell. These results do not establish live iPhone accuracy, orientation, latency, accessibility, or hardware acceptance.

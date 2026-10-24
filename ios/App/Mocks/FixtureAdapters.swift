@@ -174,7 +174,7 @@ final class FixtureEvidence: TargetEvidenceClient {
                      frameID: "fixture-\(clock.nowMs)", safety: safety, requiresApproach: kind == .approach,
                      doorAction: kind == .door ? .lever : nil, doorActionEvidence: kind == .door)
     }
-    func readScreen(_ request: RequestContext) async throws -> ScreenModel {
+    func readScreen(_ request: RequestContext) async throws -> TaskScreen {
         let identity = request.task.sessionID + ":" + request.task.taskID
         if screenTaskIdentity != identity { screenTaskIdentity = identity; screenReads = 0 }
         screenReads += 1
@@ -192,10 +192,10 @@ final class FixtureEvidence: TargetEvidenceClient {
     }
     #if DEBUG
     /// Deterministic UI-only scenes, never a claim about an actual kiosk or door.
-    private func recoveryScreen() -> ScreenModel? {
+    private func recoveryScreen() -> TaskScreen? {
         let frame = "fixture-\(clock.nowMs)"
         func screen(_ id: String, title: String, label: String? = nil,
-                    destination: String? = nil, welcome: Bool = false, payment: Bool = false) -> ScreenModel {
+                    destination: String? = nil, welcome: Bool = false, payment: Bool = false) -> TaskScreen {
             let controls = label.map { [ResolvedTarget(id: "\(id)-control", kind: .screenControl,
                 label: $0, region: .init(x: 0.2, y: 0.2, width: 0.3, height: 0.15),
                 frameID: frame, sourceScreenID: id, expectedDestination: destination)] } ?? []

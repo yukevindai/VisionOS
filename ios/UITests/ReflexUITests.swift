@@ -5,6 +5,24 @@ final class ReflexUITests: XCTestCase {
         continueAfterFailure = false
     }
 
+    func testFriendVideoEntryAndCloseKeepsAssistanceIdle() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--uitesting"]
+        app.launch()
+        let entry = app.buttons["home.friendVideo"]
+        XCTAssertTrue(entry.waitForExistence(timeout: 5))
+        entry.tap()
+        let close = app.buttons["video.close"]
+        XCTAssertTrue(close.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Share your camera with a trusted friend"].exists)
+        XCTAssertFalse(app.buttons["session.end"].exists)
+        attachScreenshot(of: app, named: "Friend video entry")
+        close.tap()
+        XCTAssertTrue(entry.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["home.start"].exists)
+        XCTAssertFalse(app.buttons["session.end"].exists)
+    }
+
     func testSimulationStartsPausesResumesAndEnds() {
         let app = launchSimulation()
 

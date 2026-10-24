@@ -1,4 +1,3 @@
-"""Host adapter boundaries. The tracking engine must not depend on a GUI/transport."""
 from typing import Protocol
 from .stream import Frame
 
@@ -13,8 +12,7 @@ class FrameSource(Protocol):
     def close(self) -> None: ...
 
 
-class AudioSink(Protocol):
+class GuidanceSink(Protocol):
     status: str
 
     def update(self,delta=None,distance=None,deadline=None) -> None: ...
-

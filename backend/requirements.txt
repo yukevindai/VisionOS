@@ -1,0 +1,2 @@
+# R3 backend: Python 3.10+. Gemini is called over REST with the standard library.
+Pillow==11.1.0

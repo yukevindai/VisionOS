@@ -1,0 +1,112 @@
+{
+  "schemaVersion": 3,
+  "frameId": "SIMULATED-frame-pipeline-0001",
+  "capturedAtMs": 1792800010000,
+  "coordinateSystem": "normalizedImageTopLeft",
+  "source": "SIMULATED",
+  "evidence": {
+    "provider": "gemini",
+    "model": "gemini-2.5-flash",
+    "live": false,
+    "latencyMs": 0.0,
+    "modelVersion": "SIMULATED",
+    "responseId": "SIMULATED-response-0001"
+  },
+  "image": {
+    "widthPx": 400,
+    "heightPx": 200,
+    "exifOrientation": 1,
+    "orientationApplied": true
+  },
+  "notes": "SIMULATED: reply did not come from the live Gemini API.",
+  "panelType": "elevatorPanel",
+  "availability": "available",
+  "controls": [
+    {
+      "id": "el-001",
+      "label": "5",
+      "type": "button",
+      "legibility": "clear",
+      "region": {
+        "x": 0.55,
+        "y": 0.5,
+        "width": 0.12,
+        "height": 0.08
+      }
+    },
+    {
+      "id": "el-002",
+      "label": "6",
+      "type": "button",
+      "legibility": "partial",
+      "region": {
+        "x": 0.3,
+        "y": 0.4,
+        "width": 0.12,
+        "height": 0.08
+      }
+    },
+    {
+      "id": "el-003",
+      "label": "7",
+      "type": "button",
+      "legibility": "clear",
+      "region": {
+        "x": 0.67,
+        "y": 0.48,
+        "width": -0.12,
+        "height": -0.08
+      }
+    },
+    {
+      "id": "el-004",
+      "label": "",
+      "type": "button",
+      "legibility": "unreadable",
+      "region": {
+        "x": 0.3,
+        "y": 0.3,
+        "width": 0.12,
+        "height": 0.08
+      }
+    },
+    {
+      "id": "el-005",
+      "label": "Open",
+      "type": "button",
+      "legibility": "clear",
+      "region": {
+        "x": 0.3,
+        "y": 0.82,
+        "width": 0.12,
+        "height": 0.08
+      }
+    },
+    {
+      "id": "el-006",
+      "label": "OPEN",
+      "type": "button",
+      "legibility": "clear",
+      "region": {
+        "x": 0.7,
+        "y": 0.82,
+        "width": 0.12,
+        "height": 0.08
+      }
+    },
+    {
+      "id": "el-007",
+      "label": "Alarm",
+      "type": "button",
+      "legibility": "clear",
+      "region": {
+        "x": 0.42,
+        "y": 0.2,
+        "width": 0.14,
+        "height": 0.08
+      }
+    }
+  ],
+  "sections": [],
+  "isPaymentScreen": false
+}

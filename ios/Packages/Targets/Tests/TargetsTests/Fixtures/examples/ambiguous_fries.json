@@ -1,0 +1,13 @@
+{
+  "fixture": "SIMULATED_ordering_kiosk",
+  "request": "Find the fries",
+  "expected": {
+    "status": "AMBIGUOUS",
+    "request": "Find the fries",
+    "frameId": "SIMULATED-kiosk-frame-0001",
+    "source": "SIMULATED",
+    "reason": "MULTIPLE_MATCHES",
+    "candidateIds": ["item-fries-small", "item-fries-large"],
+    "errorCode": "LABEL_AMBIGUOUS"
+  }
+}

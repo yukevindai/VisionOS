@@ -1,4 +1,3 @@
-"""Optical coordinates x=right, y=down, z=forward, distances in meters."""
 from dataclasses import dataclass
 import numpy as np
 
@@ -53,11 +52,6 @@ def depth_at(frame, uv, radius=1):
 
 
 def surface(frame, box):
-    """Nearest depth population of meaningful support, in the object's inner ROI.
-
-    This is an independently implemented weighted interval-density calculation;
-    repeated upsampled cells are not independent accuracy observations.
-    """
     box=np.asarray(box,float)
     center=(box[:2]+box[2:])/2
     h,w=frame.color.shape[:2]
@@ -87,11 +81,6 @@ def surface(frame, box):
 
 
 def fingertip_depth(frame,uv):
-    """A thin tip may cover <5 depth cells. Require a valid center and support.
-
-    Neighbor values are accepted only around the measured center's depth; this
-    does not pick an arbitrary nearest background/foreground mode.
-    """
     dh,dw=frame.depth.shape
     h,w=frame.color.shape[:2]
     x,y=np.floor(np.asarray(uv)*[dw/w,dh/h]).astype(int)
@@ -114,7 +103,6 @@ def fingertip_depth(frame,uv):
 
 
 def palm_reference(frame,landmarks):
-    """Robust measured hand-depth reference, not a claimed fingertip measurement."""
     palm=landmarks[[0,5,9,13,17]]
     center=np.mean(palm,axis=0)
     locations=[center]+[(center+p)/2 for p in palm]

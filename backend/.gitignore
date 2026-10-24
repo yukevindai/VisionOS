@@ -1,0 +1,13 @@
+node_modules/
+.env*
+!.env.example
+.convex/
+coverage/
+*.tsbuildinfo
+
+# R3 Gemini vision backend
+.env
+eval/photos/
+eval/results/
+eval/manifest.json
+__pycache__/

@@ -29,6 +29,8 @@ final class SessionCoordinator: ObservableObject {
     let evidence: any TargetEvidenceClient
     let permissions: any PermissionClient
     private var engine: TaskEngine?
+    private(set) var friendAssistance: FriendAssistanceCoordinator?
+    private(set) var nativeMedia: NativeMediaCoordinator?
     private(set) var context: SessionContext?
     private var startWork: Task<Void, Never>?
     private var adapterStartInFlight = false
@@ -68,7 +70,8 @@ final class SessionCoordinator: ObservableObject {
          conversation: any ConversationClient, evidence: any TargetEvidenceClient, permissions: any PermissionClient,
          enforceSimulatedPermissions: Bool = false,
          configuration: SessionConfiguration = .init(), framePolicy: FrameDeliveryPolicy? = nil,
-         generationSeed: @escaping () -> UInt64 = { 0 }) {
+         generationSeed: @escaping () -> UInt64 = { 0 },
+         friends: FriendAssistanceIntegration? = nil, media: NativeMediaIntegration? = nil) {
         self.simulated = simulated; self.preferences = preferences; self.diagnostics = diagnostics; self.bands = bands
         self.clock = clock; self.perception = perception; self.speech = speech; self.conversation = conversation
         self.evidence = evidence; self.permissions = permissions
@@ -76,6 +79,8 @@ final class SessionCoordinator: ObservableObject {
         self.enforceSimulatedPermissions = enforceSimulatedPermissions
         permissionState = permissions.current()
         bindAdapters()
+        if let friends { bindFriendAssistance(friends) }
+        if let media { nativeMedia = NativeMediaCoordinator(clock: clock, integration: media) }
     }
 
     private func bindAdapters() {
@@ -131,7 +136,9 @@ final class SessionCoordinator: ObservableObject {
         let epoch = startupEpoch
         let id = UUID().uuidString
         engine = TaskEngine(sessionID: id, initialGeneration: max(generationSeed(), bands.minimumNextGeneration), guidingHand: preferences.guidingHand == .left ? .left : .right)
+        taskState = engine?.state
         context = .init(sessionID: id, generation: engine!.state.context.generation)
+        if let context { (evidence as? any FrameTargetEvidenceClient)?.updateContext(context) }
         guard let context else { return }
         phase = .preparing; activity = .preparing; message = "Preparing assistance."
         hazardActive = false; microphoneMuted = false; seenConversationEvents.removeAll(); caption = ""
@@ -167,10 +174,14 @@ final class SessionCoordinator: ObservableObject {
                 self.capabilities.conversation = self.simulated ? .simulated : .ready
                 self.startupDeadline?.cancel(); self.startupDeadline = nil
                 self.phase = .active; self.activity = .listening
-                self.message = self.simulated ? "SIMULATED assistance. Use the fixture input below; the microphone is not listening." : "Voice assistance is available. Wristbands require connection and calibration."
-                self.speech.speak(self.simulated ? "SIMULATED session. No real camera or wristbands. Enter a simulated request to try the flow." : "I'm ready. What would you like help with? Your wristbands are not active.", priority: 4, context: context)
+                let localObjects = self.conversation is NativeAudioCoordinator
+                self.message = self.simulated ? "SIMULATED assistance. Use the fixture input below; the microphone is not listening." :
+                    (localObjects ? "Ask to find a cup, can, bottle or bowl. Say Stop or use Pause to stop guidance." : "Voice assistance is available. Wristbands require connection and calibration.")
+                self.speech.speak(self.simulated ? "SIMULATED session. No real camera or wristbands. Enter a simulated request to try the flow." :
+                    (localObjects ? "Ask me to find a cup, can, bottle or bowl. Say stop to pause. Your wristbands are not active." : "I'm ready. What would you like help with? Your wristbands are not active."), priority: 4, context: context)
                 UIApplication.shared.isIdleTimerDisabled = true
                 self.armFrameWatchdog()
+                self.nativeMedia?.start(localSessionID: context.sessionID)
                 self.log("session_ready", code: self.simulated ? "SIMULATED" : "LIVE")
             } catch {
                 guard let self, self.startupEpoch == epoch, self.phase == .preparing else { return }
@@ -201,16 +212,27 @@ final class SessionCoordinator: ObservableObject {
 
     /// Serialized synchronous stop: invalidate first, cancel work, stop BLE, then request R1 speech.
     /// No await, network request, BLE acknowledgment, or audio completion can block this path.
-    func stop(_ cause: SessionStopCause) {
+    func stop(_ cause: SessionStopCause) { stop(cause, preparedFriendEffects: nil) }
+
+    private func stop(_ cause: SessionStopCause, preparedFriendEffects: [TaskEffect]?) {
+        if [.userEnd, .background, .microphoneMuted, .cameraChanged, .providerFailure].contains(cause) { nativeMedia?.stop() }
         guard phase != .ended && phase != .idle else { return }
-        if phase == .paused && cause == .userPause && calibrationIndex == nil { return }
+        startupEpoch = UUID()
+        let stopEpoch = startupEpoch
+        friendAssistance?.preemptForStop()
+        guard startupEpoch == stopEpoch else { return }
+        if phase == .paused && cause == .userPause && calibrationIndex == nil {
+            friendAssistance?.ownerStopped(endSharing: false)
+            return
+        }
         let old = context
-        startupEpoch = UUID(); startWork?.cancel(); startWork = nil
+        startWork?.cancel(); startWork = nil
         startupDeadline?.cancel(); startupDeadline = nil
         recoveryToken = UUID(); recoveryWork?.cancel(); recoveryWork = nil
         recoveryDeadline?.cancel(); recoveryDeadline = nil; recoveryRetry?.cancel(); recoveryRetry = nil
-        let effects = engine?.reduce(.stop(taskStopReason(cause)), nowMs: clock.nowMs) ?? []
+        let effects = preparedFriendEffects ?? engine?.reduce(.stop(taskStopReason(cause)), nowMs: clock.nowMs) ?? []
         synchronizeContext()
+        guard startupEpoch == stopEpoch else { return }
         cancelPendingWork()
         calibrationIndex = nil; calibrationTaskID = nil
         caption = ""
@@ -220,6 +242,7 @@ final class SessionCoordinator: ObservableObject {
             conversation.interrupt(context: old); speech.cancel(context: old)
         }
         if let context { speech.localStop(context: context) }
+        guard startupEpoch == stopEpoch else { return }
         phase = cause == .userEnd ? .ending : .paused
         activity = cause == .userEnd ? .ended : .paused
         message = cause == .userEnd ? "Assistance ended." : stopMessage(cause)
@@ -228,6 +251,9 @@ final class SessionCoordinator: ObservableObject {
         // reducer cancellation effects are already executed above; never replay its queued speech.
         taskState = engine?.state
         _ = effects
+        if preparedFriendEffects == nil {
+            friendAssistance?.ownerStopped(endSharing: [.userEnd, .background].contains(cause))
+        }
         if cause == .userEnd {
             closeAdapters()
             frameWatchdog?.cancel(); frameWatchdog = nil
@@ -238,6 +264,10 @@ final class SessionCoordinator: ObservableObject {
     }
 
     func resume() {
+        guard friendAssistance?.pendingAcceptance == nil else {
+            message = "The selected target is still being synchronized. Pause or End can cancel it."
+            return
+        }
         refreshPermissions()
         guard !requiresPermissions || permissionState.ready else { message = permissionState.explanation; return }
         guard canResume, !hazardActive, let frame = lastFrame,
@@ -257,6 +287,7 @@ final class SessionCoordinator: ObservableObject {
                                 guidingHand: preferences.guidingHand == .left ? .left : .right)
             taskState = engine?.state
         }
+        friendAssistance?.taskChanged()
         armFrameWatchdog()
         // TaskEngine asks a fresh, scoped confirmation before reacquiring paused physical work.
     }
@@ -284,7 +315,11 @@ final class SessionCoordinator: ObservableObject {
             }
         }
     }
-    func backgrounded() { if phase == .active || phase == .preparing || phase == .recovering || calibrationIndex != nil { stop(.background) } }
+    func backgrounded() {
+        nativeMedia?.stop()
+        if phase == .active || phase == .preparing || phase == .recovering || calibrationIndex != nil { stop(.background) }
+        else { friendAssistance?.close() }
+    }
 
     func submitTask(_ request: TaskRequest) {
         guard phase == .active, !microphoneMuted, calibrationIndex == nil else { return }
@@ -303,10 +338,18 @@ final class SessionCoordinator: ObservableObject {
         guard var engine else { return }
         let effects = engine.reduce(event, nowMs: clock.nowMs)
         self.engine = engine
+        applyEffects(effects)
+    }
+    private func applyEffects(_ effects: [TaskEffect]) {
+        guard let engine else { return }
+        let effectEpoch = startupEpoch
         synchronizeContext()
+        guard self.engine?.state == engine.state, startupEpoch == effectEpoch else { return }
         taskState = engine.state
+        friendAssistance?.taskChanged()
         let pausesSession = engine.state.phase == .paused && phase == .active
         for effect in effects {
+            guard self.engine?.state == engine.state, startupEpoch == effectEpoch else { return }
             // The unified Stop cancels speech; announce the reason after it completes.
             if pausesSession, case .speak = effect { continue }
             execute(effect)
@@ -333,11 +376,16 @@ final class SessionCoordinator: ObservableObject {
             frameWork?.cancel(); pendingFrame = nil
             frameThrottle?.cancel(); frameThrottle = nil
             context = new
-            perception.updateContext(new); conversation.updateContext(new)
-            // UInt64 app generations cannot be truncated into UInt16 firmware generations.
-            do { try bands.setContext(.init(sessionID: task.sessionID, taskID: task.taskID, generation: task.generation)) }
-            catch { log("band_context_unavailable", code: "H1_SYNCHRONIZATION_REQUIRED") }
+            (evidence as? any FrameTargetEvidenceClient)?.updateContext(new)
+            perception.updateContext(new)
+            guard engine?.state.context == task, context == new else { return }
+            conversation.updateContext(new)
+            guard engine?.state.context == task, context == new else { return }
         }
+        // Accepted binding changes task ID within the generation allocated by Stop.
+        // UInt64 app generations still cannot be truncated into UInt16 firmware generations.
+        do { try bands.setContext(.init(sessionID: task.sessionID, taskID: task.taskID, generation: task.generation)) }
+        catch { log("band_context_unavailable", code: "H1_SYNCHRONIZATION_REQUIRED") }
     }
     private func cancelPendingWork() {
         // Keep cancelled operations counted until the adapter actually returns.
@@ -392,6 +440,108 @@ final class SessionCoordinator: ObservableObject {
         case .background, .audioInterruption, .audioRouteLost: return "Assistance paused after an interruption. Choose Resume when ready."
         default: return "Assistance paused. Choose Resume when ready."
         }
+    }
+
+    private func bindFriendAssistance(_ integration: FriendAssistanceIntegration) {
+        let bridge = FriendAssistanceCoordinator(clock: clock, integration: integration)
+        friendAssistance = bridge
+        bridge.currentTask = { [weak self] in self?.engine?.state.context }
+        bridge.sessionAllowsSharing = { [weak self] in
+            guard let self else { return false }
+            return [.active, .paused].contains(self.phase) && self.calibrationIndex == nil
+        }
+        bridge.mayPrompt = { [weak self] in
+            guard let self else { return false }
+            return [.active, .paused].contains(self.phase) && !self.hasActiveTask && self.calibrationIndex == nil
+        }
+        bridge.mayAccept = { [weak self] in self?.friendAcceptanceReady == true }
+        bridge.prepareAcceptance = { [weak self] binding in self?.prepareFriendAcceptance(binding) == true }
+        bridge.completeAcceptance = { [weak self] binding in self?.completeFriendAcceptance(binding) == true }
+        bridge.pause = { [weak self] in self?.stop(.userPause) }
+        bridge.localInput = { [weak self] input in
+            guard let self else { return }
+            switch input {
+            case .command(let context, let command):
+                guard context == self.context else { return }
+                self.command(command)
+            case .taskConfirmation(let context, let promptID, let answer, let provenance):
+                guard context == self.context, provenance == .localOwnerSpeech,
+                      let pending = self.engine?.state.confirmation, pending.promptID == promptID else { return }
+                self.receiveResponse(pending.context, source: .user, response: .confirmation(promptID: promptID, answer: answer))
+            case .selection: break
+            case .intent(let context, let request, let provenance):
+                guard context == self.context, provenance == .localOwnerSpeech,
+                      self.friendAssistance?.pendingAcceptance == nil else { return }
+                self.submitTask(request)
+            case .choice(let context, let requestID, let value, let provenance):
+                guard context == self.context, provenance == .localOwnerSpeech,
+                      let pending = self.engine?.state.pendingRequest, pending.requestID == requestID else { return }
+                self.receiveResponse(pending, source: .user, response: .choice(value))
+            case .menuCommand(let context, let requestID, let command, let provenance):
+                guard context == self.context, provenance == .localOwnerSpeech,
+                      let pending = self.engine?.state.pendingRequest, pending.requestID == requestID else { return }
+                self.receiveResponse(pending, source: .user, response: .menuCommand(command))
+            case .calibrationAnswer(let context, let answer, let provenance):
+                guard context == self.context, provenance == .localOwnerSpeech, self.calibrationIndex != nil else { return }
+                self.answerCalibration(answer)
+            }
+        }
+    }
+
+    /// Trusted backend adapter calls this after explicit owner setup; no UI enables it by default.
+    @discardableResult
+    func enableFriendSharing(authenticatedScope: FriendSelectionScope) -> Bool {
+        guard [.active, .paused].contains(phase), calibrationIndex == nil else { return false }
+        return friendAssistance?.configure(authenticatedScope) == true
+    }
+
+    func stopFriendSharing() {
+        nativeMedia?.stopSharing()
+        friendAssistance?.close()
+    }
+
+    private var friendAcceptanceReady: Bool {
+        guard friendExecutionReady, let frame = lastFrame, frame.context == context,
+              frame.trackingNormal, frame.capturedAtMs <= clock.nowMs,
+              frame.expiresAtMs > clock.nowMs, clock.nowMs - frame.capturedAtMs <= 300 else { return false }
+        return true
+    }
+
+    private var friendExecutionReady: Bool {
+        [.active, .paused].contains(phase) && !microphoneMuted && !hazardActive && calibrationIndex == nil &&
+        capabilities.perception.usable && capabilities.conversation.usable &&
+        (simulated || capabilities.offlineStop.usable) &&
+        (supportsSpeechOnlyGuidance || (bands.isReady && preferences.calibratedPairSignature == bands.pairSignature)) &&
+        (!requiresPermissions || permissions.current().ready)
+    }
+
+    private func prepareFriendAcceptance(_ binding: FriendSelectionAccepted) -> Bool {
+        guard friendAcceptanceReady, let current = engine?.state.context,
+              current.sessionID == binding.scope.sessionID, current.taskID == binding.oldTaskID,
+              current.generation == binding.oldTaskGeneration,
+              let frame = lastFrame, frame.context == context, frame.trackingNormal,
+              frame.capturedAtMs <= clock.nowMs, frame.expiresAtMs > clock.nowMs,
+              clock.nowMs - frame.capturedAtMs <= 300, var engine else { return false }
+        let effects = engine.prepareAcceptedSelection(binding, nowMs: clock.nowMs)
+        guard !effects.contains(where: { if case .rejected = $0 { return true }; return false }) else { return false }
+        self.engine = engine
+        stop(.taskReplacement, preparedFriendEffects: effects)
+        return self.engine?.state.context.generation == binding.newTaskGeneration && phase == .paused
+    }
+
+    private func completeFriendAcceptance(_ binding: FriendSelectionAccepted) -> Bool {
+        guard friendExecutionReady, phase == .paused, var engine else { return false }
+        let effects = engine.beginAcceptedSelection(binding, nowMs: clock.nowMs)
+        guard !effects.contains(where: { if case .rejected = $0 { return true }; return false }) else { return false }
+        self.engine = engine
+        phase = .active; activity = .thinking
+        message = "Finding the selected target in the current scene."
+        UIApplication.shared.isIdleTimerDisabled = true
+        applyEffects(effects)
+        guard phase == .active, self.engine?.state.context.taskID == binding.newTaskID,
+              self.engine?.state.context.generation == binding.newTaskGeneration else { return false }
+        armFrameWatchdog()
+        return true
     }
 }
 
@@ -543,7 +693,17 @@ private extension SessionCoordinator {
               phase == .active || phase == .paused else { return }
         if seenConversationEvents.count == 64 { seenConversationEvents.removeFirst() }
         seenConversationEvents.append(event.eventID)
+        if friendAssistance != nil {
+            // This legacy worker channel cannot establish local owner provenance or carry
+            // generation-scoped PCM. The separately injected local ingress handles consent.
+            switch event.payload {
+            case .confirmation, .calibrationAnswer, .choice, .menuCommand, .audio, .intent, .localOwnerUtterance: return
+            case .command(let command) where ![.stop, .pause, .cancelTask].contains(command): return
+            default: break
+            }
+        }
         switch event.payload {
+        case .localOwnerUtterance(let text): receiveLocalOwnerUtterance(text)
         case .command(let value): command(value)
         case .intent(let request): submitTask(request)
         case .confirmation(let promptID, let answer, let explicitUserResponse):
@@ -598,6 +758,8 @@ private extension SessionCoordinator {
         lastFrame = frame; preview = frame.preview
         if !frame.trackingNormal { if phase == .active { stop(.trackingLost) }; return }
         guard phase == .active else { return }
+        let capturedAtUTCms = Int64(Date().timeIntervalSince1970 * 1_000) - (clock.nowMs - frame.capturedAtMs)
+        (evidence as? any FrameTargetEvidenceClient)?.receive(frame, capturedAtUTCms: capturedAtUTCms)
         pendingFrame = frame
         pumpFrame()
     }
@@ -677,6 +839,42 @@ extension SessionCoordinator {
             lower.contains("pick") || lower.contains("object") ? .object : lower.contains("approach") ? .approach : .button
         conversation.emit(.intent(.init(id: UUID().uuidString, kind: kind, query: input)))
     }
+    func receiveLocalOwnerUtterance(_ text: String) {
+        guard !simulated, friendAssistance == nil, !microphoneMuted else { return }
+        let input = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !input.isEmpty, input.count <= 2_000 else { return }
+        if let command = NativeVoiceInput.command(input) { self.command(command); return }
+        guard phase == .active else { return }
+        caption = input
+        let normalized = input.lowercased().trimmingCharacters(in: .punctuationCharacters)
+        if let prompt = taskState?.confirmation {
+            let answer: ConfirmationAnswer?
+            switch normalized {
+            case "yes", "yes i did", "done": answer = .yes
+            case "no", "not yet": answer = .no
+            default: answer = nil
+            }
+            if let answer {
+                receiveResponse(prompt.context, source: .user,
+                    response: .confirmation(promptID: prompt.promptID, answer: answer))
+            }
+            return
+        }
+        if taskState?.phase == .choosing, let pending = taskState?.pendingRequest {
+            receiveResponse(pending, source: .user, response: .choice(input))
+            return
+        }
+        guard !hasActiveTask else { return }
+        let objectWords = ["cup", "can", "bottle", "bowl"]
+        let words = Set(normalized.components(separatedBy: CharacterSet.alphanumerics.inverted))
+        guard objectWords.contains(where: words.contains) else {
+            message = "Local hand guidance supports a cup, can, bottle, or bowl. Say which object to find."
+            if let context { speech.speak(message, priority: 4, context: context) }
+            return
+        }
+        submitTask(.init(id: UUID().uuidString, kind: .object, query: input))
+    }
+
     func confirmCurrent(_ answer: Bool) {
         guard let pending = taskState?.confirmation else { return }
         receiveResponse(pending.context, source: .user,
