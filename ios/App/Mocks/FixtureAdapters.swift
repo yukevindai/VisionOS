@@ -157,6 +157,15 @@ final class FixtureEvidence: TargetEvidenceClient {
     var forceAmbiguous = false
     var screenReads = 0
     private var screenTaskIdentity: String?
+    #if DEBUG
+    enum UITestScenario: String {
+        case kioskWrongScreen = "kiosk-wrong-screen"
+        case kioskReset = "kiosk-reset"
+        case blockedDoor = "blocked-door"
+    }
+    var uiTestScenario: UITestScenario?
+    private var reportedBlockedDoor = false
+    #endif
     init(clock: any AppClock) { self.clock = clock }
     func resolve(_ request: RequestContext, query: String, kind: TaskKind) async throws -> ResolvedTarget {
         let targetKind: TargetKind = kind == .object ? .object : kind == .door ? .handle : .button
@@ -169,6 +178,9 @@ final class FixtureEvidence: TargetEvidenceClient {
         let identity = request.task.sessionID + ":" + request.task.taskID
         if screenTaskIdentity != identity { screenTaskIdentity = identity; screenReads = 0 }
         screenReads += 1
+        #if DEBUG
+        if let screen = recoveryScreen() { return screen }
+        #endif
         let id = "fixture-screen-\(screenReads)"
         let frame = "fixture-\(clock.nowMs)"
         let payment = screenReads >= 3
@@ -178,6 +190,41 @@ final class FixtureEvidence: TargetEvidenceClient {
         return .init(id: id, frameID: frame, title: payment ? "Payment" : "SIMULATED café menu", controls: choices,
                      isPaymentScreen: payment, total: payment ? "Fixture total: 8 dollars" : nil)
     }
+    #if DEBUG
+    /// Deterministic UI-only scenes, never a claim about an actual kiosk or door.
+    private func recoveryScreen() -> ScreenModel? {
+        let frame = "fixture-\(clock.nowMs)"
+        func screen(_ id: String, title: String, label: String? = nil,
+                    destination: String? = nil, welcome: Bool = false, payment: Bool = false) -> ScreenModel {
+            let controls = label.map { [ResolvedTarget(id: "\(id)-control", kind: .screenControl,
+                label: $0, region: .init(x: 0.2, y: 0.2, width: 0.3, height: 0.15),
+                frameID: frame, sourceScreenID: id, expectedDestination: destination)] } ?? []
+            return .init(id: id, frameID: frame, title: "SIMULATED " + title, controls: controls,
+                         isPaymentScreen: payment, isWelcomeScreen: welcome,
+                         total: payment ? "Fixture total: 8 dollars" : nil)
+        }
+        switch uiTestScenario {
+        case .kioskWrongScreen:
+            switch screenReads {
+            case 1: return screen("fixture-menu", title: "café menu", label: "Tea", destination: "fixture-details")
+            case 2: return screen("fixture-wrong", title: "wrong screen", label: "Back", destination: "fixture-menu")
+            case 3: return screen("fixture-menu", title: "recovered menu", label: "Tea after Back", destination: "fixture-details")
+            case 4: return screen("fixture-details", title: "tea details", label: "Add sandwich")
+            default: return screen("fixture-payment", title: "payment", payment: true)
+            }
+        case .kioskReset:
+            switch screenReads {
+            case 1: return screen("fixture-menu", title: "café menu", label: "Tea")
+            case 2: return screen("fixture-welcome", title: "welcome", welcome: true)
+            case 3: return screen("fixture-restarted", title: "restarted menu", label: "Tea after restart")
+            case 4: return screen("fixture-details", title: "tea details", label: "Add sandwich")
+            default: return screen("fixture-payment", title: "payment", payment: true)
+            }
+        default: return nil
+        }
+    }
+    #endif
+
     func readMenu(_ request: RequestContext, query: String) async throws -> MenuContent {
         .init(sections: [.init(title: "SIMULATED drinks", items: ["Tea, 3 dollars", "Coffee, 4 dollars"]),
                          .init(title: "SIMULATED food", items: ["Sandwich, 5 dollars"])])
@@ -186,8 +233,14 @@ final class FixtureEvidence: TargetEvidenceClient {
         "This is fixture menu data. " + menu.sections.flatMap(\.items).joined(separator: ". ")
     }
     func verify(_ request: RequestContext, action: ActionKind, target: ResolvedTarget) async throws -> VerificationOutcome {
+        #if DEBUG
+        if uiTestScenario == .blockedDoor, action == .openDoor, !reportedBlockedDoor {
+            reportedBlockedDoor = true
+            return .doorBlocked
+        }
+        #endif
         // Require explicit user confirmation; a timer or a simulated hand overlap is not success.
-        .unavailable
+        return .unavailable
     }
     func cancel(context: SessionContext) {}
 }

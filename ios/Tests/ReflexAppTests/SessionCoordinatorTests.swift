@@ -76,6 +76,30 @@ final class SessionCoordinatorTests: XCTestCase {
         XCTAssertEqual(h.session.phase, .ended)
         XCTAssertEqual(h.clock.pendingCount, 0)
     }
+    #if DEBUG
+    func testTaskHazardRetainsExplanationAfterUnifiedStop() async {
+        let clock = ManualAppClock()
+        let evidence = FixtureEvidence(clock: clock)
+        evidence.uiTestScenario = .blockedDoor
+        let h = makeHarness(evidence: evidence, clock: clock)
+        h.session.start(); await settle()
+        h.session.submitFixtureText("open the door"); await settle()
+        let explanation = "The door may be locked, heavy, or blocked. Please ask for help."
+        XCTAssertEqual(h.session.phase, .paused)
+        XCTAssertEqual(h.session.taskState?.lastStop, .hazard)
+        XCTAssertEqual(h.session.message, explanation)
+        XCTAssertEqual(h.session.caption, explanation)
+        XCTAssertGreaterThan(h.speech.stoppedCount, 0)
+        XCTAssertEqual(h.speech.spoken.filter { $0 == explanation }.count, 1)
+        XCTAssertNil(h.session.taskState?.confirmation)
+        h.session.confirmCurrent(true); await settle()
+        XCTAssertNil(h.session.taskState?.result)
+        XCTAssertEqual(h.session.phase, .paused)
+        h.session.stop(.userEnd)
+    }
+
+    #endif
+
     func testButtonRequiresExplicitScopedConfirmation() async {
         let h = makeHarness(); h.session.start(); await settle()
         h.session.submitFixtureText("press the blue button"); await settle()

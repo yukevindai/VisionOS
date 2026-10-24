@@ -29,7 +29,10 @@
 		B5A3C5647C7890E5BB918328 /* LiveCompositionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7454E292F336B7E1CDE6DB6A /* LiveCompositionTests.swift */; };
 		4DB8885FDBE8060A22A795E9 /* SessionCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3AF64D889E1D7882A924D15B /* SessionCoordinatorTests.swift */; };
 		E0D149BDAF1A78C73D831BC1 /* SessionLifecycleStressTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74537510BF15D6CE4446639D /* SessionLifecycleStressTests.swift */; };
+		28BF6E4E32D91C1F0A7027C6 /* RecoveryTaskFlowUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = ADD518A10C3CCF2CAD3AA117 /* RecoveryTaskFlowUITests.swift */; };
 		E1624880259C380E59BB30BC /* ReflexUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5718F94B1E5A6513D29B9829 /* ReflexUITests.swift */; };
+		414C3372EF808966B98A2B08 /* SetupAccessibilityUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8573742F3D02D606549C835 /* SetupAccessibilityUITests.swift */; };
+		96A4352366167F5EC1E50649 /* SimulatedTaskFlowUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E45FF1C3118DE6201676E27 /* SimulatedTaskFlowUITests.swift */; };
 		60750BB32EEC90B710BC48A7 /* Tasks in Frameworks */ = {isa = PBXBuildFile; productRef = 2CA962533E26CC2BF74C0711; };
 		366A1E3373F82368E1F9D379 /* HapticLink in Frameworks */ = {isa = PBXBuildFile; productRef = DB1A66FAFEDEE32396F8DF80; };
 /* End PBXBuildFile section */
@@ -62,7 +65,10 @@
 		7454E292F336B7E1CDE6DB6A /* LiveCompositionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "LiveCompositionTests.swift"; sourceTree = "<group>"; };
 		3AF64D889E1D7882A924D15B /* SessionCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionCoordinatorTests.swift"; sourceTree = "<group>"; };
 		74537510BF15D6CE4446639D /* SessionLifecycleStressTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionLifecycleStressTests.swift"; sourceTree = "<group>"; };
+		ADD518A10C3CCF2CAD3AA117 /* RecoveryTaskFlowUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "RecoveryTaskFlowUITests.swift"; sourceTree = "<group>"; };
 		5718F94B1E5A6513D29B9829 /* ReflexUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ReflexUITests.swift"; sourceTree = "<group>"; };
+		E8573742F3D02D606549C835 /* SetupAccessibilityUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SetupAccessibilityUITests.swift"; sourceTree = "<group>"; };
+		4E45FF1C3118DE6201676E27 /* SimulatedTaskFlowUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SimulatedTaskFlowUITests.swift"; sourceTree = "<group>"; };
 		BF419EBF287978F4AFAE47F3 /* Debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Config/Debug.xcconfig; sourceTree = SOURCE_ROOT; };
 		6790024A095F4224862AF883 /* Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Config/Release.xcconfig; sourceTree = SOURCE_ROOT; };
 		ED7C4594B13EFC9A631BB492 /* Local.example.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Config/Local.example.xcconfig; sourceTree = SOURCE_ROOT; };
@@ -110,7 +116,10 @@
 			74537510BF15D6CE4446639D,
 		); path = "Tests/ReflexAppTests"; sourceTree = "<group>"; };
 		3565839C8FECE65876CB6A4F /* ReflexUITests */ = {isa = PBXGroup; children = (
+			ADD518A10C3CCF2CAD3AA117,
 			5718F94B1E5A6513D29B9829,
+			E8573742F3D02D606549C835,
+			4E45FF1C3118DE6201676E27,
 		); path = "UITests"; sourceTree = "<group>"; };
 		5151B46607EBC8890D8DFCC2 /* Products */ = {isa = PBXGroup; children = (
 			3E7946A55E25C48EA08D8218,
@@ -172,7 +181,10 @@
 			E0D149BDAF1A78C73D831BC1,
 		); runOnlyForDeploymentPostprocessing = 0; };
 		B83A31893509703A61030AA6 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (
+			28BF6E4E32D91C1F0A7027C6,
 			E1624880259C380E59BB30BC,
+			414C3372EF808966B98A2B08,
+			96A4352366167F5EC1E50649,
 		); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXSourcesBuildPhase section */
 

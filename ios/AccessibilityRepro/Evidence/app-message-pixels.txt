@@ -1,0 +1,14 @@
+colorSpace sRGB IEC61966-2.1, samples 3, row 4248, planar false
+pixels 1062x1118, bitsPerPixel 32, bitsPerSample 8, bitmapFormat 0, embeddedProfileBytes 3144
+FFFFFF 990915
+000000 165117
+C5C5C5 997
+B8B8B8 878
+DDDDDD 863
+DEDEDE 786
+282828 727
+787878 726
+050505 715
+B7B7B7 671
+A0A0A0 643
+414141 626

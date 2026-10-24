@@ -4,6 +4,7 @@ struct AssistanceSessionView: View {
     @ObservedObject var session: SessionCoordinator
     @ObservedObject var preferences: UserPreferences
     @State private var fixtureInput = ""
+    @FocusState private var fixtureInputFocused: Bool
     @AccessibilityFocusState private var statusFocused: Bool
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     var body: some View {
@@ -53,6 +54,7 @@ struct AssistanceSessionView: View {
                                 .foregroundStyle(Color(uiColor: .label))
                                 .accessibilityLabel("Simulated request")
                                 .accessibilityIdentifier("fixture.input")
+                                .focused($fixtureInputFocused)
                                 .onSubmit(sendFixtureInput)
                             Button(action: sendFixtureInput) {
                                 Text("Send simulated request")
@@ -70,6 +72,7 @@ struct AssistanceSessionView: View {
                 }.padding(24).frame(maxWidth: 650)
             }
             .clipped()
+            .accessibilityIdentifier("session.content")
             sessionControls.padding().background(Color(uiColor: .systemBackground))
         }
         .onAppear { statusFocused = true }
@@ -79,24 +82,29 @@ struct AssistanceSessionView: View {
                     Button {
                         if session.phase == .paused { session.resume() } else { session.stop(.userPause) }
                     } label: {
-                        Label(session.phase == .paused ? "Resume assistance" : "Pause assistance",
+                        Label(dynamicTypeSize.isAccessibilitySize
+                              ? (session.phase == .paused ? "Resume" : "Pause")
+                              : (session.phase == .paused ? "Resume assistance" : "Pause assistance"),
                               systemImage: session.phase == .paused ? "play.fill" : "pause.fill")
                             .frame(maxWidth: .infinity, minHeight: 52)
                     }.buttonStyle(.borderedProminent).controlSize(.large)
                         .tint(AssistanceColors.primaryActionFill).foregroundStyle(.white)
+                        .accessibilityLabel(session.phase == .paused ? "Resume assistance" : "Pause assistance")
                         .accessibilityIdentifier("session.pause")
                     Button(role: .destructive) { session.stop(.userEnd) } label: {
-                        Label("End assistance", systemImage: "phone.down.fill")
+                        Label(dynamicTypeSize.isAccessibilitySize ? "End" : "End assistance", systemImage: "phone.down.fill")
                             .foregroundStyle(Color(uiColor: .label))
                             .fixedSize(horizontal: false, vertical: true)
                             .padding(.horizontal, 16).padding(.vertical, 12)
                             .frame(maxWidth: .infinity, minHeight: 52)
                             .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16))
                             .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color(uiColor: .label), lineWidth: 1))
-                    }.buttonStyle(.plain).controlSize(.large).accessibilityIdentifier("session.end")
+                    }.buttonStyle(.plain).controlSize(.large)
+                        .accessibilityLabel("End assistance").accessibilityIdentifier("session.end")
                 }
     }
     private func sendFixtureInput() {
+        fixtureInputFocused = false
         session.submitFixtureText(fixtureInput); fixtureInput = ""
     }
 }

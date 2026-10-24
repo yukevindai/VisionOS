@@ -79,8 +79,14 @@ final class AppDependencies: ObservableObject {
         if controller != nil { liveBands?.configureBandSynchronization(bands) }
         var permissions: any PermissionClient = permissionOverride ?? (simulated ? FixturePermissionClient() : SystemPermissionClient())
         var enforceSimulatedPermissions = false
+        let fixtureEvidence = simulated ? FixtureEvidence(clock: clock) : nil
         #if DEBUG
         let arguments = ProcessInfo.processInfo.arguments
+        if simulated, arguments.contains("--uitesting"), arguments.contains("--simulate"),
+           let option = arguments.firstIndex(of: "--ui-task-scenario"),
+           arguments.indices.contains(option + 1) {
+            fixtureEvidence?.uiTestScenario = FixtureEvidence.UITestScenario(rawValue: arguments[option + 1])
+        }
         if simulated, arguments.contains("--uitesting"), arguments.contains("--simulate"),
            let option = arguments.firstIndex(of: "--ui-permission-scenario"),
            arguments.indices.contains(option + 1),
@@ -94,7 +100,7 @@ final class AppDependencies: ObservableObject {
             perception: simulated ? FixturePerception(clock: clock) : live?.perception ?? UnavailablePerception(),
             speech: simulated ? FixtureSpeech(audible: !ProcessInfo.processInfo.arguments.contains("--uitesting")) : live?.speech ?? UnavailableSpeech(),
             conversation: simulated ? FixtureConversation() : live?.conversation ?? UnavailableConversation(),
-            evidence: simulated ? FixtureEvidence(clock: clock) : live?.evidence ?? UnavailableEvidence(),
+            evidence: fixtureEvidence ?? live?.evidence ?? UnavailableEvidence(),
             permissions: permissions, enforceSimulatedPermissions: enforceSimulatedPermissions,
             framePolicy: simulated ? nil : live?.framePolicy, generationSeed: liveBands?.generationSeed ?? { 0 })
     }

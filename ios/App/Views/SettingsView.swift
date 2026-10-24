@@ -3,15 +3,58 @@ import HapticLink
 
 struct SettingsView: View {
     @ObservedObject var dependencies: AppDependencies
-    @Environment(\.dismiss) private var dismiss
     var body: some View {
-        NavigationStack {
-            SettingsContents(dependencies: dependencies, session: dependencies.session, preferences: dependencies.preferences)
-                .navigationTitle("Settings")
-                .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+        SettingsNavigationView(dependencies: dependencies, session: dependencies.session)
+    }
+}
+
+private struct SettingsNavigationView: View {
+    @ObservedObject var dependencies: AppDependencies
+    @ObservedObject var session: SessionCoordinator
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    var body: some View {
+        VStack(spacing: 0) {
+            NavigationStack {
+                SettingsContents(dependencies: dependencies, session: session, preferences: dependencies.preferences)
+                    .navigationTitle("Settings")
+                    .safeAreaInset(edge: .bottom) {
+                        if dynamicTypeSize.isAccessibilitySize {
+                            Button { dismiss() } label: {
+                                Label("Done", systemImage: "checkmark")
+                                    .frame(maxWidth: .infinity, minHeight: 52)
+                            }
+                            .buttonStyle(.plain).foregroundStyle(Color.primary)
+                            .padding(12)
+                            .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16))
+                            .accessibilityIdentifier("settings.done")
+                            .padding().background(Color(uiColor: .systemBackground))
+                        }
+                    }
+                    .toolbar {
+                        if !dynamicTypeSize.isAccessibilitySize {
+                            ToolbarItem(placement: .confirmationAction) {
+                                Button("Done") { dismiss() }
+                                    .accessibilityIdentifier("settings.done")
+                            }
+                        }
+                    }
+            }
+            if session.phase == .active || session.phase == .preparing || session.phase == .recovering {
+                Button { session.stop(.userPause) } label: {
+                    Label("Pause assistance", systemImage: "pause.fill")
+                        .frame(maxWidth: .infinity, minHeight: 52)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .buttonStyle(.borderedProminent).controlSize(.large)
+                .tint(AssistanceColors.primaryActionFill).foregroundStyle(.white)
+                .accessibilityIdentifier("settings.pause")
+                .padding().background(Color(uiColor: .systemBackground))
+            }
         }
     }
 }
+
 private struct SettingsContents: View {
     @ObservedObject var dependencies: AppDependencies
     @ObservedObject var session: SessionCoordinator
@@ -21,10 +64,10 @@ private struct SettingsContents: View {
             Section("Preferences") {
                 Picker("Guiding hand", selection: $preferences.guidingHand) {
                     ForEach(UserPreferences.Hand.allCases, id: \.self) { Text($0.rawValue.capitalized).tag($0) }
-                }.disabled(session.phase.canEnd)
+                }.pickerStyle(.inline).disabled(session.phase.canEnd)
                 Picker("Phone position", selection: $preferences.phonePosition) {
                     ForEach(UserPreferences.PhonePosition.allCases, id: \.self) { Text($0.label).tag($0) }
-                }.disabled(session.phase.canEnd)
+                }.pickerStyle(.inline).disabled(session.phase.canEnd)
                 Toggle("Show captions", isOn: $preferences.captions)
             }
             Section("Wristbands") {
@@ -64,15 +107,19 @@ struct BandSetupView: View {
         Form {
             Section {
                 Text(bands.summary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("bands.summary")
                 Text("Use the tactile marker to identify the left band. Advertised names are hints; confirm each physical side before assignment.")
-                Button("Discover wristbands") { bands.discover() }.accessibilityIdentifier("bands.discover")
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("bands.instructions")
+                Button("Discover wristbands") { bands.discover() }.foregroundStyle(Color.primary).frame(minHeight: 44).accessibilityIdentifier("bands.discover")
             }
             if let error { Section { Text(error) } }
             ForEach(bands.discovered, id: \.id) { band in
                 Section(band.nameHint ?? "Wristband") {
                     Text(band.id.uuidString).font(.caption).textSelection(.enabled)
-                    Button("Confirm this is my left band") { assign(band.id, .left) }.accessibilityIdentifier("bands.confirm.left")
-                    Button("Confirm this is my right band") { assign(band.id, .right) }.accessibilityIdentifier("bands.confirm.right")
+                    Button("Confirm this is my left band") { assign(band.id, .left) }.foregroundStyle(Color.primary).accessibilityIdentifier("bands.confirm.left")
+                    Button("Confirm this is my right band") { assign(band.id, .right) }.foregroundStyle(Color.primary).accessibilityIdentifier("bands.confirm.right")
                 }
             }
             ForEach(bands.pairings, id: \.side) { pairing in
@@ -98,20 +145,43 @@ struct CalibrationView: View {
             if session.simulated { SimulationLabel() }
             Section {
                 Text("Practice each side and all nine patterns. Identify the side or meaning after each scheduled pattern. Assistance remains paused during calibration.")
-                if !session.calibrationMessage.isEmpty { Text(session.calibrationMessage) }
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("calibration.instructions")
+                if !session.calibrationMessage.isEmpty {
+                    Text(session.calibrationMessage)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("calibration.message")
+                }
                 if session.calibrationIndex == nil {
-                    Button("Begin calibration", action: session.beginCalibration).accessibilityIdentifier("calibration.start")
+                    Button(action: session.beginCalibration) { Text("Begin calibration").foregroundStyle(Color.primary) }.frame(minHeight: 44).accessibilityIdentifier("calibration.start")
                 } else {
                     Text("Check \((session.calibrationIndex ?? 0) + 1) of 11")
-                    Button("Repeat pattern", action: session.playCalibration)
+                        .accessibilityIdentifier("calibration.progress")
+                    Button(action: session.playCalibration) { Text("Repeat pattern").foregroundStyle(Color.primary) }
+                        .frame(minHeight: 44)
+                        .accessibilityIdentifier("calibration.repeat")
                     ForEach(answers, id: \.self) { answer in
-                        Button(answer) { session.answerCalibration(answer) }
+                        Button { session.answerCalibration(answer) } label: { Text(answer).foregroundStyle(Color.primary) }
+                            .frame(minHeight: 44)
+                            .accessibilityIdentifier("calibration.answer.\(answer)")
                     }
-                    Button("Stop calibration", role: .destructive, action: session.stopCalibration)
-                        .accessibilityIdentifier("calibration.stop")
                 }
             }
-        }.navigationTitle("Calibration")
+        }
+        .safeAreaInset(edge: .bottom) {
+            if session.calibrationIndex != nil {
+                Button(role: .destructive, action: session.stopCalibration) {
+                    Label("Stop calibration", systemImage: "stop.circle")
+                        .frame(maxWidth: .infinity, minHeight: 52)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .buttonStyle(.borderedProminent).controlSize(.large)
+                .tint(AssistanceColors.primaryActionFill).foregroundStyle(.white)
+                .accessibilityIdentifier("calibration.stop")
+                .padding().background(Color(uiColor: .systemBackground))
+            }
+        }
+        .navigationTitle("Calibration")
             .onDisappear { if session.calibrationIndex != nil { session.stopCalibration() } }
     }
 }

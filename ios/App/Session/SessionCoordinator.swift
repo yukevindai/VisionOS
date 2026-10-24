@@ -305,12 +305,21 @@ final class SessionCoordinator: ObservableObject {
         self.engine = engine
         synchronizeContext()
         taskState = engine.state
-        for effect in effects { execute(effect) }
+        let pausesSession = engine.state.phase == .paused && phase == .active
+        for effect in effects {
+            // The unified Stop cancels speech; announce the reason after it completes.
+            if pausesSession, case .speak = effect { continue }
+            execute(effect)
+        }
         // Cancel obsolete requests even when their providers ignore Swift task cancellation.
         let pending = self.engine?.state.pendingRequest
         for (request, work) in requestWork where request != pending { work.cancel() }
-        if self.engine?.state.phase == .paused, phase == .active {
-            stop(.userPause)
+        if pausesSession {
+            stop(sessionStopCause(engine.state.lastStop ?? .userPause))
+            for case let .speak(text, priority) in effects where text != "Stop" {
+                message = text
+                execute(.speak(text: text, priority: priority))
+            }
         }
         deadline?.cancel(); deadline = nil
         if let request = self.engine?.state.pendingRequest {
@@ -339,6 +348,23 @@ final class SessionCoordinator: ObservableObject {
     }
     private func log(_ name: String, code: String? = nil) {
         diagnostics.record(name, context: context, now: clock.nowMs, taskID: engine?.state.context.taskID, code: code)
+    }
+
+    private func sessionStopCause(_ reason: StopReason) -> SessionStopCause {
+        switch reason {
+        case .userPause: return .userPause
+        case .cancelled: return .cancelTask
+        case .ended: return .userEnd
+        case .trackingLost: return .trackingLost
+        case .targetLost, .handLost: return .targetLost
+        case .hazard: return .hazard
+        case .bandDisconnected: return .bandFailure
+        case .backgrounded: return .background
+        case .audioInterrupted: return .audioInterruption
+        case .microphoneMuted: return .microphoneMuted
+        case .geometryChanged: return .cameraChanged
+        case .replaced: return .taskReplacement
+        }
     }
 
     private func taskStopReason(_ cause: SessionStopCause) -> StopReason {
@@ -699,7 +725,13 @@ extension SessionCoordinator {
     }
     func answerCalibration(_ answer: String) {
         guard let index = calibrationIndex, let expected = calibrationExpectedAnswer else { return }
-        guard answer.caseInsensitiveCompare(expected) == .orderedSame else { calibrationMessage = "That did not match. Listen to the explanation and try again."; playCalibration(); return }
+        guard answer.caseInsensitiveCompare(expected) == .orderedSame else {
+            playCalibration()
+            if calibrationIndex != nil {
+                calibrationMessage = "That did not match. Listen to the explanation and try again."
+            }
+            return
+        }
         bands.allStop(reason: "calibration_step")
         if index == 10 {
             calibrationIndex = nil; calibrationTaskID = nil
