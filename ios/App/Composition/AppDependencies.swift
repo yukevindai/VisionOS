@@ -68,6 +68,7 @@ final class AppDependencies: ObservableObject {
     private static func compose(simulated: Bool, preferences: UserPreferences, diagnostics: Diagnostics,
                                 live: LiveIntegrationBundle?, clock: any AppClock,
                                 permissionOverride: (any PermissionClient)?, defaults: UserDefaults) -> SessionCoordinator {
+        let clock = compositionClock(simulated: simulated, fallback: clock)
         let live = live ?? (simulated ? nil : nativeIntegration(preferences: preferences, clock: clock))
         let liveBands = simulated ? nil : live?.bands
         let controller: HapticLinkController?
@@ -109,6 +110,17 @@ final class AppDependencies: ObservableObject {
             permissions: permissions, enforceSimulatedPermissions: enforceSimulatedPermissions,
             framePolicy: simulated ? nil : live?.framePolicy, generationSeed: liveBands?.generationSeed ?? { 0 },
             friends: simulated ? nil : live?.friends, media: simulated ? nil : live?.media)
+    }
+
+    static func compositionClock(simulated: Bool, fallback: any AppClock,
+                                 arguments: [String] = ProcessInfo.processInfo.arguments) -> any AppClock {
+        #if DEBUG
+        if simulated, arguments.contains("--simulate"), arguments.contains("--uitesting"),
+           fallback is SystemAppClock {
+            return UITestAppClock()
+        }
+        #endif
+        return fallback
     }
 
     private static func nativeIntegration(preferences: UserPreferences, clock: any AppClock) -> LiveIntegrationBundle {

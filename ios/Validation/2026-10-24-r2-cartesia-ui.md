@@ -102,3 +102,19 @@ were added. The contrast issue remains unresolved.
 All provider responses in unit tests are simulated. No live Cartesia/Convex call,
 physical microphone/echo-cancellation, real VoiceOver use or physical-device
 acceptance has been performed in this slice. The accessibility audit issue remains open despite the functional UI fixes.
+
+## PR #5 integration with current main
+
+Before opening this change for merging, current `main` at `f265e2b` was integrated.
+Its simulated UI clock, setup layout and fixed-footer calibration form are retained.
+The one Settings conflict was resolved by keeping main's form, which already
+contains the clipping behavior plus opaque navigation styling. Native Cartesia
+composition remains enabled alongside the existing simulated UI clock selection.
+
+The combined source passed **164 app unit tests** (including the three clock tests
+already on main) and **the largest-text light calibration accessibility audit**.
+Log: `/tmp/r2-pr5-merge-tests.log`; result:
+`/tmp/r2-livekit-driver-derived/Logs/Test/Test-Reflex-2026.10.24_12-51-57--0700.xcresult`.
+The three contrast failures above are the last complete audit findings at
+`4ae67a6`; those failing cases were not rerun after this integration and are not
+claimed fixed. No live service/device validation was added.
