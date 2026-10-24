@@ -115,7 +115,6 @@ final class LiveCompositionTests: XCTestCase {
             evidence: evidence, framePolicy: .init(minimumIntervalMs: 200, maximumEncodedBytes: 4), bands: bands)
         let dependencies = AppDependencies(simulated: false, live: live, clock: clock,
             permissions: FixturePermissionClient(state: permissions), defaults: defaults)
-        dependencies.preferences.setupComplete = true
         return .init(dependencies: dependencies, clock: clock, perception: perception,
                      speech: speech, conversation: conversation, evidence: evidence)
     }
@@ -242,8 +241,8 @@ final class LiveCompositionTests: XCTestCase {
     func testLiveCompositionStillRequiresCameraAndMicrophonePermission() async {
         let h = harness(permissions: .init(camera: false, microphone: true))
         h.session.start(); await settle()
-        XCTAssertEqual(h.session.phase, .idle)
-        XCTAssertTrue(h.session.showSetup)
+        XCTAssertEqual(h.session.phase, .failed)
+        XCTAssertTrue(h.session.message.contains("Camera access is denied"))
         XCTAssertEqual(h.conversation.startCount, 0)
         XCTAssertNil(h.perception.context)
     }

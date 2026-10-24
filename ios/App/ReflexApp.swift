@@ -21,8 +21,12 @@ struct ReflexApp: App {
     private var normalContent: some View {
             HomeView(dependencies: dependencies, session: dependencies.session)
                 .onChange(of: scenePhase) { _, new in
-                    if new != .active { dependencies.session.backgrounded() }
-                    else { dependencies.session.refreshPermissions() }
+                    switch new {
+                    case .active: dependencies.session.becameActive()
+                    case .inactive: dependencies.session.becameInactive()
+                    case .background: dependencies.session.backgrounded()
+                    @unknown default: dependencies.session.backgrounded()
+                    }
                 }
                 .onReceive(NotificationCenter.default.publisher(for: AVAudioSession.interruptionNotification)) { notification in
                     if let raw = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,

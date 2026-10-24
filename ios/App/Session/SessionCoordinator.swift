@@ -13,7 +13,6 @@ final class SessionCoordinator: ObservableObject {
     @Published private(set) var preview: UIImage?
     @Published private(set) var microphoneMuted = false
     @Published private(set) var taskState: TaskState?
-    @Published private(set) var showSetup = false
     @Published private(set) var permissionState = PermissionState(camera: false, microphone: false)
     @Published private(set) var requestingPermissions = false
     @Published private(set) var calibrationIndex: Int?
@@ -34,6 +33,8 @@ final class SessionCoordinator: ObservableObject {
     private(set) var context: SessionContext?
     private var startWork: Task<Void, Never>?
     private var adapterStartInFlight = false
+    private var permissionStartPending = false
+    private var applicationActive = true
     private var requestWork: [RequestContext: Task<Void, Never>] = [:]
     private var deadline: ScheduledWork?
     private var frameWatchdog: ScheduledWork?
@@ -130,9 +131,20 @@ final class SessionCoordinator: ObservableObject {
             message = "The previous connection attempt is still stopping. Try Start again shortly."
             return
         }
-        guard preferences.setupComplete else { showSetup = true; return }
+        guard !requestingPermissions else {
+            message = "Finish the permission request before starting another call."
+            return
+        }
         permissionState = permissions.current()
-        guard !requiresPermissions || permissionState.ready else { showSetup = true; message = permissionState.explanation; return }
+        if requiresPermissions && !permissionState.ready {
+            guard permissionState.canRequest else {
+                phase = .failed
+                message = permissionState.explanation
+                return
+            }
+            requestAccessAndStart()
+            return
+        }
         startupEpoch = UUID()
         let epoch = startupEpoch
         let id = UUID().uuidString
@@ -198,19 +210,52 @@ final class SessionCoordinator: ObservableObject {
 
     func refreshPermissions() { permissionState = permissions.current() }
 
-    func requestPermissions() {
-        guard !requestingPermissions else { return }
+    private func requestAccessAndStart() {
+        startupEpoch = UUID()
+        let epoch = startupEpoch
+        permissionStartPending = true
         requestingPermissions = true
+        phase = .preparing; activity = .preparing
+        message = "Allow camera, microphone and speech recognition access to start your call."
         let permissions = self.permissions
         Task { [weak self] in
+            guard self?.permissionStartPending == true, self?.startupEpoch == epoch else {
+                self?.requestingPermissions = false
+                return
+            }
             let state = await permissions.request()
             guard let self else { return }
-            self.permissionState = state
             self.requestingPermissions = false
+            self.permissionState = state
+            guard self.permissionStartPending, self.startupEpoch == epoch else { return }
+            guard state.ready else {
+                self.permissionStartPending = false
+                self.phase = .failed
+                self.message = state.explanation
+                return
+            }
+            self.continueAfterPermissions()
         }
     }
-    func finishSetup() { preferences.setupComplete = true; showSetup = false; start() }
-    func dismissSetup() { showSetup = false }
+
+    private func continueAfterPermissions() {
+        guard permissionStartPending, !requestingPermissions, applicationActive,
+              phase == .preparing, permissionState.ready else { return }
+        permissionStartPending = false
+        phase = .idle
+        start()
+    }
+
+    func becameActive() {
+        applicationActive = true
+        refreshPermissions()
+        continueAfterPermissions()
+    }
+
+    func becameInactive() {
+        applicationActive = false
+        if !permissionStartPending { backgrounded() }
+    }
 
     /// Serialized synchronous stop: invalidate first, cancel work, stop BLE, then request R1 speech.
     /// No await, network request, BLE acknowledgment, or audio completion can block this path.
@@ -219,6 +264,7 @@ final class SessionCoordinator: ObservableObject {
     private func stop(_ cause: SessionStopCause, preparedFriendEffects: [TaskEffect]?) {
         if [.userEnd, .background, .microphoneMuted, .cameraChanged, .providerFailure].contains(cause) { nativeMedia?.stop() }
         guard phase != .ended && phase != .idle else { return }
+        permissionStartPending = false
         startupEpoch = UUID()
         let stopEpoch = startupEpoch
         friendAssistance?.preemptForStop()
@@ -319,6 +365,11 @@ final class SessionCoordinator: ObservableObject {
         }
     }
     func backgrounded() {
+        applicationActive = false
+        if permissionStartPending {
+            stop(.userEnd)
+            return
+        }
         nativeMedia?.stop()
         if phase == .active || phase == .preparing || phase == .recovering || calibrationIndex != nil { stop(.background) }
         else { friendAssistance?.close() }
