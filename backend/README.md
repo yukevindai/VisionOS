@@ -59,6 +59,28 @@ The CLI/evaluation result has five parts:
    - every API error verbatim
 4. Review the overlays in `eval/results/<run>/`: Gemini's boxes in red, ground truth in green. Results are labelled `REAL_API`. `--replay-dir` runs produce `SIMULATED` results and never count as live.
 
+### Cartesia speech (Step 5)
+
+`speech:synthesize({ requestId, text })` is a signed-in Convex action. The iOS app calls it only for priority-4 `.speak` lines; priorities 0–3 (hand guidance, Stop, safety) stay on device. Sign in before guiding: the app never opens a login prompt mid-task and uses local speech when signed out.
+
+Deploy (dev):
+
+1. Set the Auth0 values from [the setup guide](../docs/LIVE_VIDEO_DEMO_SETUP.md) plus `CARTESIA_API_KEY`, `CARTESIA_VOICE_ID` and `CARTESIA_MODEL` (see `.env.example`) on the deployment with `pnpm exec convex env set`. LiveKit values are not needed for speech.
+2. `pnpm run typecheck`, then `pnpm exec convex dev --once --typecheck=disable`. The repo typechecks with `backend/tsconfig.json`; delete a CLI-generated `convex/tsconfig.json` if one appears, and do not commit CLI changes to `convex/_generated`.
+3. Offline provider check: `node --env-file=.env scripts/cartesiaSmoke.ts "Say hello"` writes `eval/results/cartesia-smoke.wav`.
+
+Behaviour the app relies on:
+
+- Missing or partial credentials return `{ ok: false, errorCode: "SPEECH_NOT_CONFIGURED" }`, never silent audio, so the app falls back to on-device speech.
+- Text is trimmed and capped at 300 characters; the provider call times out after 5 s; responses must be WAV (24 kHz PCM16) under 4 MB.
+- Successful audio is cached in Convex file storage keyed by sha256(model, voice, text). The table stores the digest, not the transcript. Failures are never cached. Changing the voice or model misses the cache.
+- Each uncached request costs one Cartesia credit per character. Errors never include the API key.
+- Modules that import Node built-ins (`lib/cartesia.ts`, `lib/visionService.ts`, `speech.ts`) start with `"use node"`; without it `convex dev` fails with "Could not resolve node:buffer".
+
+Live check (dev deployment, 2026-10-24, one run each): unauthenticated call rejected with `Authentication required`; signed-in 18-character request `REAL_API` in 329 ms; the same text again served from cache in 62 ms. Measured server-side by the action, not on a phone.
+
+Tests: `pnpm test tests/cartesia.test.ts tests/speech.test.ts` (13 cases, simulated provider).
+
 ### Rules the code enforces
 
 - **Coordinates.** EXIF orientation is applied before Gemini sees the image. Boxes are normalized, origin top-left, relative to the upright photo. `screenModel.image` records the upright `widthPx`/`heightPx` and the original `exifOrientation`. Gemini's `box_2d` `[ymin, xmin, ymax, xmax]` on 0–1000 is converted without clamping or reordering. A bad box therefore fails as `INVALID_REGION` rather than being repaired.
