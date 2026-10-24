@@ -7,7 +7,7 @@ final class SetupAccessibilityUITests: XCTestCase {
         let app = launch()
         app.buttons["home.start"].tap()
         XCTAssertTrue(app.buttons["session.end"].waitForExistence(timeout: 5))
-        app.buttons["home.settings"].tap()
+        openSettings(in: app)
         reveal(app.buttons["settings.calibration"], in: app)
         app.buttons["settings.calibration"].tap()
         reveal(app.buttons["calibration.start"], in: app)
@@ -62,7 +62,7 @@ final class SetupAccessibilityUITests: XCTestCase {
 
     func testSettingsAndBandInstructionsAtLargestText() throws {
         let app = launch()
-        app.buttons["home.settings"].tap()
+        openSettings(in: app)
         attach(app, "Settings preferences at largest text")
         reveal(app.buttons["settings.bands"], in: app)
         app.buttons["settings.bands"].tap()
@@ -85,7 +85,7 @@ final class SetupAccessibilityUITests: XCTestCase {
         let app = launch()
         app.buttons["home.start"].tap()
         XCTAssertTrue(app.buttons["session.end"].waitForExistence(timeout: 5))
-        app.buttons["home.settings"].tap()
+        openSettings(in: app)
         reveal(app.buttons["settings.calibration"], in: app)
         app.buttons["settings.calibration"].tap()
         reveal(app.buttons["calibration.start"], in: app)
@@ -117,7 +117,7 @@ final class SetupAccessibilityUITests: XCTestCase {
         app.navigationBars.buttons["BackButton"].tap()
         app.buttons["settings.done"].tap()
         XCTAssertEqual(app.buttons["session.pause"].label, "Resume assistance")
-        app.buttons["home.settings"].tap()
+        openSettings(in: app)
         reveal(app.buttons["settings.calibration"], in: app)
         app.buttons["settings.calibration"].tap()
         reveal(feedback, in: app, towardTop: true)
@@ -129,7 +129,7 @@ final class SetupAccessibilityUITests: XCTestCase {
         let app = launch()
         app.buttons["home.start"].tap()
         XCTAssertTrue(app.buttons["session.end"].waitForExistence(timeout: 5))
-        app.buttons["home.settings"].tap()
+        openSettings(in: app)
         let pause = app.buttons["settings.pause"]
         XCTAssertTrue(pause.waitForExistence(timeout: 3))
         XCTAssertTrue(pause.isHittable)
@@ -156,14 +156,14 @@ final class SetupAccessibilityUITests: XCTestCase {
 
     func testSettingsAuditWithLargestText() throws {
         let app = launch()
-        app.buttons["home.settings"].tap()
+        openSettings(in: app)
         XCTAssertTrue(app.buttons["settings.done"].waitForExistence(timeout: 3))
         try audit(app, "Settings")
     }
 
     func testBandSetupAuditWithLargestText() throws {
         let app = launch()
-        app.buttons["home.settings"].tap()
+        openSettings(in: app)
         reveal(app.buttons["settings.bands"], in: app)
         app.buttons["settings.bands"].tap()
         XCTAssertTrue(app.staticTexts["bands.summary"].waitForExistence(timeout: 3))
@@ -182,7 +182,7 @@ final class SetupAccessibilityUITests: XCTestCase {
         let app = launch(appearance: appearance)
         app.buttons["home.start"].tap()
         XCTAssertTrue(app.buttons["session.end"].waitForExistence(timeout: 5))
-        app.buttons["home.settings"].tap()
+        openSettings(in: app)
         reveal(app.buttons["settings.calibration"], in: app)
         app.buttons["settings.calibration"].tap()
         reveal(app.buttons["calibration.start"], in: app)
@@ -206,6 +206,7 @@ final class SetupAccessibilityUITests: XCTestCase {
                                "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
         if let permissionScenario { app.launchArguments += ["--ui-permission-scenario", permissionScenario] }
         app.launch()
+        selectBlindRole(in: app)
         XCTAssertTrue(app.buttons["home.start"].waitForExistence(timeout: 5))
         return app
     }

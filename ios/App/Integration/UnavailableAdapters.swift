@@ -42,7 +42,7 @@ final class UnavailableConversation: ConversationClient {
 @MainActor
 final class UnavailableEvidence: TargetEvidenceClient {
     func resolve(_ request: RequestContext, query: String, kind: TaskKind) async throws -> ResolvedTarget { throw IntegrationUnavailable(component: "R3 target resolution") }
-    func readScreen(_ request: RequestContext) async throws -> ScreenModel { throw IntegrationUnavailable(component: "R3 screen interpretation") }
+    func readScreen(_ request: RequestContext) async throws -> TaskScreen { throw IntegrationUnavailable(component: "R3 screen interpretation") }
     func readMenu(_ request: RequestContext, query: String) async throws -> MenuContent { throw IntegrationUnavailable(component: "R3 menu interpretation") }
     func answerMenu(_ request: RequestContext, question: String, menu: MenuContent) async throws -> String { throw IntegrationUnavailable(component: "R3 menu conversation") }
     func verify(_ request: RequestContext, action: ActionKind, target: ResolvedTarget) async throws -> VerificationOutcome { .unavailable }

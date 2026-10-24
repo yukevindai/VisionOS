@@ -140,7 +140,7 @@ final class ControlledTargetEvidence: TargetEvidenceClient {
         continuations.removeAll()
         held.forEach { $0.resume(returning: TaskFixtures.target()) }
     }
-    func readScreen(_ request: RequestContext) async throws -> ScreenModel { try await base.readScreen(request) }
+    func readScreen(_ request: RequestContext) async throws -> TaskScreen { try await base.readScreen(request) }
     func readMenu(_ request: RequestContext, query: String) async throws -> MenuContent { try await base.readMenu(request, query: query) }
     func answerMenu(_ request: RequestContext, question: String, menu: MenuContent) async throws -> String {
         try await base.answerMenu(request, question: question, menu: menu)

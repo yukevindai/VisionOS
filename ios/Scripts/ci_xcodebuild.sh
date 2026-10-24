@@ -38,6 +38,8 @@ run_logged() {
 
 cd "$repo_root" || exit 2
 
+run_logged guidance-package-tests swift test --package-path ios/Packages/Guidance
+run_logged targets-package-tests swift test --package-path ios/Packages/Targets
 run_logged tasks-package-tests swift test --package-path ios/Packages/Tasks
 run_logged hapticlink-package-tests swift test --package-path ios/Packages/HapticLink
 

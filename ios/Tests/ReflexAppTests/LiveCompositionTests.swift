@@ -59,7 +59,7 @@ private final class CompositionEvidence: TargetEvidenceClient {
         resolutions += 1
         return try await base.resolve(request, query: query, kind: kind)
     }
-    func readScreen(_ request: RequestContext) async throws -> ScreenModel { try await base.readScreen(request) }
+    func readScreen(_ request: RequestContext) async throws -> TaskScreen { try await base.readScreen(request) }
     func readMenu(_ request: RequestContext, query: String) async throws -> MenuContent {
         menuReads += 1
         return try await base.readMenu(request, query: query)

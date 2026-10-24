@@ -7,6 +7,18 @@ struct ReflexApp: App {
     @Environment(\.scenePhase) private var scenePhase
     var body: some Scene {
         WindowGroup {
+            #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("--native-device-check") {
+                NativeDeviceCheckView()
+            } else {
+                normalContent
+            }
+            #else
+            normalContent
+            #endif
+        }
+    }
+    private var normalContent: some View {
             HomeView(dependencies: dependencies, session: dependencies.session)
                 .onChange(of: scenePhase) { _, new in
                     if new != .active { dependencies.session.backgrounded() }
@@ -24,6 +36,5 @@ struct ReflexApp: App {
                         dependencies.session.stop(.audioRouteLost)
                     }
                 }
-        }
     }
 }

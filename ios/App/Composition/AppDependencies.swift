@@ -13,6 +13,10 @@ struct LiveIntegrationBundle {
     /// Omit until H1's actual contract and synchronization implementation are available.
     /// R1/R3 can provide live voice assistance without supplying any wristband values.
     var bands: LiveBandIntegrationBundle? = nil
+    /// Requires real authenticated transport and R1/local media/owner-input implementations.
+    var friends: FriendAssistanceIntegration? = nil
+    /// Requires authenticated identity and R1 original-frame tap. Video transport only.
+    var media: NativeMediaIntegration? = nil
 }
 
 @MainActor
@@ -65,6 +69,7 @@ final class AppDependencies: ObservableObject {
                                 live: LiveIntegrationBundle?, clock: any AppClock,
                                 permissionOverride: (any PermissionClient)?, defaults: UserDefaults) -> SessionCoordinator {
         let clock = compositionClock(simulated: simulated, fallback: clock)
+        let live = live ?? (simulated ? nil : nativeIntegration(preferences: preferences, clock: clock))
         let liveBands = simulated ? nil : live?.bands
         let controller: HapticLinkController?
         do {
@@ -103,7 +108,8 @@ final class AppDependencies: ObservableObject {
             conversation: simulated ? FixtureConversation() : live?.conversation ?? UnavailableConversation(),
             evidence: fixtureEvidence ?? live?.evidence ?? UnavailableEvidence(),
             permissions: permissions, enforceSimulatedPermissions: enforceSimulatedPermissions,
-            framePolicy: simulated ? nil : live?.framePolicy, generationSeed: liveBands?.generationSeed ?? { 0 })
+            framePolicy: simulated ? nil : live?.framePolicy, generationSeed: liveBands?.generationSeed ?? { 0 },
+            friends: simulated ? nil : live?.friends, media: simulated ? nil : live?.media)
     }
 
     static func compositionClock(simulated: Bool, fallback: any AppClock,
@@ -117,4 +123,20 @@ final class AppDependencies: ObservableObject {
         return fallback
     }
 
+    private static func nativeIntegration(preferences: UserPreferences, clock: any AppClock) -> LiveIntegrationBundle {
+        let audio = NativeAudioCoordinator(clock: clock, speechProvider: try? ConvexSpeechClient.live())
+        let perception = NativePerceptionGuidanceClient(
+            startAudio: { context in try await audio.startInput(context: context) },
+            stopAudio: { _ in audio.stopInput() },
+            supportsOfflineStop: { audio.offlineStopReady },
+            preferredHand: { preferences.guidingHand == .left ? .left : .right },
+            onCue: { text, context, expiry in audio.guidance(text, context: context, expiresAtMs: expiry) },
+            stopOutput: { context in audio.cancel(context: context) })
+        audio.onFailure = { [weak audio] context in
+            audio?.onEvent?(.init(context: context, eventID: UUID().uuidString, payload: .disconnected))
+        }
+        return LiveIntegrationBundle(perception: perception, speech: audio, conversation: audio,
+            evidence: OnDeviceTargetEvidenceClient(clock: clock),
+            framePolicy: FrameDeliveryPolicy(minimumIntervalMs: 250, maximumEncodedBytes: 512 * 1_024))
+    }
 }

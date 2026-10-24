@@ -1,2 +1,5 @@
 REFLEX_BUNDLE_ID = com.example.reflex
+REFLEX_CONVEX_HOST =
+REFLEX_AUTH0_DOMAIN =
+REFLEX_AUTH0_NATIVE_CLIENT_ID =
 #include? "Local.xcconfig"

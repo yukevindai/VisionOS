@@ -2,6 +2,16 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>ReflexConvexURL</key>
+	<string>https://$(REFLEX_CONVEX_HOST)</string>
+	<key>ReflexAuth0Issuer</key>
+	<string>https://$(REFLEX_AUTH0_DOMAIN)/</string>
+	<key>ReflexAuth0NativeClientID</key>
+	<string>$(REFLEX_AUTH0_NATIVE_CLIENT_ID)</string>
+	<key>ReflexAuth0CallbackURL</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)://$(REFLEX_AUTH0_DOMAIN)/ios/$(PRODUCT_BUNDLE_IDENTIFIER)/callback</string>
+	<key>CFBundleURLTypes</key>
+	<array><dict><key>CFBundleURLName</key><string>Auth0</string><key>CFBundleURLSchemes</key><array><string>$(PRODUCT_BUNDLE_IDENTIFIER)</string></array></dict></array>
 	<key>CFBundleDisplayName</key>
 	<string>Reflex</string>
 	<key>CFBundleExecutable</key>
@@ -24,6 +34,8 @@
 	<string>Reflex uses the rear camera to understand your surroundings and provide assistance.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Reflex uses the microphone so you can speak naturally with your assistant.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Reflex recognizes on-device voice commands so Stop can interrupt guidance without a network connection.</string>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>Reflex uses Bluetooth to connect to your optional guidance wristbands.</string>
 	<key>UIApplicationSceneManifest</key>

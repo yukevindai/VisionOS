@@ -5,6 +5,27 @@ final class ReflexUITests: XCTestCase {
         continueAfterFailure = false
     }
 
+    func testFriendVideoEntryAndCloseKeepsAssistanceIdle() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--uitesting"]
+        app.launch()
+        selectBlindRole(in: app)
+        openHomeTools(in: app)
+        let entry = app.buttons["home.friendVideo"]
+        XCTAssertTrue(entry.waitForExistence(timeout: 5))
+        entry.tap()
+        let close = app.buttons["video.close"]
+        XCTAssertTrue(close.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Share your camera with a trusted friend"].exists)
+        XCTAssertFalse(app.buttons["session.end"].exists)
+        attachScreenshot(of: app, named: "Friend video entry")
+        close.tap()
+        XCTAssertTrue(entry.waitForExistence(timeout: 5))
+        app.buttons["home.tools.close"].tap()
+        XCTAssertTrue(app.buttons["home.start"].exists)
+        XCTAssertFalse(app.buttons["session.end"].exists)
+    }
+
     func testSimulationStartsPausesResumesAndEnds() {
         let app = launchSimulation()
 
@@ -24,6 +45,58 @@ final class ReflexUITests: XCTestCase {
         XCTAssertTrue(end.waitForExistence(timeout: 3))
         end.tap()
         XCTAssertTrue(start.waitForExistence(timeout: 5))
+    }
+
+    func testRolesKeepHelperSeparateFromTheOneButtonCallFlow() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--uitesting"]
+        app.launch()
+        let blind = app.buttons["role.blind"]
+        let helper = app.buttons["role.helper"]
+        XCTAssertTrue(blind.waitForExistence(timeout: 5))
+        XCTAssertTrue(helper.isHittable)
+        XCTAssertFalse(app.buttons["home.start"].exists)
+        XCTAssertFalse(app.buttons["session.end"].exists)
+        attachScreenshot(of: app, named: "Choose Blind or Not blind")
+
+        helper.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["helper.sessions"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["home.start"].exists)
+        XCTAssertFalse(app.buttons["session.end"].exists)
+        attachScreenshot(of: app, named: "Helper shared sessions without starting owner assistance")
+
+        app.buttons["home.changeRole"].tap()
+        selectBlindRole(in: app)
+        XCTAssertEqual(app.buttons["home.start"].label, "Call")
+        XCTAssertFalse(app.buttons["home.friendVideo"].exists)
+        XCTAssertFalse(app.buttons["home.targetReader"].exists)
+        XCTAssertFalse(app.buttons["session.end"].exists)
+        attachScreenshot(of: app, named: "One Call action")
+
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(blind.waitForExistence(timeout: 5))
+        XCTAssertTrue(helper.exists)
+        XCTAssertFalse(app.buttons["home.start"].exists)
+    }
+
+    func testCallControlsRemainReachableWithReducedTransparency() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--simulate", "--uitesting", "--ui-reduce-transparency"]
+        app.launch()
+        selectBlindRole(in: app)
+        app.buttons["home.start"].tap()
+        let stop = app.buttons["session.pause"]
+        let end = app.buttons["session.end"]
+        XCTAssertTrue(end.waitForExistence(timeout: 5))
+        XCTAssertTrue(stop.isHittable)
+        XCTAssertTrue(end.isHittable)
+        attachScreenshot(of: app, named: "Reduce Transparency camera controls")
+        stop.tap()
+        XCTAssertEqual(stop.label, "Resume assistance")
+        XCTAssertTrue(end.isHittable)
+        end.tap()
+        XCTAssertTrue(app.buttons["home.start"].waitForExistence(timeout: 5))
     }
 
     func testRepeatedStartDoesNotCreateAnotherSession() {
@@ -49,6 +122,7 @@ final class ReflexUITests: XCTestCase {
             "UICTContentSizeCategoryAccessibilityXXXL",
         ]
         app.launch()
+        selectBlindRole(in: app)
 
         let start = app.buttons["home.start"]
         XCTAssertTrue(start.waitForExistence(timeout: 5))
@@ -159,17 +233,20 @@ final class ReflexUITests: XCTestCase {
         XCUIDevice.shared.appearance = appearance
         defer { XCUIDevice.shared.appearance = originalAppearance }
         let app = launchSimulation(largestText: largestText, appearance: appearance)
+        app.buttons["home.changeRole"].tap()
+        try performAudit(of: app, screen: "Role selection")
+        selectBlindRole(in: app)
         let start = app.buttons["home.start"]
         XCTAssertTrue(start.waitForExistence(timeout: 5))
-        XCTAssertEqual(start.label, "Start assistance")
+        XCTAssertEqual(start.label, "Call")
         XCTAssertTrue(start.isHittable)
         try performAudit(of: app, screen: "Home")
         start.tap()
         let pause = app.buttons["session.pause"]
         let end = app.buttons["session.end"]
         XCTAssertTrue(end.waitForExistence(timeout: 5))
-        XCTAssertEqual(pause.label, "Pause assistance")
-        XCTAssertEqual(end.label, "End assistance")
+        XCTAssertEqual(pause.label, "Stop assistance")
+        XCTAssertEqual(end.label, "End call")
         XCTAssertTrue(pause.isHittable)
         XCTAssertTrue(end.isHittable)
         attachScreenshot(of: app, named: "Initial session")
@@ -248,6 +325,7 @@ final class ReflexUITests: XCTestCase {
         }
         if let appearance { app.launchArguments += ["--ui-appearance", appearance == .dark ? "dark" : "light"] }
         app.launch()
+        selectBlindRole(in: app)
         return app
     }
 }

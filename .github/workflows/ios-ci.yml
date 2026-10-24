@@ -40,6 +40,15 @@ jobs:
           xcodebuild -version | tee "$RUNNER_TEMP/ios-ci-artifacts/xcode-version.txt"
           grep -F 'Xcode 26.6' "$RUNNER_TEMP/ios-ci-artifacts/xcode-version.txt"
 
+      - name: Prepare hash-pinned native object model
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3.12 -m venv .runtime/coreml-export
+          .runtime/coreml-export/bin/python -m pip install -r ios/Scripts/native-model-requirements.txt
+          .runtime/coreml-export/bin/python ios/Scripts/prepare_native_model.py \
+            > "$RUNNER_TEMP/ios-ci-artifacts/native-model-export.log" 2>&1
+
       - name: Record toolchain and select an available iPhone simulator
         id: simulator
         shell: bash

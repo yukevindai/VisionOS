@@ -51,6 +51,9 @@ struct SetupView: View {
                         .accessibilityIdentifier("setup.permission.camera")
                     LabeledContent("Microphone access", value: session.permissionState.microphoneAuthorization.rawValue)
                         .accessibilityIdentifier("setup.permission.microphone")
+                    if !session.simulated {
+                        LabeledContent("On-device speech recognition", value: session.permissionState.speechAuthorization.rawValue)
+                    }
                     if session.permissionState.canRequest {
                         Button(session.requestingPermissions ? "Requesting access…" : "Allow camera and microphone") { session.requestPermissions() }
                             .foregroundStyle(Color.primary)

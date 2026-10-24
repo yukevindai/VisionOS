@@ -1,0 +1,47 @@
+{
+  "input": "SYNTHETIC button panel; no real camera image",
+  "mode": "REAL_API",
+  "providerOK": false,
+  "httpStatus": null,
+  "errorKind": "PROVIDER_TIMEOUT",
+  "timingMs": {
+    "prepare": 0.9,
+    "provider": 5038.6,
+    "total": 5040.0,
+    "select": 0.4
+  },
+  "selection": {
+    "request": "2",
+    "frameId": "synthetic-panel-live-api-check",
+    "source": "visionModel",
+    "candidateIds": [],
+    "status": "PROVIDER_UNAVAILABLE",
+    "reason": "PROVIDER_UNAVAILABLE",
+    "errorCode": "PROVIDER_TIMEOUT"
+  },
+  "screenModel": {
+    "schemaVersion": 3,
+    "frameId": "synthetic-panel-live-api-check",
+    "capturedAtMs": 1792855379795,
+    "coordinateSystem": "normalizedImageTopLeft",
+    "source": "visionModel",
+    "evidence": {
+      "provider": "gemini",
+      "model": "gemini-3.8-flash",
+      "live": true,
+      "latencyMs": 5038.3
+    },
+    "image": {
+      "widthPx": 640,
+      "heightPx": 480,
+      "exifOrientation": 1,
+      "orientationApplied": true
+    },
+    "panelType": "unknown",
+    "availability": "unavailable",
+    "unavailableReason": "providerUnavailable",
+    "controls": [],
+    "sections": [],
+    "isPaymentScreen": false
+  }
+}

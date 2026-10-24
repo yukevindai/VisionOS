@@ -74,6 +74,8 @@ def main() -> None:
     refs = "\n".join(app_refs + unit_refs + ui_refs)
     builds = "\n".join(app_builds + unit_builds + ui_builds)
     config_refs = f"""\
+\t\t{uid('resource:Models')} /* Models */ = {{isa = PBXFileReference; lastKnownFileType = folder; path = Resources/Models; sourceTree = SOURCE_ROOT; }};
+\t\t{uid('resource:Assets')} /* Assets.xcassets */ = {{isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Resources/Assets.xcassets; sourceTree = SOURCE_ROOT; }};
 \t\t{uid('config:Debug.xcconfig')} /* Debug.xcconfig */ = {{isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Config/Debug.xcconfig; sourceTree = SOURCE_ROOT; }};
 \t\t{uid('config:Release.xcconfig')} /* Release.xcconfig */ = {{isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Config/Release.xcconfig; sourceTree = SOURCE_ROOT; }};
 \t\t{uid('config:Local.example.xcconfig')} /* Local.example.xcconfig */ = {{isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Config/Local.example.xcconfig; sourceTree = SOURCE_ROOT; }};
@@ -100,6 +102,18 @@ def main() -> None:
     unit_config_list = uid("configlist:unit")
     ui_config_list = uid("configlist:ui")
     project_config_list = uid("configlist:project")
+    # CredentialsManager defaults reference this transitive product from app code.
+    # Link it explicitly when Xcode emits dynamic package products.
+    package_keychain = uid("package:SimpleKeychain")
+    dep_keychain = uid("package-product:SimpleKeychain")
+    package_auth0 = uid("package:Auth0")
+    dep_auth0 = uid("package-product:Auth0")
+    package_livekit = uid("package:LiveKit")
+    dep_livekit = uid("package-product:LiveKit")
+    package_guidance = uid("package:Guidance")
+    dep_guidance = uid("package-product:Guidance")
+    package_interpretation = uid("package:Targets")
+    dep_interpretation = uid("package-product:Targets")
     package_tasks = uid("package:Tasks")
     package_haptics = uid("package:HapticLink")
     dep_tasks = uid("package-product:Tasks")
@@ -109,14 +123,31 @@ def main() -> None:
     target_dependency = uid("dependency:ui-test-host")
 
     package_targets = f"""\
+\t\t{dep_guidance} /* Guidance */ = {{isa = XCSwiftPackageProductDependency; package = {package_guidance}; productName = Guidance; }};
+\t\t{dep_interpretation} /* Targets */ = {{isa = XCSwiftPackageProductDependency; package = {package_interpretation}; productName = Targets; }};
+\t\t{dep_keychain} /* SimpleKeychain */ = {{isa = XCSwiftPackageProductDependency; package = {package_keychain}; productName = SimpleKeychain; }};
+\t\t{dep_auth0} /* Auth0 */ = {{isa = XCSwiftPackageProductDependency; package = {package_auth0}; productName = Auth0; }};
+\t\t{dep_livekit} /* LiveKit */ = {{isa = XCSwiftPackageProductDependency; package = {package_livekit}; productName = LiveKit; }};
 \t\t{dep_tasks} /* Tasks */ = {{isa = XCSwiftPackageProductDependency; package = {package_tasks}; productName = Tasks; }};
 \t\t{dep_haptics} /* HapticLink */ = {{isa = XCSwiftPackageProductDependency; package = {package_haptics}; productName = HapticLink; }};
 """
     package_builds = f"""\
+\t\t{uid('package-build:Guidance')} /* Guidance in Frameworks */ = {{isa = PBXBuildFile; productRef = {dep_guidance}; }};
+\t\t{uid('package-build:Guidance-unit')} /* Guidance in Frameworks */ = {{isa = PBXBuildFile; productRef = {dep_guidance}; }};
+\t\t{uid('resource-build:Models')} /* Models in Resources */ = {{isa = PBXBuildFile; fileRef = {uid('resource:Models')}; }};
+\t\t{uid('resource-build:Assets')} /* Assets in Resources */ = {{isa = PBXBuildFile; fileRef = {uid('resource:Assets')}; }};
+\t\t{uid('package-build:Targets')} /* Targets in Frameworks */ = {{isa = PBXBuildFile; productRef = {dep_interpretation}; }};
+\t\t{uid('package-build:Targets-unit')} /* Targets in Frameworks */ = {{isa = PBXBuildFile; productRef = {dep_interpretation}; }};
+\t\t{uid('package-build:SimpleKeychain')} /* SimpleKeychain in Frameworks */ = {{isa = PBXBuildFile; productRef = {dep_keychain}; }};
+\t\t{uid('package-build:SimpleKeychain-unit')} /* SimpleKeychain in Frameworks */ = {{isa = PBXBuildFile; productRef = {dep_keychain}; }};
+\t\t{uid('package-build:Auth0')} /* Auth0 in Frameworks */ = {{isa = PBXBuildFile; productRef = {dep_auth0}; }};
+\t\t{uid('package-build:Auth0-unit')} /* Auth0 in Frameworks */ = {{isa = PBXBuildFile; productRef = {dep_auth0}; }};
+\t\t{uid('package-build:LiveKit')} /* LiveKit in Frameworks */ = {{isa = PBXBuildFile; productRef = {dep_livekit}; }};
+\t\t{uid('package-build:LiveKit-unit')} /* LiveKit in Frameworks */ = {{isa = PBXBuildFile; productRef = {dep_livekit}; }};
 \t\t{uid('package-build:Tasks')} /* Tasks in Frameworks */ = {{isa = PBXBuildFile; productRef = {dep_tasks}; }};
 \t\t{uid('package-build:HapticLink')} /* HapticLink in Frameworks */ = {{isa = PBXBuildFile; productRef = {dep_haptics}; }};
 """
-    source_tree_children = [uid("group:App"), uid("group:ReflexAppTests"), uid("group:ReflexUITests"), uid("config:Debug.xcconfig"), uid("config:Release.xcconfig"), uid("config:Local.example.xcconfig"), uid("app:Info.plist"), uid("group:Products")]
+    source_tree_children = [uid("resource:Assets"), uid("resource:Models"), uid("group:App"), uid("group:ReflexAppTests"), uid("group:ReflexUITests"), uid("config:Debug.xcconfig"), uid("config:Release.xcconfig"), uid("config:Local.example.xcconfig"), uid("app:Info.plist"), uid("group:Products")]
     product_children = [uid("product:Reflex.app"), uid("product:ReflexAppTests.xctest"), uid("product:ReflexUITests.xctest")]
 
     text = f'''// !$*UTF8*$!
@@ -139,8 +170,8 @@ def main() -> None:
 {config_refs}{product_refs}/* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
-\t\t{app_frameworks} /* Frameworks */ = {{isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = {list_block([uid('package-build:Tasks'), uid('package-build:HapticLink')])}; runOnlyForDeploymentPostprocessing = 0; }};
-\t\t{unit_frameworks} /* Frameworks */ = {{isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; }};
+\t\t{app_frameworks} /* Frameworks */ = {{isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = {list_block([uid('package-build:Guidance'), uid('package-build:Targets'), uid('package-build:Tasks'), uid('package-build:HapticLink'), uid('package-build:LiveKit'), uid('package-build:Auth0'), uid('package-build:SimpleKeychain')])}; runOnlyForDeploymentPostprocessing = 0; }};
+\t\t{unit_frameworks} /* Frameworks */ = {{isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = {list_block([uid('package-build:Guidance-unit'), uid('package-build:Targets-unit'), uid('package-build:LiveKit-unit'), uid('package-build:Auth0-unit'), uid('package-build:SimpleKeychain-unit')])}; runOnlyForDeploymentPostprocessing = 0; }};
 \t\t{ui_frameworks} /* Frameworks */ = {{isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; }};
 /* End PBXFrameworksBuildPhase section */
 
@@ -153,17 +184,17 @@ def main() -> None:
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-\t\t{app_target} /* Reflex */ = {{isa = PBXNativeTarget; buildConfigurationList = {app_config_list}; buildPhases = ({app_sources}, {app_frameworks}, {app_resources}, ); buildRules = (); dependencies = (); name = Reflex; packageProductDependencies = ({dep_tasks}, {dep_haptics}, ); productName = Reflex; productReference = {uid('product:Reflex.app')}; productType = "com.apple.product-type.application"; }};
-\t\t{unit_target} /* ReflexAppTests */ = {{isa = PBXNativeTarget; buildConfigurationList = {unit_config_list}; buildPhases = ({unit_sources}, {unit_frameworks}, ); buildRules = (); dependencies = ({app_product_dep}, ); name = ReflexAppTests; packageProductDependencies = (); productName = ReflexAppTests; productReference = {uid('product:ReflexAppTests.xctest')}; productType = "com.apple.product-type.bundle.unit-test"; }};
+\t\t{app_target} /* Reflex */ = {{isa = PBXNativeTarget; buildConfigurationList = {app_config_list}; buildPhases = ({app_sources}, {app_frameworks}, {app_resources}, ); buildRules = (); dependencies = (); name = Reflex; packageProductDependencies = ({dep_guidance}, {dep_interpretation}, {dep_tasks}, {dep_haptics}, {dep_livekit}, {dep_auth0}, {dep_keychain}, ); productName = Reflex; productReference = {uid('product:Reflex.app')}; productType = "com.apple.product-type.application"; }};
+\t\t{unit_target} /* ReflexAppTests */ = {{isa = PBXNativeTarget; buildConfigurationList = {unit_config_list}; buildPhases = ({unit_sources}, {unit_frameworks}, ); buildRules = (); dependencies = ({app_product_dep}, ); name = ReflexAppTests; packageProductDependencies = ({dep_guidance}, {dep_interpretation}, {dep_livekit}, {dep_auth0}, {dep_keychain}, ); productName = ReflexAppTests; productReference = {uid('product:ReflexAppTests.xctest')}; productType = "com.apple.product-type.bundle.unit-test"; }};
 \t\t{ui_target} /* ReflexUITests */ = {{isa = PBXNativeTarget; buildConfigurationList = {ui_config_list}; buildPhases = ({ui_sources}, {ui_frameworks}, ); buildRules = (); dependencies = ({target_dependency}, ); name = ReflexUITests; packageProductDependencies = (); productName = ReflexUITests; productReference = {uid('product:ReflexUITests.xctest')}; productType = "com.apple.product-type.bundle.ui-testing"; }};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
-\t\t{project_id} /* Project object */ = {{isa = PBXProject; attributes = {{BuildIndependentTargetsInParallel = 1; LastUpgradeCheck = 2660; TargetAttributes = {{{app_target} = {{CreatedOnToolsVersion = 26.6; }}; {unit_target} = {{CreatedOnToolsVersion = 26.6; TestTargetID = {app_target}; }}; {ui_target} = {{CreatedOnToolsVersion = 26.6; TestTargetID = {app_target}; }}; }}; }}; buildConfigurationList = {project_config_list}; compatibilityVersion = "Xcode 14.0"; developmentRegion = en; hasScannedForEncodings = 0; knownRegions = (en, Base, ); mainGroup = {uid('group:Main')}; packageReferences = ({package_tasks}, {package_haptics}, ); productRefGroup = {uid('group:Products')}; projectDirPath = ""; projectRoot = ""; targets = ({app_target}, {unit_target}, {ui_target}, ); }};
+\t\t{project_id} /* Project object */ = {{isa = PBXProject; attributes = {{BuildIndependentTargetsInParallel = 1; LastUpgradeCheck = 2660; TargetAttributes = {{{app_target} = {{CreatedOnToolsVersion = 26.6; }}; {unit_target} = {{CreatedOnToolsVersion = 26.6; TestTargetID = {app_target}; }}; {ui_target} = {{CreatedOnToolsVersion = 26.6; TestTargetID = {app_target}; }}; }}; }}; buildConfigurationList = {project_config_list}; compatibilityVersion = "Xcode 14.0"; developmentRegion = en; hasScannedForEncodings = 0; knownRegions = (en, Base, ); mainGroup = {uid('group:Main')}; packageReferences = ({package_guidance}, {package_interpretation}, {package_tasks}, {package_haptics}, {package_livekit}, {package_auth0}, {package_keychain}, ); productRefGroup = {uid('group:Products')}; projectDirPath = ""; projectRoot = ""; targets = ({app_target}, {unit_target}, {ui_target}, ); }};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-\t\t{app_resources} /* Resources */ = {{isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; }};
+\t\t{app_resources} /* Resources */ = {{isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = ({uid('resource-build:Models')}, {uid('resource-build:Assets')}, ); runOnlyForDeploymentPostprocessing = 0; }};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -200,7 +231,15 @@ def main() -> None:
 \t\t{ui_config_list} /* Build configuration list for PBXNativeTarget "ReflexUITests" */ = {{isa = XCConfigurationList; buildConfigurations = ({uid('ui-debug')}, {uid('ui-release')}, ); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; }};
 /* End XCConfigurationList section */
 
+/* Begin XCRemoteSwiftPackageReference section */
+\t\t{package_keychain} /* SimpleKeychain */ = {{isa = XCRemoteSwiftPackageReference; repositoryURL = "https://github.com/auth0/SimpleKeychain.git"; requirement = {{kind = exactVersion; version = 1.3.0; }}; }};
+\t\t{package_auth0} /* Auth0 */ = {{isa = XCRemoteSwiftPackageReference; repositoryURL = "https://github.com/auth0/Auth0.swift.git"; requirement = {{kind = exactVersion; version = 2.25.0; }}; }};
+\t\t{package_livekit} /* LiveKit */ = {{isa = XCRemoteSwiftPackageReference; repositoryURL = "https://github.com/livekit/client-sdk-swift.git"; requirement = {{kind = exactVersion; version = 2.18.0; }}; }};
+/* End XCRemoteSwiftPackageReference section */
+
 /* Begin XCLocalSwiftPackageReference section */
+\t\t{package_guidance} /* Guidance */ = {{isa = XCLocalSwiftPackageReference; relativePath = Packages/Guidance; }};
+\t\t{package_interpretation} /* Targets */ = {{isa = XCLocalSwiftPackageReference; relativePath = Packages/Targets; }};
 \t\t{package_tasks} /* XCLocalSwiftPackageReference "Packages/Tasks" */ = {{isa = XCLocalSwiftPackageReference; relativePath = Packages/Tasks; }};
 \t\t{package_haptics} /* XCLocalSwiftPackageReference "Packages/HapticLink" */ = {{isa = XCLocalSwiftPackageReference; relativePath = Packages/HapticLink; }};
 /* End XCLocalSwiftPackageReference section */

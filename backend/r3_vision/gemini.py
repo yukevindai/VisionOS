@@ -7,13 +7,14 @@ from __future__ import annotations
 
 import base64
 import json
+import math
 import os
 import re
 import socket
 import time
 import urllib.error
 import urllib.request
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Callable
 
@@ -159,8 +160,13 @@ class GeminiClient:
         # Thinking-level environment configuration applies to Gemini 3. Replay/older models retain
         # their existing payloads. An explicitly supplied unsupported setting fails before network IO.
         self.thinking_level = (thinking_level if thinking_level is not None else
-            os.environ.get("GEMINI_THINKING_LEVEL", "") if self.model.startswith("gemini-3") else "").strip().lower()
-        self.timeout_s = timeout_s or float(os.environ.get("GEMINI_TIMEOUT_S") or DEFAULT_TIMEOUT_S)
+            os.environ.get("GEMINI_THINKING_LEVEL", "") if self.model.startswith("gemini-3") else "").strip()
+        if self.thinking_level not in ("", "low", "medium", "high"):
+            raise ValueError("GEMINI_THINKING_LEVEL must be low, medium or high, or unset")
+        configured_timeout = timeout_s if timeout_s is not None else float(os.environ.get("GEMINI_TIMEOUT_S") or DEFAULT_TIMEOUT_S)
+        if not math.isfinite(configured_timeout) or configured_timeout <= 0:
+            raise ValueError("GEMINI_TIMEOUT_S must be positive and finite")
+        self.timeout_s = min(configured_timeout, DEFAULT_TIMEOUT_S)
         self._transport = transport or urllib_transport
         self.live = live  # set False when `transport` replays a recorded or hand-written reply
         self.prompt = PROMPT
@@ -170,6 +176,32 @@ class GeminiClient:
         return bool(self._api_key) and bool(self.model)
 
     def describe(self, jpeg: bytes) -> ProviderResult:
+        # Redact at the result boundary so failures, metadata and future return paths
+        # cannot accidentally expose credentials whose format differs from the regex.
+        result = self._describe(jpeg)
+        fields = asdict(result)
+        if fields["error"] is not None:
+            fields["error"] = {name: self._redact_value(value) for name, value in fields["error"].items()}
+        return ProviderResult(**{
+            name: value if name == "error" else self._redact_value(value)
+            for name, value in fields.items()
+        })
+
+    def _redact(self, text: str) -> str:
+        if self._api_key:
+            text = text.replace(self._api_key, "<redacted-key>")
+        return redact(text)
+
+    def _redact_value(self, value):
+        if isinstance(value, str):
+            return self._redact(value)
+        if isinstance(value, dict):
+            return {self._redact(key): self._redact_value(item) for key, item in value.items()}
+        if isinstance(value, list):
+            return [self._redact_value(item) for item in value]
+        return value
+
+    def _describe(self, jpeg: bytes) -> ProviderResult:
         if not self._api_key:
             return ProviderResult(self.live, False, 0.0, self.model,
                                   error={"kind": "MISSING_API_KEY", "status": None,
@@ -209,30 +241,43 @@ class GeminiClient:
         try:
             envelope = json.loads(raw.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError):
-            return self._failure(started, "MALFORMED_RESPONSE", status, raw[:300].decode("utf-8", "replace"),
+            return self._failure(started, "MALFORMED_RESPONSE", status, self._redact(raw.decode("utf-8", "replace"))[:300],
                                  latency)
+        if not isinstance(envelope, dict):
+            return self._failure(started, "MALFORMED_RESPONSE", status, "provider envelope must be an object", latency)
         if status != 200:
-            detail = envelope.get("error", {}) if isinstance(envelope, dict) else {}
+            detail = envelope.get("error", {})
+            detail = detail if isinstance(detail, dict) else {}
             return self._failure(started, "HTTP_ERROR", status,
                                  f"{detail.get('status', '')}: {detail.get('message', '')}".strip(": "), latency)
         result = ProviderResult(self.live, False, latency, self.model, http_status=status,
-                                response_id=envelope.get("responseId"), model_version=envelope.get("modelVersion"),
-                                usage=envelope.get("usageMetadata", {}))
-        candidates = envelope.get("candidates") or []
-        if not candidates:
-            block = (envelope.get("promptFeedback") or {}).get("blockReason", "no candidates")
-            result.error = {"kind": "NO_CANDIDATE", "status": status, "message": str(block)}
+                                response_id=envelope.get("responseId") if isinstance(envelope.get("responseId"), str) else None,
+                                model_version=envelope.get("modelVersion") if isinstance(envelope.get("modelVersion"), str) else None,
+                                usage=envelope.get("usageMetadata") if isinstance(envelope.get("usageMetadata"), dict) else {})
+        candidates = envelope.get("candidates")
+        if candidates is None or candidates == []:
+            feedback = envelope.get("promptFeedback")
+            block = feedback.get("blockReason", "no candidates") if isinstance(feedback, dict) else "no candidates"
+            result.error = {"kind": "NO_CANDIDATE", "status": status, "message": redact(str(block))}
             return result
-        candidate = candidates[0]
-        text = "".join(part.get("text", "") for part in (candidate.get("content") or {}).get("parts", [])
-                       if not part.get("thought"))
         try:
+            if not isinstance(candidates, list) or not isinstance(candidates[0], dict):
+                raise ValueError("invalid candidates")
+            candidate = candidates[0]
+            content = candidate.get("content")
+            parts = content.get("parts") if isinstance(content, dict) else None
+            if not isinstance(parts, list) or not parts or not all(
+                    isinstance(part, dict) and isinstance(part.get("text"), str) for part in parts):
+                raise ValueError("invalid content parts")
+            text = "".join(part["text"] for part in parts if not part.get("thought"))
             reply = json.loads(text)
-            if not isinstance(reply, dict):
-                raise ValueError("reply is not an object")
-        except ValueError:
+            if (not isinstance(reply, dict) or not isinstance(reply.get("panelType"), str)
+                    or not isinstance(reply.get("availability"), str) or type(reply.get("isPaymentScreen")) is not bool
+                    or not isinstance(reply.get("sections"), list) or not isinstance(reply.get("elements"), list)):
+                raise ValueError("reply is not a complete screen description")
+        except (ValueError, IndexError):
             result.error = {"kind": "MALFORMED_RESPONSE", "status": status,
-                            "message": f"finishReason={candidate.get('finishReason')}: {redact(text[:300])}"}
+                            "message": "provider returned invalid structured content"}
             return result
         result.ok, result.reply = True, reply
         return result

@@ -101,6 +101,12 @@ public struct BoundingBox: Codable, Equatable, Sendable {
     }
 }
 
+/// An explicit interpretation supplied by the producer; missing/unknown never authorizes guidance.
+public enum ControlSafety: String, FallbackDecodable, Sendable {
+    case ordinary, emergency, payment, purchaseAuthorization, unknownCheckout, unknown
+    public static let fallback = ControlSafety.unknown
+}
+
 public struct InteractiveElement: Codable, Equatable, Sendable {
     public let id: String
     /// Text as read from the interface. Empty when the label could not be read.
@@ -114,10 +120,11 @@ public struct InteractiveElement: Codable, Equatable, Sendable {
     public let section: String?
     /// Nil when the source does not judge legibility.
     public let legibility: Legibility?
+    public let safety: ControlSafety?
     public init(id: String, label: String, type: ElementType, region: BoundingBox?, confidence: Double? = nil,
-                price: String? = nil, section: String? = nil, legibility: Legibility? = nil) {
+                price: String? = nil, section: String? = nil, legibility: Legibility? = nil, safety: ControlSafety? = nil) {
         self.id = id; self.label = label; self.type = type; self.region = region
-        self.confidence = confidence; self.price = price; self.section = section; self.legibility = legibility
+        self.confidence = confidence; self.price = price; self.section = section; self.legibility = legibility; self.safety = safety
     }
 }
 

@@ -12,16 +12,18 @@ from r3_vision.gemini import GeminiClient
 
 class GeminiThinkingTests(unittest.TestCase):
     def test_38_high_uses_correct_rest_field_and_native_temperature(self):
+        reply = {"panelType": "other", "availability": "available", "isPaymentScreen": False,
+                 "sections": [], "elements": []}
         calls = []
         def transport(url, headers, body, timeout):
             calls.append((url, json.loads(body)))
             return 200, json.dumps({'candidates': [{'content': {'parts': [
-                {'thought': True, 'text': 'SIMULATED hidden summary'}, {'text': '{}'}]}}]}).encode()
+                {'thought': True, 'text': 'SIMULATED hidden summary'}, {'text': json.dumps(reply)}]}}]}).encode()
         client = GeminiClient(api_key='SIMULATED-key', model='gemini-3.8-flash',
                               thinking_level='high', transport=transport, live=False)
         result = client.describe(b'SIMULATED image')
         self.assertTrue(result.ok)
-        self.assertEqual(result.reply, {})
+        self.assertEqual(result.reply, reply)
         self.assertIn('/gemini-3.8-flash:generateContent', calls[0][0])
         config = calls[0][1]['generationConfig']
         self.assertEqual(config['thinkingConfig'], {'thinkingLevel': 'high'})
@@ -30,10 +32,13 @@ class GeminiThinkingTests(unittest.TestCase):
         self.assertNotIn('SIMULATED-key', json.dumps(calls))
 
     def test_invalid_effort_or_explicit_older_model_setting_makes_no_call(self):
-        for model, level in [('gemini-3.8-flash', 'ultra'), ('gemini-3.8-flash', 'minimal'), ('gemini-2.5-flash', 'high')]:
-            client = GeminiClient(api_key='SIMULATED', model=model, thinking_level=level,
-                                  transport=lambda *a: self.fail('No transport call expected'), live=False)
-            self.assertEqual(client.describe(b'').error['kind'], 'INVALID_THINKING_CONFIG')
+        for level in ['ultra', 'minimal']:
+            with self.assertRaises(ValueError):
+                GeminiClient(api_key='SIMULATED', model='gemini-3.8-flash', thinking_level=level,
+                             transport=lambda *a: self.fail('No transport call expected'), live=False)
+        client = GeminiClient(api_key='SIMULATED', model='gemini-2.5-flash', thinking_level='high',
+                              transport=lambda *a: self.fail('No transport call expected'), live=False)
+        self.assertEqual(client.describe(b'').error['kind'], 'INVALID_THINKING_CONFIG')
 
     def test_env_level_applies_to_38_but_does_not_poison_replay(self):
         with patch.dict(os.environ, {'GEMINI_THINKING_LEVEL': 'high'}):
