@@ -5,13 +5,14 @@ struct CameraIsland: ViewModifier {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.colorSchemeContrast) private var contrast
     var cornerRadius: CGFloat = 20
+    var opaque: Bool = false
 
     func body(content: Content) -> some View {
         content
             .foregroundStyle(Color(uiColor: .label))
             .background {
                 let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                if reduceTransparency || uiTestingReduceTransparency {
+                if opaque || reduceTransparency || uiTestingReduceTransparency {
                     shape.fill(Color(uiColor: .systemBackground))
                 } else if contrast == .increased {
                     shape.fill(.regularMaterial)
@@ -42,7 +43,7 @@ struct CameraIsland: ViewModifier {
 }
 
 extension View {
-    func cameraIsland(cornerRadius: CGFloat = 20) -> some View {
-        modifier(CameraIsland(cornerRadius: cornerRadius))
+    func cameraIsland(cornerRadius: CGFloat = 20, opaque: Bool = false) -> some View {
+        modifier(CameraIsland(cornerRadius: cornerRadius, opaque: opaque))
     }
 }
