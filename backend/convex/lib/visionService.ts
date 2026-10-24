@@ -1,3 +1,5 @@
+"use node";
+
 import { Buffer } from "node:buffer";
 import { ConvexError, type Value } from "convex/values";
 
