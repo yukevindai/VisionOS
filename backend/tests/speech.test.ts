@@ -53,4 +53,39 @@ describe("speech:synthesize", () => {
     const owner = await signedIn();
     expect(await owner.action(api.speech.synthesize, args)).toMatchObject({ ok: false, errorCode: "PROVIDER_ERROR", httpStatus: 402 });
   });
+
+  it("serves a repeated sentence from the cache without calling Cartesia again", async () => {
+    vi.stubEnv("CARTESIA_API_KEY", KEY);
+    vi.stubEnv("CARTESIA_VOICE_ID", "SIMULATED-voice");
+    vi.stubEnv("CARTESIA_MODEL", "SIMULATED-model");
+    const fetch = vi.fn(async () => new Response(new Uint8Array(simulatedWav())));
+    vi.stubGlobal("fetch", fetch);
+    const owner = await signedIn();
+    const first = await owner.action(api.speech.synthesize, args);
+    const second = await owner.action(api.speech.synthesize, { ...args, requestId: "speech-2", text: `  ${args.text} ` });
+    expect(first).toMatchObject({ ok: true, cached: false });
+    expect(second).toMatchObject({ ok: true, cached: true, requestId: "speech-2", mode: "REAL_API" });
+    if (first.ok && second.ok) expect(second.audioBase64).toBe(first.audioBase64);
+    expect(fetch).toHaveBeenCalledTimes(1);
+
+    vi.stubEnv("CARTESIA_VOICE_ID", "SIMULATED-other-voice");
+    expect(await owner.action(api.speech.synthesize, args)).toMatchObject({ cached: false });
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("never caches failures or SIMULATED audio", async () => {
+    vi.stubEnv("CARTESIA_API_KEY", KEY);
+    vi.stubEnv("CARTESIA_VOICE_ID", "SIMULATED-voice");
+    vi.stubEnv("CARTESIA_MODEL", "SIMULATED-model");
+    const fetch = vi.fn(async () => new Response("busy", { status: 503 }));
+    vi.stubGlobal("fetch", fetch);
+    const owner = await signedIn();
+    await owner.action(api.speech.synthesize, args);
+    await owner.action(api.speech.synthesize, args);
+    expect(fetch).toHaveBeenCalledTimes(2);
+
+    vi.stubEnv("CARTESIA_API_KEY", "");
+    await owner.action(api.speech.synthesize, args);
+    await expect(owner.action(api.speech.synthesize, args)).resolves.toMatchObject({ mode: "SIMULATED", cached: false });
+  });
 });

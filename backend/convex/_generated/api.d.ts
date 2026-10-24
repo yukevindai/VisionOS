@@ -37,6 +37,8 @@ import type * as mediaTables from "../mediaTables.js";
 import type * as sessionTables from "../sessionTables.js";
 import type * as sessions from "../sessions.js";
 import type * as speech from "../speech.js";
+import type * as speechCache from "../speechCache.js";
+import type * as speechTables from "../speechTables.js";
 import type * as users from "../users.js";
 import type * as vision from "../vision.js";
 
@@ -73,6 +75,8 @@ declare const fullApi: ApiFromModules<{
   sessionTables: typeof sessionTables;
   sessions: typeof sessions;
   speech: typeof speech;
+  speechCache: typeof speechCache;
+  speechTables: typeof speechTables;
   users: typeof users;
   vision: typeof vision;
 }>;
