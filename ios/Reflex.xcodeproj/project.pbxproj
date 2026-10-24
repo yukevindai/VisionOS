@@ -42,6 +42,8 @@
 		16E8085BBD44662F8139F8E7 /* SessionConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 420D891FEE92C05CBF6436F5 /* SessionConfiguration.swift */; };
 		607A016E469F8A57BE51572D /* SessionCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB153AA35B7BF92F4A0F3D7A /* SessionCoordinator.swift */; };
 		62C01CA352CC35B750AAD557 /* SessionState.swift in Sources */ = {isa = PBXBuildFile; fileRef = E328B29410A677003AEAEEFE /* SessionState.swift */; };
+		9D3B1B069C4A8828EAD800B2 /* ConvexObjectClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6B048F60A804364A2F17B1C /* ConvexObjectClient.swift */; };
+		3FCF3D25E1CFFE9C2144AB8E /* GeminiObjectEvidenceClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFA3E76733133EB2897FC365 /* GeminiObjectEvidenceClient.swift */; };
 		D36312290284BBF99AAF1D16 /* OnDeviceTargetEvidenceClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4C74D42C21954CDE0CDF116 /* OnDeviceTargetEvidenceClient.swift */; };
 		56CE09A7DDA3F1A2F6199033 /* TargetReaderImageEncoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5667283630DE450A095385C9 /* TargetReaderImageEncoder.swift */; };
 		E1A4F953823E82C5A07B04F1 /* TargetReaderModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B1EC69D55F2C9E9E6DF0370 /* TargetReaderModel.swift */; };
@@ -57,6 +59,7 @@
 		18C89977A949101E57EDF107 /* ConversationalSpeechRequestTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8881A89F70CA21AD11A7E1C /* ConversationalSpeechRequestTests.swift */; };
 		518F5743809B4F687739CBE5 /* ConvexNativeMediaBackendTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFA24222422F19F639637F6F /* ConvexNativeMediaBackendTests.swift */; };
 		EE8A701EDDE7996D5EA20599 /* FriendAssistanceCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1246D652038C77E5860AF416 /* FriendAssistanceCoordinatorTests.swift */; };
+		E5BF57385E258A2EF4169E9E /* GeminiObjectEvidenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 160EE082E46EB01D5906AA79 /* GeminiObjectEvidenceTests.swift */; };
 		B5A3C5647C7890E5BB918328 /* LiveCompositionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7454E292F336B7E1CDE6DB6A /* LiveCompositionTests.swift */; };
 		14BFC04EE82C0FE57FE36726 /* LiveKitFrameAdmissionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8940CF37322A5C07F3DDA87E /* LiveKitFrameAdmissionTests.swift */; };
 		209509FC3839E60EFDEC40C1 /* NativeAudioPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10864AA81A128A79466B1CCD /* NativeAudioPolicyTests.swift */; };
@@ -132,6 +135,8 @@
 		420D891FEE92C05CBF6436F5 /* SessionConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Session/SessionConfiguration.swift"; sourceTree = "<group>"; };
 		BB153AA35B7BF92F4A0F3D7A /* SessionCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Session/SessionCoordinator.swift"; sourceTree = "<group>"; };
 		E328B29410A677003AEAEEFE /* SessionState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Session/SessionState.swift"; sourceTree = "<group>"; };
+		D6B048F60A804364A2F17B1C /* ConvexObjectClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Targets/ConvexObjectClient.swift"; sourceTree = "<group>"; };
+		AFA3E76733133EB2897FC365 /* GeminiObjectEvidenceClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Targets/GeminiObjectEvidenceClient.swift"; sourceTree = "<group>"; };
 		C4C74D42C21954CDE0CDF116 /* OnDeviceTargetEvidenceClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Targets/OnDeviceTargetEvidenceClient.swift"; sourceTree = "<group>"; };
 		5667283630DE450A095385C9 /* TargetReaderImageEncoder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Targets/TargetReaderImageEncoder.swift"; sourceTree = "<group>"; };
 		4B1EC69D55F2C9E9E6DF0370 /* TargetReaderModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Targets/TargetReaderModel.swift"; sourceTree = "<group>"; };
@@ -147,6 +152,7 @@
 		A8881A89F70CA21AD11A7E1C /* ConversationalSpeechRequestTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ConversationalSpeechRequestTests.swift"; sourceTree = "<group>"; };
 		AFA24222422F19F639637F6F /* ConvexNativeMediaBackendTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ConvexNativeMediaBackendTests.swift"; sourceTree = "<group>"; };
 		1246D652038C77E5860AF416 /* FriendAssistanceCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "FriendAssistanceCoordinatorTests.swift"; sourceTree = "<group>"; };
+		160EE082E46EB01D5906AA79 /* GeminiObjectEvidenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "GeminiObjectEvidenceTests.swift"; sourceTree = "<group>"; };
 		7454E292F336B7E1CDE6DB6A /* LiveCompositionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "LiveCompositionTests.swift"; sourceTree = "<group>"; };
 		8940CF37322A5C07F3DDA87E /* LiveKitFrameAdmissionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "LiveKitFrameAdmissionTests.swift"; sourceTree = "<group>"; };
 		10864AA81A128A79466B1CCD /* NativeAudioPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NativeAudioPolicyTests.swift"; sourceTree = "<group>"; };
@@ -234,6 +240,8 @@
 			420D891FEE92C05CBF6436F5,
 			BB153AA35B7BF92F4A0F3D7A,
 			E328B29410A677003AEAEEFE,
+			D6B048F60A804364A2F17B1C,
+			AFA3E76733133EB2897FC365,
 			C4C74D42C21954CDE0CDF116,
 			5667283630DE450A095385C9,
 			4B1EC69D55F2C9E9E6DF0370,
@@ -251,6 +259,7 @@
 			A8881A89F70CA21AD11A7E1C,
 			AFA24222422F19F639637F6F,
 			1246D652038C77E5860AF416,
+			160EE082E46EB01D5906AA79,
 			7454E292F336B7E1CDE6DB6A,
 			8940CF37322A5C07F3DDA87E,
 			10864AA81A128A79466B1CCD,
@@ -343,6 +352,8 @@
 			16E8085BBD44662F8139F8E7,
 			607A016E469F8A57BE51572D,
 			62C01CA352CC35B750AAD557,
+			9D3B1B069C4A8828EAD800B2,
+			3FCF3D25E1CFFE9C2144AB8E,
 			D36312290284BBF99AAF1D16,
 			56CE09A7DDA3F1A2F6199033,
 			E1A4F953823E82C5A07B04F1,
@@ -360,6 +371,7 @@
 			18C89977A949101E57EDF107,
 			518F5743809B4F687739CBE5,
 			EE8A701EDDE7996D5EA20599,
+			E5BF57385E258A2EF4169E9E,
 			B5A3C5647C7890E5BB918328,
 			14BFC04EE82C0FE57FE36726,
 			209509FC3839E60EFDEC40C1,

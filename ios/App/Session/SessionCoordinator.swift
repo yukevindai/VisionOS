@@ -188,11 +188,11 @@ final class SessionCoordinator: ObservableObject {
                 self.capabilities.conversation = self.simulated ? .simulated : .ready
                 self.startupDeadline?.cancel(); self.startupDeadline = nil
                 self.phase = .active; self.activity = .listening
-                let localObjects = self.conversation is NativeAudioCoordinator
+                let objectIntroduction = (self.evidence as? GeminiObjectEvidenceClient)?.introduction
                 self.message = self.simulated ? "SIMULATED assistance. Use the fixture input below; the microphone is not listening." :
-                    (localObjects ? "Ask to find a cup, can, bottle or bowl. Say Stop or use Pause to stop guidance." : "Voice assistance is available. Wristbands require connection and calibration.")
+                    (objectIntroduction ?? "Voice assistance is available. Wristbands require connection and calibration.")
                 self.speech.speak(self.simulated ? "SIMULATED session. No real camera or wristbands. Enter a simulated request to try the flow." :
-                    (localObjects ? "Ask me to find a cup, can, bottle or bowl. Say stop to pause. Your wristbands are not active." : "I'm ready. What would you like help with? Your wristbands are not active."), priority: 4, context: context)
+                    (objectIntroduction ?? "I'm ready. What would you like help with? Your wristbands are not active."), priority: 4, context: context)
                 UIApplication.shared.isIdleTimerDisabled = true
                 self.armFrameWatchdog()
                 self.nativeMedia?.start(localSessionID: context.sessionID)
@@ -388,13 +388,13 @@ final class SessionCoordinator: ObservableObject {
         apply(.start(request))
     }
 
-    private func apply(_ event: TaskEvent) {
+    private func apply(_ event: TaskEvent, failureExplanation: String? = nil) {
         guard var engine else { return }
         let effects = engine.reduce(event, nowMs: clock.nowMs)
         self.engine = engine
-        applyEffects(effects)
+        applyEffects(effects, failureExplanation: failureExplanation)
     }
-    private func applyEffects(_ effects: [TaskEffect]) {
+    private func applyEffects(_ effects: [TaskEffect], failureExplanation: String? = nil) {
         guard let engine else { return }
         let effectEpoch = startupEpoch
         synchronizeContext()
@@ -406,7 +406,10 @@ final class SessionCoordinator: ObservableObject {
             guard self.engine?.state == engine.state, startupEpoch == effectEpoch else { return }
             // The unified Stop cancels speech; announce the reason after it completes.
             if pausesSession, case .speak = effect { continue }
-            execute(effect)
+            if let explanation = failureExplanation, case .speak(_, let priority) = effect {
+                message = explanation
+                execute(.speak(text: explanation, priority: priority))
+            } else { execute(effect) }
         }
         // Cancel obsolete requests even when their providers ignore Swift task cancellation.
         let pending = self.engine?.state.pendingRequest
@@ -725,22 +728,28 @@ private extension SessionCoordinator {
         requestWork[request] = Task { [weak self] in
             defer { self?.requestWork.removeValue(forKey: request) }
             let response: TaskResponse
+            var failureExplanation: String?
             do { try Task.checkCancellation(); response = try await operation() }
             catch is CancellationError { return }
+            catch let error as GeminiObjectError {
+                response = .unavailable(.lowConfidence)
+                failureExplanation = error.localizedDescription
+            }
             catch { response = .unavailable(.lowConfidence) }
             guard !Task.isCancelled, let self else { return }
             self.requestWork.removeValue(forKey: request)
-            self.receiveResponse(request, source: source, response: response)
+            self.receiveResponse(request, source: source, response: response, failureExplanation: failureExplanation)
         }
     }
-    func receiveResponse(_ request: RequestContext, source: EventSource, response: TaskResponse) {
+    func receiveResponse(_ request: RequestContext, source: EventSource, response: TaskResponse,
+                         failureExplanation: String? = nil) {
         guard let context, request.task.sessionID == context.sessionID,
               request.task.generation == context.generation, phase == .active else {
             log("late_response_rejected"); return
         }
         let now = clock.nowMs
         apply(.receive(.init(eventID: UUID().uuidString, context: request, monotonicMs: now,
-                            expiresAtMs: request.expiresAtMs, source: source), response))
+                            expiresAtMs: request.expiresAtMs, source: source), response), failureExplanation: failureExplanation)
     }
     func receiveConversation(_ event: ConversationEvent) {
         guard event.context == context, !seenConversationEvents.contains(event.eventID),
@@ -928,10 +937,8 @@ extension SessionCoordinator {
             return
         }
         guard !hasActiveTask else { return }
-        let objectWords = ["cup", "can", "bottle", "bowl"]
-        let words = Set(normalized.components(separatedBy: CharacterSet.alphanumerics.inverted))
-        guard objectWords.contains(where: words.contains) else {
-            message = "Local hand guidance supports a cup, can, bottle, or bowl. Say which object to find."
+        guard input.utf16.count <= 500 else {
+            message = "Describe one object in a shorter request."
             if let context { speech.speak(message, priority: 4, context: context) }
             return
         }

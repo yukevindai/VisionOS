@@ -8,9 +8,11 @@ private final class MediaTestIdentity: NativeMediaIdentityProviding {
     var onIdentityInvalidated: (() -> Void)?
     var credentials = NativeMediaCredentials(jwt: "header.payload.signature", accountID: "owner-A", identityEpoch: UUID())
     var changeOnNextRead = false
+    var onSecondRead: (() -> Void)?
     private var readCount = 0
     func currentCredentials() async throws -> NativeMediaCredentials {
         readCount += 1
+        if readCount == 2 { onSecondRead?() }
         if changeOnNextRead && readCount == 2 {
             changeOnNextRead = false
             switchAccount()
@@ -246,6 +248,228 @@ final class ConvexNativeMediaBackendTests: XCTestCase {
                 capturedAtUTCms: 1234, requestID: "request-1")
             XCTFail("Oversized reply accepted")
         } catch { XCTAssertEqual(error as? NativeMediaTransportError, .responseTooLarge) }
+    }
+
+    private func objectReply() throws -> [String: Any] {
+        // Synthetic transport fixture claiming live provenance to exercise validation only.
+        let model = Targets.ScreenModel(frameId: "object-frame", capturedAtMs: 1234,
+            panelType: .other, source: .visionModel, controls: [
+                .init(id: "keys", label: "silver keys", type: .other,
+                      region: .init(x: 0.2, y: 0.3, width: 0.1, height: 0.2), legibility: .clear)
+            ], image: .init(widthPx: 640, heightPx: 480),
+            evidence: .init(provider: "gemini", model: "test-only", live: true))
+        return ["requestId": "object-request", "mode": "REAL_API", "status": "SELECTED", "selectedObjectId": "keys",
+                "screenModel": try JSONSerialization.jsonObject(with: JSONEncoder().encode(model))]
+    }
+
+    func testObjectClientForwardsTrimmedQueryAndFrameThroughAuthenticatedAction() async throws {
+        let backend = try makeBackend(MediaTestIdentity())
+        let value = try objectReply()
+        MediaURLProtocol.handler = { request in
+            XCTAssertEqual(request.url?.path, "/api/action")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer header.payload.signature")
+            XCTAssertEqual(request.timeoutInterval, 5)
+            let body = try XCTUnwrap(JSONSerialization.jsonObject(with: requestBody(request)) as? [String: Any])
+            XCTAssertEqual(body["path"] as? String, "vision:findObject")
+            let args = try XCTUnwrap((body["args"] as? [[String: Any]])?.first)
+            XCTAssertEqual(args["query"] as? String, "find my silver keys")
+            XCTAssertEqual(args["frameId"] as? String, "object-frame")
+            XCTAssertEqual(args["capturedAtMs"] as? Int, 1234)
+            XCTAssertEqual(args["requestId"] as? String, "object-request")
+            XCTAssertEqual(args["imageBase64"] as? String, Data([1, 2, 3]).base64EncodedString())
+            return try mediaResponse(request, value: value)
+        }
+        let result = try await ConvexObjectClient(backend: backend).findObject(
+            image: Data([1, 2, 3]), query: "  find my silver keys  ", frameID: "object-frame",
+            capturedAtUTCms: 1234, requestID: "object-request")
+        XCTAssertEqual(result.status, .selected)
+        XCTAssertEqual(result.selectedObjectId, "keys")
+        XCTAssertEqual(result.screenModel.controls.first?.label, "silver keys")
+        XCTAssertNil(result.screenModel.controls.first?.confidence)
+        XCTAssertNil(result.screenModel.controls.first?.safety)
+    }
+
+    func testObjectRejectsInvalidQueriesImagesAndFrameScopeBeforeNetwork() async throws {
+        let backend = try makeBackend(MediaTestIdentity())
+        MediaURLProtocol.handler = { request in
+            XCTFail("Invalid object read reached network")
+            return try mediaResponse(request, value: [:])
+        }
+        let invalid: [(Data, String, String, Int64, String)] = [
+            (Data([1]), "   ", "frame", 1, "request"),
+            (Data([1]), String(repeating: "a", count: 501), "frame", 1, "request"),
+            (Data([1]), String(repeating: "🔑", count: 251), "frame", 1, "request"),
+            (Data([1]), "find\nkeys", "frame", 1, "request"),
+            (Data(), "keys", "frame", 1, "request"),
+            (Data(repeating: 1, count: 512 * 1024 + 1), "keys", "frame", 1, "request"),
+            (Data([1]), "keys", "", 1, "request"),
+            (Data([1]), "keys", "frame", -1, "request"),
+            (Data([1]), "keys", "frame", 9_007_199_254_740_992, "request"),
+            (Data([1]), "keys", "frame", 1, "")
+        ]
+        for (image, query, frame, time, request) in invalid {
+            do {
+                _ = try await backend.findObject(image: image, query: query, frameID: frame,
+                    capturedAtUTCms: time, requestID: request)
+                XCTFail("Invalid object request accepted")
+            } catch { XCTAssertEqual(error as? NativeMediaTransportError, .invalidRequest) }
+        }
+    }
+
+    func testObjectRejectsMismatchedAndSimulatedOrUnknownProviderResponses() async throws {
+        let backend = try makeBackend(MediaTestIdentity())
+        let valid = try objectReply()
+        var invalid: [[String: Any]] = []
+        for (key, replacement) in [("requestId", "other"), ("mode", "SIMULATED"), ("mode", "unknown")] {
+            var value = valid
+            value[key] = replacement
+            invalid.append(value)
+        }
+        for (key, replacement) in [
+            ("frameId", "other" as Any), ("capturedAtMs", 1235 as Any),
+            ("schemaVersion", 2 as Any), ("source", "SIMULATED" as Any),
+            ("evidence", ["provider": "gemini", "model": "test-only", "live": false] as Any),
+            ("evidence", ["provider": "other", "model": "test-only", "live": true] as Any),
+            ("evidence", NSNull() as Any)
+        ] {
+            var value = valid
+            var model = try XCTUnwrap(valid["screenModel"] as? [String: Any])
+            model[key] = replacement
+            value["screenModel"] = model
+            invalid.append(value)
+        }
+        for value in invalid {
+            MediaURLProtocol.handler = { request in try mediaResponse(request, value: value) }
+            do {
+                _ = try await backend.findObject(image: Data([1]), query: "keys", frameID: "object-frame",
+                    capturedAtUTCms: 1234, requestID: "object-request")
+                XCTFail("Invalid object evidence accepted")
+            } catch { XCTAssertEqual(error as? NativeMediaTransportError, .invalidResponse) }
+        }
+    }
+
+    func testObjectSelectionStatusRequiresAnUnambiguousCorrelatedID() async throws {
+        let backend = try makeBackend(MediaTestIdentity())
+        let valid = try objectReply()
+        var invalid: [[String: Any]] = []
+        for (key, replacement) in [
+            ("status", "selected" as Any), ("status", "UNRECOGNIZED" as Any),
+            ("status", 1 as Any), ("status", NSNull() as Any),
+            ("selectedObjectId", "missing" as Any), ("selectedObjectId", "" as Any),
+            ("selectedObjectId", NSNull() as Any), ("selectedObjectId", 1 as Any),
+            ("status", "NOT_FOUND" as Any), ("status", "AMBIGUOUS" as Any),
+            ("status", "PROVIDER_UNAVAILABLE" as Any)
+        ] {
+            var value = valid
+            value[key] = replacement
+            invalid.append(value)
+        }
+        var duplicate = valid
+        var model = try XCTUnwrap(valid["screenModel"] as? [String: Any])
+        let controls = try XCTUnwrap(model["controls"] as? [[String: Any]])
+        model["controls"] = controls + controls
+        duplicate["screenModel"] = model
+        invalid.append(duplicate)
+        for value in invalid {
+            MediaURLProtocol.handler = { request in try mediaResponse(request, value: value) }
+            do {
+                _ = try await backend.findObject(image: Data([1]), query: "what is this", frameID: "object-frame",
+                    capturedAtUTCms: 1234, requestID: "object-request")
+                XCTFail("Invalid semantic selection accepted")
+            } catch { XCTAssertEqual(error as? NativeMediaTransportError, .invalidResponse) }
+        }
+        for status in [GeminiObjectRecognition.Status.notFound, .ambiguous, .providerUnavailable] {
+            var value = valid
+            value["status"] = status.rawValue
+            value["selectedObjectId"] = NSNull()
+            MediaURLProtocol.handler = { request in try mediaResponse(request, value: value) }
+            let result = try await backend.findObject(image: Data([1]), query: "what is this", frameID: "object-frame",
+                capturedAtUTCms: 1234, requestID: "object-request")
+            XCTAssertEqual(result.status, status)
+            XCTAssertNil(result.selectedObjectId)
+        }
+    }
+
+    func testObjectRejectsMissingAuthenticationAndAccountSwitch() async throws {
+        let identity = MediaTestIdentity()
+        identity.credentials = NativeMediaCredentials(jwt: "", accountID: "", identityEpoch: UUID())
+        let backend = try makeBackend(identity)
+        MediaURLProtocol.handler = { request in
+            XCTFail("Unauthenticated object request reached network")
+            return try mediaResponse(request, value: [:])
+        }
+        do {
+            _ = try await backend.findObject(image: Data([1]), query: "keys", frameID: "object-frame",
+                capturedAtUTCms: 1234, requestID: "object-request")
+            XCTFail("Missing authentication accepted")
+        } catch { XCTAssertEqual(error as? NativeMediaTransportError, .unauthenticated) }
+
+        let changedIdentity = MediaTestIdentity()
+        changedIdentity.changeOnNextRead = true
+        let changedBackend = try makeBackend(changedIdentity)
+        var invalidated = false
+        changedBackend.onIdentityInvalidated = { invalidated = true }
+        let value = try objectReply()
+        MediaURLProtocol.handler = { request in try mediaResponse(request, value: value) }
+        do {
+            _ = try await changedBackend.findObject(image: Data([1]), query: "keys", frameID: "object-frame",
+                capturedAtUTCms: 1234, requestID: "object-request")
+            XCTFail("Cross-account object evidence accepted")
+        } catch { XCTAssertEqual(error as? NativeMediaTransportError, .accountChanged) }
+        XCTAssertTrue(invalidated)
+    }
+
+    func testObjectBoundsResponseAndSurfacesProviderTimeout() async throws {
+        let backend = try makeBackend(MediaTestIdentity())
+        MediaURLProtocol.handler = { request in
+            (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!,
+             Data(repeating: 65, count: 256 * 1024 + 1))
+        }
+        do {
+            _ = try await backend.findObject(image: Data([1]), query: "keys", frameID: "object-frame",
+                capturedAtUTCms: 1234, requestID: "object-request")
+            XCTFail("Oversized object reply accepted")
+        } catch { XCTAssertEqual(error as? NativeMediaTransportError, .responseTooLarge) }
+        MediaURLProtocol.handler = { _ in throw URLError(.timedOut) }
+        do {
+            _ = try await backend.findObject(image: Data([1]), query: "keys", frameID: "object-frame",
+                capturedAtUTCms: 1234, requestID: "object-request")
+            XCTFail("Timed out object reply accepted")
+        } catch { XCTAssertEqual(error as? NativeMediaTransportError, .unavailable) }
+    }
+
+    func testCancelledObjectReadDoesNotStartNetwork() async throws {
+        let backend = try makeBackend(MediaTestIdentity())
+        MediaURLProtocol.handler = { request in
+            XCTFail("Cancelled object read reached network")
+            return try mediaResponse(request, value: [:])
+        }
+        let task = Task {
+            try await backend.findObject(image: Data([1]), query: "keys", frameID: "object-frame",
+                capturedAtUTCms: 1234, requestID: "object-request")
+        }
+        task.cancel()
+        do {
+            _ = try await task.value
+            XCTFail("Cancelled object read completed")
+        } catch { XCTAssertTrue(error is CancellationError) }
+    }
+
+    func testObjectDiscardsResponseCancelledDuringCredentialRecheck() async throws {
+        let identity = MediaTestIdentity()
+        let backend = try makeBackend(identity)
+        let value = try objectReply()
+        MediaURLProtocol.handler = { request in try mediaResponse(request, value: value) }
+        var task: Task<GeminiObjectRecognition, Error>?
+        identity.onSecondRead = { task?.cancel() }
+        task = Task {
+            try await backend.findObject(image: Data([1]), query: "keys", frameID: "object-frame",
+                capturedAtUTCms: 1234, requestID: "object-request")
+        }
+        do {
+            _ = try await task!.value
+            XCTFail("Cancelled in-flight object evidence accepted")
+        } catch { XCTAssertTrue(error is CancellationError) }
     }
 
     private func speechWav() -> Data {
