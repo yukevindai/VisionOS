@@ -68,7 +68,6 @@ class TrackingTests(unittest.TestCase):
         gray=cv2.cvtColor(f.color,cv2.COLOR_BGR2GRAY)
         tracker.update(f,gray,1.)
         original=tracker.raw_uv.copy()
-        # No neural call in this short interval; local LK evidence supplies movement.
         f.color=cv2.warpAffine(f.color,np.float32([[1,0,3],[0,1,2]]),(640,480))
         f.timestamp+=.03
         tracker.update(f,cv2.cvtColor(f.color,cv2.COLOR_BGR2GRAY),1.03)

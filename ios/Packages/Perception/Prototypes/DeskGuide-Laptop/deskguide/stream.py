@@ -1,4 +1,3 @@
-"""Independent REC3D v1/v2 wire reader. No SDK code is bundled."""
 import socket
 import struct
 import threading
@@ -35,7 +34,6 @@ def exact(sock, count):
 
 
 def read_packet(sock):
-    """Drain one complete paired packet without decoding its JPEG."""
     prefix = exact(sock, 6)
     if prefix[:5] != b'REC3D' or prefix[5] not in (1, 2):
         raise ValueError('Unsupported PathOn protocol; expected REC3D v1/v2')
@@ -53,7 +51,7 @@ def read_packet(sock):
     jpeg = exact(sock, rs)
     conf = np.frombuffer(exact(sock, cs), np.uint8).reshape(ht, w).copy() if cs else None
     exact(sock, ims)
-    received=time.monotonic()  # last wire byte, BEFORE decoding/processing
+    received=time.monotonic()
     return fid,ts,K,pose,depth,jpeg,conf,version,h,received
 
 
@@ -68,7 +66,6 @@ def decode_packet(packet):
         rw, rh = struct.unpack_from('<HH', h, 30)
         if (rw, rh) != (color.shape[1], color.shape[0]):
             raise ValueError('RGB dimensions disagree')
-    # Wire K is at RGB resolution. Keep images unrotated for all geometry.
     valid = (np.isfinite(pose).all() and np.allclose(pose[3], [0, 0, 0, 1], atol=.001)
              and np.allclose(pose[:3, :3].T @ pose[:3, :3], np.eye(3), atol=.02)
              and np.linalg.det(pose[:3, :3]) > .98)
@@ -77,7 +74,6 @@ def decode_packet(packet):
 
 
 def read_frame(sock):
-    """Synchronous reader retained for files and protocol smoke checks."""
     return decode_packet(read_packet(sock))
 
 
@@ -117,7 +113,6 @@ class Phone:
                 self.status=str(exc)
                 self.latest=None
                 continue
-            # An in-flight decode from a disconnected phone cannot reappear.
             if epoch==self.connection_epoch and not self.stop_event.is_set():
                 f.epoch=epoch
                 f.relative_lag=lag
@@ -151,8 +146,6 @@ class Phone:
                         last_ts=timestamp
                         offset=received-timestamp
                         clock_floor=min(clock_floor,offset)
-                        # Retain the conservative floor for this connection;
-                        # sustained network delay must not age out of the gate.
                         lag=max(0.,offset-clock_floor)
                         arrivals.append(received)
                         while len(arrivals)>2 and arrivals[-1]-arrivals[0]>1.:
@@ -162,8 +155,6 @@ class Phone:
                         sensor_times.append(timestamp)
                         if len(sensor_times)>1:
                             self.sensor_fps=(len(sensor_times)-1)/(sensor_times[-1]-sensor_times[0])
-                        # Overwrite compressed packets too: CPU decoding never
-                        # prevents the socket reader draining the TCP stream.
                         self.packet=(packet,epoch,lag)
                         self.packet_ready.set()
                         self.status = ('USB' if self.usb else 'Wi-Fi')+' connected / paired RGB-D packet'
@@ -190,7 +181,6 @@ class Phone:
 
 
 def prepare(frame, max_width=960, rotation=0):
-    """Rotate pixels, depth, intrinsics AND optical camera basis consistently."""
     from dataclasses import replace
     color,confidence=frame.color,frame.confidence
     depth=np.array(frame.depth,dtype=np.float32,copy=True)
@@ -198,8 +188,6 @@ def prepare(frame, max_width=960, rotation=0):
     if confidence is not None:
         depth[confidence<1]=0.
     K,pose=frame.K.copy(),None if frame.pose is None else frame.pose.copy()
-    # Match the verified input contract: resize native RGB/K first, align depth
-    # with nearest-neighbor sampling, then rotate the registered pixel grids.
     h,w=color.shape[:2]
     scale=min(1.,max_width/max(w,h))
     if scale<1:

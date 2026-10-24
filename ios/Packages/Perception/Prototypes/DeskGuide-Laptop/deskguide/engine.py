@@ -9,24 +9,25 @@ from concurrent.futures import ThreadPoolExecutor
 from .stream import Phone,prepare
 from .models import ObjectDetector,HandDetector,ROOT
 from .tracking import FingerTracker,ObjectTracker
-from .contracts import FrameSource,AudioSink
+from .contracts import FrameSource,GuidanceSink
 from .guidance_core import evaluate
 from .geometry import project
 from .flow import align_detections
 
 
 class Engine:
-    def __init__(self,config,audio: AudioSink,preview=False,source: FrameSource | None=None):
+    def __init__(self,config,guidance: GuidanceSink,preview=False,source: FrameSource | None=None):
         self.config=dict(config)
-        self.audio=audio
+        self.guidance=guidance
         self.preview=preview
         self.phone=source if source is not None else Phone(config['host'],config['port'],usb=config.get('usb',False))
         self.stop=threading.Event()
-        self.thread=threading.Thread(target=self.run,daemon=True,name='deskguide-inference')
+        self.thread=threading.Thread(target=self.run,daemon=True,name='reflex-inference')
         self.result=None
         self.error=''
         self.ready=False
         self.reset_event=threading.Event()
+        self.output_lock=threading.Lock()
         self.completed=False
         self.appearance=None
         self.log_path=None
@@ -40,15 +41,21 @@ class Engine:
             self.config['target']=target
         self.completed=False
         self.reset_event.set()
-        self.audio.update()
+        self.guidance.update()
 
     def mark_appearance(self):
         self.appearance=time.monotonic()
 
+    def pause(self):
+        with self.output_lock:
+            self.completed=True
+            self.reset_event.set()
+            self.guidance.update()
+
     def rotate(self):
         self.config['rotation']=(self.config['rotation']+90)%360
         self.reset_event.set()
-        self.audio.update()
+        self.guidance.update()
 
     def run(self):
         cv2.setNumThreads(self.config['opencv_threads'])
@@ -63,8 +70,6 @@ class Engine:
                 object_model=ObjectDetector(self.config['object_score'],self.config.get('torch_threads',8))
                 obj=ObjectTracker(object_model,self.config)
                 detector_worker=ThreadPoolExecutor(max_workers=1,thread_name_prefix='object-inference')
-                # Predictor setup/model fusion is cold-start work, not a live
-                # observation. Acquisition continues draining during warmup.
                 if detector_worker:
                     detector_worker.submit(object_model.detect,np.zeros((640,640,3),np.uint8),self.config['target']).result()
             self.ready=True
@@ -93,7 +98,7 @@ class Engine:
                     start=time.monotonic()
                     limit=self.config['max_frame_age_ms']/1000
                     if start-raw.received+raw.relative_lag>limit:
-                        self.audio.update()
+                        self.guidance.update()
                         continue
                     f=prepare(raw,self.config['max_width'],self.config['rotation'])
                     prepared=time.monotonic()
@@ -108,7 +113,6 @@ class Engine:
                             obj.reset()
                             finger.reset()
                             self.reset_event.clear()
-                        # A discontinuous pose or lost pose quality invalidates persistent coordinates.
                         if previous_epoch==raw.epoch and previous_sensor is not None:
                             dt=f.timestamp-previous_sensor
                             changed=(previous_pose is None)!=(f.pose is None)
@@ -123,24 +127,20 @@ class Engine:
                         previous_epoch=raw.epoch
                         f.epoch=raw.epoch*1000000+pose_generation
                         gray=cv2.cvtColor(f.color,cv2.COLOR_BGR2GRAY)
-                        now=f.received  # all identity/filter durations use frame time
-                        # One semantic detection in flight; never wait for YOLO
-                        # in the current hand/depth/publication loop. An older
-                        # class label is only an identity hint: checked CURRENT
-                        # image support and CURRENT paired depth are mandatory.
+                        now=f.received
                         detected=[]
                         if pending is not None:
                             obsolete=(pending[3]!=generation or pending[1].epoch!=f.epoch
                                       or pending[4]!=self.config['target'])
                             if obsolete and pending[0].cancel():
-                                pending=None  # running jobs cannot be preempted safely
+                                pending=None
                         def collect_detection():
                             nonlocal pending,object_result_age,object_result_state,detection_time,completed_detection
                             if pending is None or not pending[0].done():
                                 return []
                             future,source,source_gray,job_generation,job_target,submitted,source_hands=pending
                             pending=None
-                            boxes=future.result()  # done() above: this cannot wait
+                            boxes=future.result()
                             collected=time.monotonic()
                             obj.schedule.done(submitted,collected)
                             object_result_age=collected-source.received+source.relative_lag
@@ -158,7 +158,6 @@ class Engine:
                             object_result_state=('detected' if mapped else 'no_detection' if not boxes
                                                  else 'current_visual_support_rejected')
                             if mapped:
-                                # Do not stamp an old neural observation as new.
                                 detection_time=source.received-source.relative_lag
                             return mapped
                         detected=collect_detection()
@@ -195,8 +194,6 @@ class Engine:
                         delta=np.array(decision.delta_m)
                         distance=decision.distance_m
                         sigma=float(np.hypot(obj.measurement.sigma,finger.measurement.sigma))
-                    # Display-only estimates reuse the SAME validated vector math.
-                    # They never become a Measurement or enter the audio branch.
                     display=decision
                     distance_kind='LIDAR-FUSED' if trustworthy else 'UNAVAILABLE'
                     distance_reason=decision.reason
@@ -210,10 +207,10 @@ class Engine:
                                     and getattr(self.phone,'connection_epoch',raw.epoch)==raw.epoch) else generation-1)
                             if display.distance_m is not None:
                                 distance_kind='ESTIMATED'
-                                distance_reason=finger.depth_reason+'; audio paused'
+                                distance_reason=finger.depth_reason+'; guidance stopped'
                         if display.distance_m is None:
                             if decision.reason=='stale_frame':
-                                distance_reason=f'Frame age {age*1000:.0f} ms exceeds {limit*1000:.0f} ms; audio paused'
+                                distance_reason=f'Frame age {age*1000:.0f} ms exceeds {limit*1000:.0f} ms; guidance stopped'
                             elif decision.reason in ('completed','task_generation_mismatch'):
                                 distance_reason=decision.reason.replace('_',' ')
                             elif finger.uv is None:
@@ -222,10 +219,11 @@ class Engine:
                                 distance_reason=('Target: '+obj.state.replace('_',' ')+'; '+getattr(obj,'depth_reason','no accepted current target depth'))
                             else:
                                 distance_reason=finger.depth_reason
-                    if trustworthy and not self.completed:
-                        self.audio.update(delta,distance,deadline=f.received+limit-f.relative_lag)
-                    else:
-                        self.audio.update()
+                    with self.output_lock:
+                        if trustworthy and not self.completed:
+                            self.guidance.update(delta,distance,deadline=f.received+limit-f.relative_lag)
+                        else:
+                            self.guidance.update()
                     dispatched=time.monotonic()
                     count+=1
                     if end-window>=1:
@@ -247,7 +245,7 @@ class Engine:
                                  sensor_timestamp=f.timestamp,arrival_monotonic=f.received,
                                  queue_wait_ms=(start-f.received)*1000,decode_ms=f.decode_ms,
                                  prepare_ms=(prepared-start)*1000,
-                                 guidance_audio_dispatch_ms=(dispatched-end)*1000,
+                                 guidance_dispatch_ms=(dispatched-end)*1000,
                                  hand_stage_ms=0 if self.preview else (hand_done-prepared)*1000,
                                  object_depth_stage_ms=0 if self.preview else (end-hand_done)*1000,
                                  object_result_age_ms=None if object_result_age is None else object_result_age*1000,
@@ -284,7 +282,7 @@ class Engine:
                                  hand_inference_ms=0 if self.preview else hand_model.last_ms,
                                  search_to_detection_ms=None if self.preview else obj.first_ms,
                                  confirmation_gap_ms=None if self.preview else obj.reacquire_ms,
-                                 marked_acquisition_ms=acquisition,audio_state=self.audio.status)
+                                 marked_acquisition_ms=acquisition,guidance_direction=self.guidance.status)
                     self.result=dict(frame=f,metrics=metrics,
                                      published_monotonic=time.monotonic(),
                                      object_box=None if self.preview or obj.box is None else obj.box.copy(),
@@ -296,7 +294,7 @@ class Engine:
                         log.flush()
         except Exception as exc:
             self.error=f'{type(exc).__name__}: {exc}'
-            self.audio.update()
+            self.guidance.update()
         finally:
             if detector_worker:
                 detector_worker.shutdown(wait=True,cancel_futures=True)
@@ -305,6 +303,6 @@ class Engine:
 
     def close(self):
         self.stop.set()
-        self.audio.update()
+        self.guidance.update()
         self.phone.close()
         self.thread.join(timeout=5)

@@ -1,21 +1,25 @@
-# DeskGuide Laptop
+# Reflex hand guidance
 
-CPU RGB-D hand guidance prototype for Reflex. Automatic beverage-can targeting uses the existing YOLO11s model's cup/class-41 prediction. Hand tracking uses the official MediaPipe hand task, with independently maintained geometry, target tracking and directional audio. No Proprio source or reference environment is needed at runtime.
+CPU RGB-D finger-to-object guidance prototype for Reflex. It receives paired RGB and LiDAR depth from an iPhone (PathOn REC3D stream), detects a beverage can automatically with YOLO11s (COCO cup/class 41), tracks the index fingertip with the official MediaPipe hand task, computes fingertip and target XYZ from current LiDAR depth, and emits one structured guidance event per frame: LEFT, RIGHT, UP, DOWN, FORWARD, BACKWARD or STOP. There is no sound output; audio will be provided later by a separate integration.
 
 ## Launch
 
-From this prototype directory, run setup.ps1 with Python 3.12 first on a new machine. Keep PathOn streaming on the iPhone connected to the existing TONY 0864 hotspot. Close older camera clients, then run:
+Start PathOn streaming on the iPhone, on the same network as the laptop, and close other camera clients. From this directory:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\launch.ps1 -PhoneIP <CURRENT_PATHON_IP>
+powershell -NoProfile -ExecutionPolicy Bypass -File .\launch.ps1 -PhoneIP <CURRENT_PATHON_IP> -Python C:\Users\ngkho\OneDrive\Desktop\visionOS\DeskGuide-Laptop\.venv\Scripts\python.exe
 ```
 
-Use PathOn's current address if it changes. Execution policy applies only to the launched PowerShell process. This laptop's .venv uses the project-local .runtime/python; a fresh installation can run setup.ps1 with a compatible Python 3.12 including Tcl/Tk.
+On a new machine, run setup.ps1 with Python 3.12 (including Tcl/Tk) first; `-Python` can then be omitted.
 
-Controls: R searches again, M mutes, O rotates, F11 toggles fullscreen, Escape exits fullscreen. Detection is automatic. No rectangle selection.
+Controls: R find again, P pause guidance (STOP), O rotate, F11 fullscreen, Escape leave fullscreen. Detection is automatic.
 
-Hand tracking, depth and guidance status appear in the existing panel. Estimated distances are labeled and display-only. Guidance requires current supported hand/target geometry within 300 ms. Missing depth or lost tracking pauses audio; no automatic successful-grasp claim is made.
+## Interface
 
-YOLO retains input 640/confidence 0.2 and runs as one nonblocking background job. Checked current-image tracking and current paired depth bridge detections, with faster search when lost. Frame acquisition uses the latest complete paired RGB-D packet. Internal session logs contain raw detector boxes/classes/scores and target-selection/depth rejection reasons.
+Live camera with hand landmarks, index fingertip and target box; current guidance direction; fingertip-to-target 3D distance with per-axis offsets; hand, depth and target tracking state; FPS and frame age.
 
-[Latest latency fix, measured evidence and Claude reviews](ORCHESTRATION_AND_LATENCY_FIX.md). [Independence/provenance audit](CLEANUP_AND_ACQUISITION.md). [Dependency licenses](THIRD_PARTY.md). Older reference evaluation documents are historical. No hardware success or post-change FPS is claimed. Native iOS integration remains future work.
+## Guidance events
+
+`deskguide/guidance.py` holds the latest `GuidanceEvent` (direction, reason, delta in meters, distance, expiry, sequence). Axes are camera-optical: x right, y down, z forward; delta is target minus fingertip. The dominant axis is chosen with 1.25x hysteresis. STOP is emitted when geometry is unavailable, when every axis is within 2.5 cm, or when the event has expired (180 ms, never beyond the 300 ms frame-age limit). Guidance requires current LiDAR-supported hand and target geometry; estimated distances are display-only and always STOP.
+
+No hardware success or post-change FPS is claimed. See [THIRD_PARTY.md](THIRD_PARTY.md) for dependency licenses and provenance, and [REFACTOR_HANDOFF.md](REFACTOR_HANDOFF.md) for the module map. Other documents in this directory are historical records.

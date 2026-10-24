@@ -44,7 +44,6 @@ scipy==1.17.1
 sentencepiece==0.2.2
 setuptools==84.2.1
 six==1.17.0
-sounddevice==0.5.1
 sympy==1.14.0
 torch==2.14.1
 torchvision==0.29.1

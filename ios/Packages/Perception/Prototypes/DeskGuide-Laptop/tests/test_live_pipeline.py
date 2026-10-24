@@ -1,4 +1,3 @@
-"""Small offline regression checks for the live-pipeline repairs."""
 import time
 import unittest
 from unittest.mock import patch
@@ -6,10 +5,9 @@ from types import SimpleNamespace
 import cv2
 import numpy as np
 from deskguide.stream import read_frame
-from deskguide.audio import Audio
 from deskguide.flow import align_detections
 from deskguide.tracking import hand_covers
-from test_io_audio import Reader,packet
+from test_io import Reader,packet
 
 
 class LivePipelineTests(unittest.TestCase):
@@ -22,16 +20,6 @@ class LivePipelineTests(unittest.TestCase):
         with patch('deskguide.stream.cv2.imdecode',side_effect=decode),patch('deskguide.stream.time.monotonic',side_effect=lambda:clock[0]):
             f=read_frame(Reader(packet()))
         self.assertAlmostEqual(clock[0]-f.received,.012)
-
-    def test_expired_active_audio_stops_in_next_callback(self):
-        a=Audio()
-        a.update([.1,0,0],.3)
-        out=np.zeros((480,2),np.float32)
-        a.callback(out,len(out),None,False)
-        self.assertGreater(abs(out).sum(),0)
-        a.update()
-        a.callback(out,len(out),None,False)
-        self.assertEqual(abs(out).sum(),0)
 
     def test_delayed_boxes_require_current_visual_support(self):
         source=np.zeros((100,100),np.uint8)

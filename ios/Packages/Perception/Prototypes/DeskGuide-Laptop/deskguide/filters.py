@@ -1,4 +1,3 @@
-"""Independently authored One Euro filter and inference timing governor."""
 import math
 import numpy as np
 
@@ -39,9 +38,6 @@ class Cadence:
     def due(self,now,lost):
         if self.base==0:
             return True
-        # Share the CPU with flow, GUI and audio; search still runs at the next budgeted slot.
-        # Keep a small CPU cooldown while lost without the old 1.4x penalty.
-        # The engine separately bounds inference to one pending call.
         interval = max(self.search,self.cost*.5) if lost else max(self.base,min(.25,self.cost*1.4))
         return now-self.last >= interval
 

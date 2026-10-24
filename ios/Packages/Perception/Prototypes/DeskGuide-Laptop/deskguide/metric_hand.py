@@ -1,16 +1,8 @@
-"""Independent geometry implementation from the audited mathematical specification.
-
-Numerical anthropometric/calibration parameters are data, not copied source.
-Palm depth is a measurement; fingertip position remains a fused estimate.
-Only fresh usable LiDAR can authorize the returned Measurement. No coasting.
-"""
 from collections import deque
 import math
 import numpy as np
 from .geometry import Measurement,backproject
 
-# Audited average-palm profile, in meters; subject-specific scale is learned
-# only while independent LiDAR and shape observations agree.
 PALM_IDS=np.array([0,5,9,13,17])
 PALM_TEMPLATE=np.array([[0.,0.],[-.022,.089],[0.,.091],[.019,.085],[.035,.074]])
 SPAN_PAIRS=np.array([[0,1],[0,2],[0,3],[0,4],[1,4],[1,3],[2,4]])
@@ -63,7 +55,6 @@ def measured_palm(frame,points,diagnostics=None):
 
 
 class MetricFilter:
-    """Speed-adaptive first-order low-pass filter in metric coordinates."""
     def __init__(self):
         self.state=None
 

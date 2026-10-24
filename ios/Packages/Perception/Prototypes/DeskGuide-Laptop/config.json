@@ -13,7 +13,5 @@
   "object_identity_age_s": 0.9,
   "max_frame_age_ms": 300,
   "max_anchor_age_s": 8,
-  "object_score": 0.2,
-  "audio_volume": 0.12,
-  "audio_device": null
+  "object_score": 0.2
 }

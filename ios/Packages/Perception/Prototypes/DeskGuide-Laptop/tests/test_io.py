@@ -7,7 +7,7 @@ import unittest
 import cv2
 import numpy as np
 from deskguide.stream import read_frame,Phone
-from deskguide.audio import Audio
+from deskguide.guidance import GuidanceOutput
 
 
 def packet(version=2,fid=1):
@@ -32,7 +32,7 @@ class Reader:
         return part
 
 
-class IOAudio(unittest.TestCase):
+class WireIO(unittest.TestCase):
     def test_fragmented_wire_v1_v2(self):
         for version in [1,2]:
             f=read_frame(Reader(packet(version)))
@@ -97,35 +97,34 @@ class IOAudio(unittest.TestCase):
             worker.join(2)
         self.assertFalse(errors)
 
-    def test_stereo_left_and_right(self):
-        for x,channel in [(-.1,0),(.1,1)]:
-            audio=Audio()
-            audio.update([x,0,0],.3)
-            out=np.zeros((4800,2),np.float32)
-            audio.callback(out,len(out),None,False)
-            self.assertGreater(np.abs(out[:,channel]).sum(),0)
-            self.assertEqual(np.abs(out[:,1-channel]).sum(),0)
 
-    def test_stale_and_muted_audio(self):
-        audio=Audio()
-        audio.update([.1,0,0],.3,deadline=time.monotonic()-1)
-        out=np.zeros((4800,2),np.float32)
-        audio.callback(out,len(out),None,False)
-        self.assertEqual(np.abs(out).sum(),0)
-        audio.update([.1,0,0],.3)
-        audio.muted=True
-        audio.callback(out,len(out),None,False)
-        self.assertEqual(np.abs(out).sum(),0)
+class GuidanceEvents(unittest.TestCase):
+    def test_dominant_axis_directions(self):
+        for delta,name in [((-.1,0,0),'LEFT'),((.1,0,0),'RIGHT'),((0,-.1,0),'UP'),
+                           ((0,.1,0),'DOWN'),((0,0,.1),'FORWARD'),((0,0,-.1),'BACKWARD')]:
+            guidance=GuidanceOutput()
+            guidance.update(delta,.1)
+            self.assertEqual(guidance.current().direction,name)
+            self.assertEqual(guidance.current().reason,'measured')
 
-    def test_audio_continuity_without_restart(self):
-        audio=Audio()
-        out=np.zeros((480,2),np.float32)
-        for _ in range(30):
-            audio.update([.1,-.1,.1],.3)
-            audio.callback(out,len(out),None,False)
-            self.assertTrue(np.isfinite(out).all())
-            self.assertLessEqual(np.max(abs(out)),audio.volume+.001)
-        self.assertEqual(audio.sample,14400)
+    def test_stop_when_unavailable_expired_or_within_tolerance(self):
+        guidance=GuidanceOutput()
+        self.assertEqual(guidance.status,'STOP')
+        guidance.update([.1,0,0],.3,deadline=time.monotonic()-1)
+        self.assertEqual(guidance.current().reason,'expired')
+        guidance.update([.01,-.01,.02],.03)
+        self.assertEqual((guidance.status,guidance.current().reason),('STOP','within_tolerance'))
+        guidance.update([.1,0,0],.1)
+        guidance.update()
+        self.assertEqual((guidance.status,guidance.current().reason),('STOP','unavailable'))
+
+    def test_axis_hysteresis_holds_until_clearly_dominant(self):
+        guidance=GuidanceOutput()
+        guidance.update([.10,0,0],.1)
+        guidance.update([.10,0,.11],.15)
+        self.assertEqual(guidance.status,'RIGHT')
+        guidance.update([.10,0,.13],.16)
+        self.assertEqual(guidance.status,'FORWARD')
 
 
 if __name__=='__main__': unittest.main()

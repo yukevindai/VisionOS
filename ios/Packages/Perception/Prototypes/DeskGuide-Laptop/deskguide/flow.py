@@ -3,13 +3,12 @@ import numpy as np
 
 
 class Flow:
-    """Sparse LK with photometric, bounds, and forward/backward checks."""
     def __init__(self):
         self.gray = self.points = None
         self.quality = 0.
 
     def seed(self,gray,points):
-        self.gray = gray  # Frames are immutable; avoid a redundant image copy.
+        self.gray = gray
         self.points = np.array(points,np.float32).reshape(-1,1,2)
 
     def update(self,gray):
@@ -53,11 +52,6 @@ def object_motion(old,new):
 
 
 def align_detections(source_gray,current_gray,detections,source_hand_regions=()):
-    """Bring asynchronous boxes onto current pixels using checked LK motion.
-
-    Failed motion is discarded, never treated as a current detection. Geometry
-    will subsequently sample ONLY the current paired depth frame.
-    """
     if source_gray is current_gray:
         return detections
     if source_gray.shape!=current_gray.shape:

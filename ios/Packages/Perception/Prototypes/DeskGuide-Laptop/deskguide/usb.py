@@ -1,8 +1,3 @@
-"""Independent Windows usbmux plist client; no SDK or forwarding process required.
-
-Uses Apple's installed Mobile Device service on localhost:27015. Protocol facts:
-https://github.com/libimobiledevice/libusbmuxd (no library code is included).
-"""
 import plistlib
 import socket
 import struct
@@ -19,8 +14,8 @@ def read_exact(sock,size):
 
 
 def request(sock,message,tag=1):
-    payload=plistlib.dumps(dict(ClientVersionString='DeskGuide-Laptop/1.0',
-                                ProgName='DeskGuide-Laptop',kLibUSBMuxVersion=3,**message))
+    payload=plistlib.dumps(dict(ClientVersionString='Reflex/1.0',
+                                ProgName='Reflex',kLibUSBMuxVersion=3,**message))
     sock.sendall(struct.pack('<IIII',len(payload)+16,1,8,tag)+payload)
     length,version,kind,response_tag=struct.unpack('<IIII',read_exact(sock,16))
     if not 16<length<=1024*1024 or version!=1 or kind!=8 or response_tag!=tag:
@@ -71,7 +66,6 @@ def connect(port=8888):
         if result.get('MessageType')!='Result' or result.get('Number')!=0:
             raise ConnectionError('iPhone USB connection refused (code '+str(result.get('Number'))+
                                   '). Start PathOn streaming, keep it open, and verify its port.')
-        # After success this same socket carries the phone's raw TCP bytes.
         return sock
     except Exception:
         sock.close()
