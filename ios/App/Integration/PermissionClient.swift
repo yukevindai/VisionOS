@@ -1,5 +1,6 @@
 import AVFoundation
 import UIKit
+import Speech
 
 enum PermissionAuthorization: String, Equatable {
     case notDetermined = "Not requested"
@@ -11,11 +12,12 @@ enum PermissionAuthorization: String, Equatable {
 struct PermissionState: Equatable {
     var cameraAuthorization: PermissionAuthorization
     var microphoneAuthorization: PermissionAuthorization
+    var speechAuthorization: PermissionAuthorization = .authorized
     var camera: Bool { cameraAuthorization == .authorized }
     var microphone: Bool { microphoneAuthorization == .authorized }
-    var ready: Bool { camera && microphone }
-    var canRequest: Bool { cameraAuthorization == .notDetermined || microphoneAuthorization == .notDetermined }
-    var needsSettings: Bool { cameraAuthorization == .denied || microphoneAuthorization == .denied }
+    var ready: Bool { camera && microphone && speechAuthorization == .authorized }
+    var canRequest: Bool { cameraAuthorization == .notDetermined || microphoneAuthorization == .notDetermined || speechAuthorization == .notDetermined }
+    var needsSettings: Bool { cameraAuthorization == .denied || microphoneAuthorization == .denied || speechAuthorization == .denied }
 
     init(camera: Bool, microphone: Bool) {
         self.init(cameraAuthorization: camera ? .authorized : .denied,
@@ -29,7 +31,7 @@ struct PermissionState: Equatable {
 
     var explanation: String {
         guard !ready else { return "Camera and microphone access are enabled." }
-        return [reason("Camera", cameraAuthorization), reason("Microphone", microphoneAuthorization)]
+        return [reason("Camera", cameraAuthorization), reason("Microphone", microphoneAuthorization), reason("Speech recognition", speechAuthorization)]
             .compactMap { $0 }.joined(separator: " ")
     }
 
@@ -67,7 +69,15 @@ final class SystemPermissionClient: PermissionClient {
         case .denied: microphone = .denied
         @unknown default: microphone = .restricted
         }
-        return .init(cameraAuthorization: camera, microphoneAuthorization: microphone)
+        var state = PermissionState(cameraAuthorization: camera, microphoneAuthorization: microphone)
+        switch SFSpeechRecognizer.authorizationStatus() {
+        case .authorized: state.speechAuthorization = .authorized
+        case .notDetermined: state.speechAuthorization = .notDetermined
+        case .denied: state.speechAuthorization = .denied
+        case .restricted: state.speechAuthorization = .restricted
+        @unknown default: state.speechAuthorization = .restricted
+        }
+        return state
     }
     func request() async -> PermissionState {
         if AVCaptureDevice.authorizationStatus(for: .video) == .notDetermined {
@@ -75,6 +85,11 @@ final class SystemPermissionClient: PermissionClient {
         }
         if AVAudioApplication.shared.recordPermission == .undetermined {
             _ = await AVAudioApplication.requestRecordPermission()
+        }
+        if SFSpeechRecognizer.authorizationStatus() == .notDetermined {
+            _ = await withCheckedContinuation { continuation in
+                SFSpeechRecognizer.requestAuthorization { continuation.resume(returning: $0) }
+            }
         }
         return current()
     }

@@ -1,6 +1,62 @@
 import XCTest
+import UIKit
 import Tasks
 @testable import Reflex
+
+#if DEBUG
+@MainActor
+final class UITestAppClockTests: XCTestCase {
+    func testClockSelectionNeverChangesLiveOrOrdinarySimulationTime() {
+        let system = SystemAppClock()
+        let flags = ["--simulate", "--uitesting"]
+        XCTAssertTrue(AppDependencies.compositionClock(simulated: true, fallback: system, arguments: flags) is UITestAppClock)
+        XCTAssertTrue(AppDependencies.compositionClock(simulated: false, fallback: system, arguments: flags) === system)
+        XCTAssertTrue(AppDependencies.compositionClock(simulated: true, fallback: system, arguments: ["--simulate"]) === system)
+        XCTAssertTrue(AppDependencies.compositionClock(simulated: true, fallback: system, arguments: ["--uitesting"]) === system)
+        let manual = ManualAppClock()
+        XCTAssertTrue(AppDependencies.compositionClock(simulated: true, fallback: manual, arguments: flags) === manual)
+    }
+
+    func testDeadlinesRunInOrderAndCancellationStillWorks() {
+        let clock = UITestAppClock(automaticallyAdvances: false)
+        var events: [Int] = []
+        let first = clock.schedule(afterMs: 100) { events.append(1) }
+        let cancelled = clock.schedule(afterMs: 50) { events.append(0) }
+        let second = clock.schedule(afterMs: 100) { events.append(2) }
+        cancelled.cancel()
+        XCTAssertEqual(clock.nowMs, 1_000)
+        XCTAssertTrue(events.isEmpty)
+        clock.advance(100)
+        XCTAssertEqual(events, [1, 2])
+        XCTAssertEqual(clock.nowMs, 1_100)
+        withExtendedLifetime([first, second]) {}
+    }
+
+    func testFixtureMenuSurvivesDelayedTicksButStillStopsForStaleFrames() async {
+        let clock = UITestAppClock(automaticallyAdvances: false)
+        let dependencies = AppDependencies(simulated: true, clock: clock,
+            defaults: UserDefaults(suiteName: UUID().uuidString)!)
+        dependencies.preferences.setupComplete = true
+        let session = dependencies.session
+        session.start()
+        for _ in 0..<80 { await Task.yield() }
+        session.submitFixtureText("read the menu")
+        for _ in 0..<80 { await Task.yield() }
+        XCTAssertEqual(session.taskState?.phase, .discussingMenu)
+        // One delayed tick drains camera/watchdog deadlines in chronological order.
+        clock.advance(12_000)
+        session.submitFixtureText("more")
+        XCTAssertEqual(session.phase, .active)
+        XCTAssertTrue(session.caption.contains("SIMULATED food"))
+        let perception = session.perception as! FixturePerception
+        perception.staleFrames = true
+        clock.advance(400)
+        XCTAssertEqual(session.phase, .paused)
+        XCTAssertTrue(session.message.contains("Tracking was lost"))
+        session.stop(.userEnd)
+    }
+}
+#endif
 
 @MainActor
 final class ManualAppClock: AppClock {
@@ -30,7 +86,7 @@ private final class DelayedEvidence: TargetEvidenceClient {
         received = request
         return try await withCheckedThrowingContinuation { pending = $0 }
     }
-    func readScreen(_ request: RequestContext) async throws -> ScreenModel { try await base.readScreen(request) }
+    func readScreen(_ request: RequestContext) async throws -> TaskScreen { try await base.readScreen(request) }
     func readMenu(_ request: RequestContext, query: String) async throws -> MenuContent { try await base.readMenu(request, query: query) }
     func answerMenu(_ request: RequestContext, question: String, menu: MenuContent) async throws -> String { try await base.answerMenu(request, question: question, menu: menu) }
     func verify(_ request: RequestContext, action: ActionKind, target: ResolvedTarget) async throws -> VerificationOutcome { .unavailable }
@@ -183,6 +239,98 @@ final class SessionCoordinatorTests: XCTestCase {
         XCTAssertNil(h.session.taskState?.confirmation)
         h.session.stop(.userEnd)
     }
+
+    func testPreviewExpiresWhileListeningWithoutAnActiveTask() async {
+        let h = makeHarness(); h.session.start(); await settle()
+        h.perception.stop(context: h.session.context!)
+        XCTAssertNil(h.session.taskState?.request)
+        let image = syntheticPreview(.red)
+        let now = h.clock.nowMs
+        deliverPreview(image, to: h, capturedAtMs: now - 200, expiresAtMs: now + 500)
+        XCTAssertTrue(h.session.preview === image)
+
+        h.clock.advance(99)
+        XCTAssertTrue(h.session.preview === image)
+        h.clock.advance(1)
+        XCTAssertNil(h.session.preview, "A frozen image must clear at the 300 ms capture-age limit, even without a task.")
+        XCTAssertEqual(h.session.phase, .active)
+        h.session.stop(.userEnd)
+        XCTAssertEqual(h.clock.pendingCount, 0)
+    }
+
+    func testPausedPreviewExpiresAtItsEarlierFrameDeadline() async {
+        let h = makeHarness(); h.session.start(); await settle()
+        h.perception.stop(context: h.session.context!)
+        h.session.stop(.userPause)
+        let image = syntheticPreview(.blue)
+        let now = h.clock.nowMs
+        deliverPreview(image, to: h, capturedAtMs: now, expiresAtMs: now + 20)
+        XCTAssertTrue(h.session.preview === image)
+
+        h.clock.advance(19)
+        XCTAssertTrue(h.session.preview === image)
+        h.clock.advance(1)
+        XCTAssertNil(h.session.preview, "Pausing guidance must not leave the last camera image indefinitely visible.")
+        XCTAssertEqual(h.session.phase, .paused)
+        h.session.stop(.userEnd)
+        XCTAssertEqual(h.clock.pendingCount, 0)
+    }
+
+    func testNewPreviewSurvivesThePreviousFramesExpiry() async {
+        let h = makeHarness(); h.session.start(); await settle()
+        h.perception.stop(context: h.session.context!)
+        let first = syntheticPreview(.red)
+        let second = syntheticPreview(.blue)
+        let start = h.clock.nowMs
+        deliverPreview(first, to: h, capturedAtMs: start, expiresAtMs: start + 100)
+        h.clock.advance(50)
+        deliverPreview(second, to: h, capturedAtMs: h.clock.nowMs, expiresAtMs: start + 300)
+
+        h.clock.advance(50)
+        XCTAssertTrue(h.session.preview === second, "The superseded frame's deadline must not remove the current camera image.")
+        h.clock.advance(199)
+        XCTAssertTrue(h.session.preview === second)
+        h.clock.advance(1)
+        XCTAssertNil(h.session.preview)
+        h.session.stop(.userEnd)
+        XCTAssertEqual(h.clock.pendingCount, 0)
+    }
+
+    func testStopImmediatelyClearsPreviewIncludingRepeatedPause() async {
+        for cause in [SessionStopCause.userPause, .localStop, .trackingLost, .background, .userEnd] {
+            let h = makeHarness(); h.session.start(); await settle()
+            h.perception.stop(context: h.session.context!)
+            let image = syntheticPreview(.red)
+            deliverPreview(image, to: h, capturedAtMs: h.clock.nowMs, expiresAtMs: h.clock.nowMs + 300)
+            XCTAssertNotNil(h.session.preview)
+            h.session.stop(cause)
+            XCTAssertNil(h.session.preview, "Stop cause: \(cause)")
+            if cause == .userPause {
+                deliverPreview(image, to: h, capturedAtMs: h.clock.nowMs, expiresAtMs: h.clock.nowMs + 300)
+                XCTAssertNotNil(h.session.preview)
+                h.session.stop(.userPause)
+                XCTAssertNil(h.session.preview, "A repeated Stop must also clear a fresh image received while paused.")
+            }
+            h.session.stop(.userEnd)
+            XCTAssertEqual(h.clock.pendingCount, 0)
+        }
+    }
+
+    private func syntheticPreview(_ color: UIColor) -> UIImage {
+        // Pixel-backed fixture only; this does not exercise a physical camera.
+        let bounds = CGRect(x: 0, y: 0, width: 4, height: 4)
+        return UIGraphicsImageRenderer(size: bounds.size).image { context in
+            color.setFill()
+            context.fill(bounds)
+        }
+    }
+
+    private func deliverPreview(_ image: UIImage, to h: Harness, capturedAtMs: Int64, expiresAtMs: Int64) {
+        h.perception.onFrame?(.init(context: h.session.context!, frameID: UUID().uuidString,
+            capturedAtMs: capturedAtMs, expiresAtMs: expiresAtMs, geometryID: h.perception.camera.geometryID,
+            transform: .identity, preview: image, encodedImage: nil, trackingNormal: true, depthUsable: true))
+    }
+
     func testRepeatedSessionsCleanUpTimersAndUseFreshIdentities() async {
         let h = makeHarness(); var ids = Set<String>()
         for _ in 0..<10 {

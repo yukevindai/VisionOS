@@ -1,0 +1,27 @@
+{
+  "source": {
+    "url": "https://github.com/ultralytics/assets/releases/download/v8.3.0/yolo11s.pt",
+    "sha256": "85a76fe86dd8afe384648546b56a7a78580c7cb7b404fc595f97969322d502d5",
+    "bytes": 19313732
+  },
+  "export": {
+    "format": "coreml",
+    "nms": true,
+    "imgsz": 640,
+    "half": false,
+    "ultralytics": "8.4.183",
+    "coremltools": "9.0",
+    "torch": "2.14.1"
+  },
+  "compiledFiles": {
+    "analytics/coremldata.bin": "c1b18a3740fafc8d5bbd32f1a3851869d1a1f850f87ffd354c2574a8f188cacf",
+    "coremldata.bin": "b220894ee3f519ac8bbcf0966e0cd81b867ec9230151bbb29f20fe9b8894e572",
+    "metadata.json": "afc24dbfe80211faf807247b89afc8f4d4d7189431da6b6f7c1dcc53e03cf8f1",
+    "model0/analytics/coremldata.bin": "5a8281049b2a65a3be541cfd9f949e84b8fe1c5251ce90e46da1626fed54e58a",
+    "model0/coremldata.bin": "2cbff29b1320f334c521fd3dff9ae2d7fdf5462c74aecfe4bbecce14d8f0e5b8",
+    "model0/model.mil": "bf8a504258d6663ae637efc822e6ddff5c782abaed50df065c69f081208b5d72",
+    "model0/weights/weight.bin": "45b475d51c671fc6fc6fd7712c1b12d3a594995e57f39e99f869182fed9a0198",
+    "model1/coremldata.bin": "049a40fa660d876f8b87ac5c4855a4cb2a2936cf8901eb8bbd21e5b4d31c1a4e"
+  },
+  "validation": "Conversion only; device detection accuracy and latency not yet validated."
+}

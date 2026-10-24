@@ -1,0 +1,28 @@
+Source: /tmp/reflex-r2-ui-fixes-3.xcresult, simulator iPhone 17 Pro / iOS 26.5, Xcode 27.1 (27A9275).
+Exported with xcrun xcresulttool export attachments. Crops are copied unchanged.
+Measured with: swift ios/AccessibilityRepro/measure_crop.swift <crop.png>
+The existing script uses bytesPerRow and bitsPerPixel/8 (not samplesPerPixel) for raw bitmap access.
+
+Both session crops: embedded sRGB IEC61966-2.1 profile, 904x193 pixels, 32 bits/pixel, 8 bits/sample, 3 samples, 3616 bytes/row.
+Dark dominant colors: #1B1B1B 56826 pixels; #FFFFFF 13864 pixels.
+Light dominant colors: #878787 91416 pixels; #000000 13864 pixels.
+Other dominant entries are +/-1-channel background variation and antialiased glyph edges.
+
+WCAG sRGB relative luminance formula: c <= 0.04045 ? c/12.92 : ((c+0.055)/1.055)^2.4, where c=channel/255.
+Contrast=(lighter luminance+0.05)/(darker luminance+0.05).
+White / #1B1B1B = 17.2243828871:1.
+Black / #878787 = 5.8456224493:1.
+Both exceed the 4.5:1 normal text threshold, but the contrast audits still failed session.message.
+This is diagnostic evidence of the reported crop, not a whole-app accessibility or device acceptance claim.
+
+Calibration failure identified calibration.answer.Move right at x16 y8.7 w370 h93.3 points.
+Its exported element crop contains the status/navigation bars and none of the named answer text.
+The clipped screen shows rows no longer painting behind the navigation bar, but clipping did not cure audit sampling.
+No new audit handler exclusions, disabled audit types, or expected failures were introduced by the production fixes.
+
+Bounded diagnostic experiment: /tmp/reflex-r2-ui-contrast-isolation-retry.xcresult.
+Fresh dark session, no prior role/home audits, contrast-only: FAILED session.message (9.783 s).
+Fresh dark calibration, contrast-only: FAILED calibration.instructions at x16 y-738 w370 h837.3 (35.097 s).
+Thus combined audit types/prior screen audits are not required to produce these failures.
+Temporary diagnostic test methods were removed; original audit types and issue handlers restored.
+The first isolation attempt crashed the UI test runner during bootstrap before executing any tests; it has no contrast result.
