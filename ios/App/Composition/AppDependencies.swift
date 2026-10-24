@@ -64,6 +64,7 @@ final class AppDependencies: ObservableObject {
     private static func compose(simulated: Bool, preferences: UserPreferences, diagnostics: Diagnostics,
                                 live: LiveIntegrationBundle?, clock: any AppClock,
                                 permissionOverride: (any PermissionClient)?, defaults: UserDefaults) -> SessionCoordinator {
+        let clock = compositionClock(simulated: simulated, fallback: clock)
         let liveBands = simulated ? nil : live?.bands
         let controller: HapticLinkController?
         do {
@@ -104,4 +105,16 @@ final class AppDependencies: ObservableObject {
             permissions: permissions, enforceSimulatedPermissions: enforceSimulatedPermissions,
             framePolicy: simulated ? nil : live?.framePolicy, generationSeed: liveBands?.generationSeed ?? { 0 })
     }
+
+    static func compositionClock(simulated: Bool, fallback: any AppClock,
+                                 arguments: [String] = ProcessInfo.processInfo.arguments) -> any AppClock {
+        #if DEBUG
+        if simulated, arguments.contains("--simulate"), arguments.contains("--uitesting"),
+           fallback is SystemAppClock {
+            return UITestAppClock()
+        }
+        #endif
+        return fallback
+    }
+
 }

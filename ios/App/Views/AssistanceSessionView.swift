@@ -58,6 +58,7 @@ struct AssistanceSessionView: View {
                                 .onSubmit(sendFixtureInput)
                             Button(action: sendFixtureInput) {
                                 Text("Send simulated request")
+                                    .font(.headline)
                                     .foregroundStyle(Color(uiColor: .label))
                                     .fixedSize(horizontal: false, vertical: true)
                                     .padding(.horizontal, 16).padding(.vertical, 8)
@@ -69,8 +70,14 @@ struct AssistanceSessionView: View {
                             .buttonStyle(.plain).accessibilityIdentifier("fixture.send")
                         }
                     }
-                }.padding(24).frame(maxWidth: 650)
+                }
+                .padding(24)
+                .frame(maxWidth: 650)
+                .frame(maxWidth: .infinity)
+                .foregroundStyle(Color(uiColor: .label))
+                .background(Color(uiColor: .systemBackground))
             }
+            .background(Color(uiColor: .systemBackground))
             .clipped()
             .accessibilityIdentifier("session.content")
             sessionControls.padding().background(Color(uiColor: .systemBackground))
