@@ -12,7 +12,7 @@ final class ConvexSpeechClient: ConversationalSpeechSynthesizing {
 
     static func live() throws -> ConvexSpeechClient {
         let configuration = try LiveServiceConfiguration.load()
-        let identity = StoredSpeechIdentity(configuration: configuration)
+        let identity = StoredNativeIdentity(configuration: configuration)
         return ConvexSpeechClient(backend: try ConvexNativeMediaBackend(
             origin: configuration.convexURL, identity: identity))
     }
@@ -24,11 +24,11 @@ final class ConvexSpeechClient: ConversationalSpeechSynthesizing {
     }
 }
 
-/// Speech uses an existing sign-in and never opens authentication UI during assistance.
+/// Assistance uses an existing sign-in and never opens authentication UI.
 /// Reload both before and after HTTP so another screen's logout/account switch invalidates
 /// this request even though that screen owns a separate identity adapter.
 @MainActor
-private final class StoredSpeechIdentity: NativeMediaIdentityProviding {
+final class StoredNativeIdentity: NativeMediaIdentityProviding {
     var onIdentityInvalidated: (() -> Void)?
     private let identity: Auth0NativeIdentity
 

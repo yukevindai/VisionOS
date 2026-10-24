@@ -83,6 +83,17 @@ describe("authenticated vision bridge", () => {
       await expect(owner.action(api.vision.readScreen, args)).rejects.toThrow("INVALID_VISION_RESPONSE");
     }
   });
+  it("passes kiosk step evidence through and type-checks it", async () => {
+    const { owner } = await signedIn();
+    const step = { screenKind: "cart", isWelcomeScreen: false, orderTotal: "$7.48", screenSignature: "scr-0123456789abcdef" };
+    const value = { ...reply(), screenModel: { ...reply().screenModel, ...step } };
+    vi.stubGlobal("fetch", vi.fn(async () => json(value)));
+    expect(await owner.action(api.vision.readScreen, args)).toEqual(value);
+    for (const bad of [{ isWelcomeScreen: "yes" }, { orderTotal: 7.48 }, { screenSignature: "frame-1" }, { screenKind: "x".repeat(33) }]) {
+      vi.stubGlobal("fetch", vi.fn(async () => json({ ...reply(), screenModel: { ...reply().screenModel, ...bad } })));
+      await expect(owner.action(api.vision.readScreen, args)).rejects.toThrow("INVALID_VISION_RESPONSE");
+    }
+  });
   it("keeps provider-unavailable distinct from an absent target", async () => {
     const { owner } = await signedIn();
     const value = { ...reply(), screenModel: { ...reply().screenModel, availability: "unavailable", unavailableReason: "providerUnavailable" } };

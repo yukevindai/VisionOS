@@ -25,39 +25,44 @@ final class SetupAccessibilityUITests: XCTestCase {
         XCTAssertTrue(app.buttons["calibration.start"].exists)
     }
 
-    func testSetupInstructionsPermissionsAndPreferencesAtLargestText() throws {
+    func testDirectCallPermissionRecoveryAndSettingsPreferencesAtLargestText() throws {
         let app = launch(permissionScenario: "denied")
-        app.buttons["home.start"].tap()
-        XCTAssertTrue(app.buttons["setup.cancel"].waitForExistence(timeout: 3))
-        XCTAssertTrue(app.buttons["setup.cancel"].isHittable)
-        app.buttons["setup.cancel"].tap()
-        XCTAssertTrue(app.buttons["home.start"].waitForExistence(timeout: 3))
-        app.buttons["home.start"].tap()
-        XCTAssertTrue(app.buttons["setup.cancel"].waitForExistence(timeout: 3))
-        attach(app, "Setup instructions at largest text")
-        let explanation = app.staticTexts["setup.permission.explanation"]
-        reveal(explanation, in: app)
+        let start = app.buttons["home.start"]
+        XCTAssertTrue(start.waitForExistence(timeout: 3))
+        reveal(start, in: app)
+        start.tap()
+        let explanation = app.staticTexts["session.error"]
+        XCTAssertTrue(explanation.waitForExistence(timeout: 3))
+        reveal(explanation, in: app, towardTop: true)
         XCTAssertTrue(explanation.label.contains("Camera access is denied."))
         XCTAssertTrue(explanation.label.contains("Microphone access is denied."))
-        let recovery = app.buttons["setup.permission.simulatedRecovery"]
-        reveal(recovery, in: app)
-        recovery.tap()
-        reveal(explanation, in: app, towardTop: true)
-        XCTAssertEqual(explanation.label, "Camera and microphone access are enabled.")
+        XCTAssertFalse(app.buttons["setup.continue"].exists)
+        XCTAssertFalse(app.buttons["setup.cancel"].exists)
+        XCTAssertTrue(start.isEnabled)
+        attach(app, "Call permission recovery at largest text")
+
+        openSettings(in: app)
         let left = app.buttons["Left"]
         reveal(left, in: app)
+        XCTAssertTrue(left.isEnabled, "Permission denial must not lock optional preferences.")
         left.tap()
         let mounted = app.buttons["Mounted"]
         reveal(mounted, in: app)
+        XCTAssertTrue(mounted.isEnabled)
         mounted.tap()
-        attach(app, "Setup preferences at largest text")
-        let proceed = app.buttons["setup.continue"]
-        reveal(proceed, in: app)
-        XCTAssertTrue(proceed.isEnabled)
-        proceed.tap()
-        XCTAssertTrue(app.buttons["session.end"].waitForExistence(timeout: 5))
-        app.buttons["session.end"].tap()
-        XCTAssertTrue(app.buttons["home.start"].waitForExistence(timeout: 5))
+        attach(app, "Optional preferences after denied Call at largest text")
+        app.buttons["settings.done"].tap()
+        XCTAssertTrue(explanation.waitForExistence(timeout: 3))
+
+        let recovery = app.buttons["home.permission.simulatedRecovery"]
+        reveal(recovery, in: app)
+        recovery.tap()
+        let end = app.buttons["session.end"]
+        XCTAssertTrue(end.waitForExistence(timeout: 5))
+        XCTAssertTrue(end.isHittable)
+        XCTAssertFalse(app.buttons["setup.continue"].exists)
+        end.tap()
+        XCTAssertTrue(start.waitForExistence(timeout: 5))
     }
 
     func testSettingsAndBandInstructionsAtLargestText() throws {
@@ -147,11 +152,11 @@ final class SetupAccessibilityUITests: XCTestCase {
         XCTAssertTrue(app.buttons["home.start"].waitForExistence(timeout: 5))
     }
 
-    func testSetupAuditWithLargestText() throws {
+    func testCallPermissionRecoveryAuditWithLargestText() throws {
         let app = launch(permissionScenario: "denied")
         app.buttons["home.start"].tap()
-        XCTAssertTrue(app.buttons["setup.cancel"].waitForExistence(timeout: 3))
-        try audit(app, "Setup")
+        XCTAssertTrue(app.staticTexts["session.error"].waitForExistence(timeout: 3))
+        try audit(app, "Call permission recovery")
     }
 
     func testSettingsAuditWithLargestText() throws {
@@ -218,7 +223,7 @@ final class SetupAccessibilityUITests: XCTestCase {
             let navigationBottom = app.navigationBars.allElementsBoundByIndex
                 .filter { $0.isHittable }.map { $0.frame.maxY }.max() ?? viewport.minY
             let top = max(viewport.minY, navigationBottom)
-            let footerIDs = ["calibration.stop", "settings.pause", "settings.done", "setup.cancel"]
+            let footerIDs = ["calibration.stop", "settings.pause", "settings.done"]
             let footerTop = footerIDs.map { app.buttons[$0] }.filter { $0.exists && $0.isHittable && $0.frame.minY > app.frame.midY }
                 .map { $0.frame.minY }.min()
             let bottom = min(viewport.maxY, footerTop ?? viewport.maxY)
@@ -245,7 +250,8 @@ final class SetupAccessibilityUITests: XCTestCase {
             if abs(delta) < 24 { delta = delta < 0 ? -24 : 24 }
             let start = app.coordinate(withNormalizedOffset: .zero)
                 .withOffset(CGVector(dx: viewport.midX, dy: (top + bottom) / 2))
-            start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 0, dy: delta)))
+            start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 0, dy: delta)),
+                        withVelocity: .slow, thenHoldForDuration: 0.5)
         }
         attach(app, "Unable to reveal \(element.identifier)")
         print("Reveal failed: element=\(element.frame), scroll=\(scroll.frame)")

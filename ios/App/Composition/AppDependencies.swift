@@ -53,7 +53,6 @@ final class AppDependencies: ObservableObject {
         self.defaults = preferenceDefaults
         preferences = UserPreferences(defaults: preferenceDefaults)
         diagnostics = Diagnostics()
-        if ProcessInfo.processInfo.arguments.contains("--simulate") { preferences.setupComplete = true }
         session = Self.compose(simulated: simulated, preferences: preferences, diagnostics: diagnostics,
                                live: live, clock: clock, permissionOverride: permissions, defaults: preferenceDefaults)
     }
@@ -136,7 +135,7 @@ final class AppDependencies: ObservableObject {
             audio?.onEvent?(.init(context: context, eventID: UUID().uuidString, payload: .disconnected))
         }
         return LiveIntegrationBundle(perception: perception, speech: audio, conversation: audio,
-            evidence: OnDeviceTargetEvidenceClient(clock: clock),
+            evidence: GeminiObjectEvidenceClient(reader: try? ConvexObjectClient.live(), clock: clock),
             framePolicy: FrameDeliveryPolicy(minimumIntervalMs: 250, maximumEncodedBytes: 512 * 1_024))
     }
 }

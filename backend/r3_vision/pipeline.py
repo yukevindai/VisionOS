@@ -6,6 +6,7 @@ ScreenModel, which the selector reports as NOT_FOUND / SCREEN_UNAVAILABLE.
 """
 from __future__ import annotations
 
+import hashlib
 import time
 import math
 import uuid
@@ -89,7 +90,7 @@ def build_screen_model(result: gemini.ProviderResult, image: image_prep.Prepared
         invalid_image = (result.error or {}).get("kind") == "INVALID_IMAGE"
         model.update(panelType="unknown", availability="unavailable",
                      unavailableReason="unreadable" if invalid_image else "providerUnavailable",
-                     controls=[], sections=[], isPaymentScreen=False)
+                     controls=[], sections=[], isPaymentScreen=False, screenKind="unknown", isWelcomeScreen=False)
         return model
     elements = reply.get("elements") if isinstance(reply.get("elements"), list) else []
     controls = [e for i, raw in enumerate(elements[:MAX_ELEMENTS]) if (e := _element(i + 1, raw))]
@@ -103,7 +104,33 @@ def build_screen_model(result: gemini.ProviderResult, image: image_prep.Prepared
     )
     if availability != "available":
         model["unavailableReason"] = _enum(reply.get("unavailableReason"), gemini.UNAVAILABLE_REASONS, "unknown")
+    _add_screen_step(model, reply)
     return model
+
+
+def screen_signature(panel_type: str, screen_kind: str, controls: list[dict]) -> str:
+    """Stable id for "the same screen" across frames: kind plus the sorted set of clearly read labels.
+
+    Camera position, prices and box coordinates do not change it, so R2 can tell a re-read of the same
+    screen from a real screen change without comparing frame ids (which differ on every frame).
+    """
+    labels = sorted({c["label"].casefold() for c in controls if c.get("legibility") == "clear" and c.get("label")})
+    digest = hashlib.sha256("\n".join([panel_type, screen_kind, *labels]).encode("utf-8")).hexdigest()
+    return f"scr-{digest[:16]}"
+
+
+def _add_screen_step(model: dict, reply: dict) -> None:
+    """Kiosk step evidence for R2's task engine: welcome (reset), payment boundary, total, screen identity."""
+    kind = _enum(reply.get("screenKind"), gemini.SCREEN_KINDS, "unknown")
+    model["screenKind"] = kind
+    model["isWelcomeScreen"] = kind == "welcome"
+    # Either signal is enough to stop: a missed payment screen is worse than an early handoff (spec S7).
+    model["isPaymentScreen"] = model["isPaymentScreen"] or kind == "payment"
+    if (total := _text(reply.get("orderTotal"))) is not None:
+        model["orderTotal"] = total
+    # Only a fully visible screen gets an identity; a partial view would look like a different screen.
+    if model["availability"] == "available" and model["controls"]:
+        model["screenSignature"] = screen_signature(model["panelType"], kind, model["controls"])
 
 
 def read_screen(image_bytes: bytes, client: gemini.GeminiClient, frame_id: str | None = None,

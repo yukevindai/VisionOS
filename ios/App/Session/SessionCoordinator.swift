@@ -13,7 +13,6 @@ final class SessionCoordinator: ObservableObject {
     @Published private(set) var preview: UIImage?
     @Published private(set) var microphoneMuted = false
     @Published private(set) var taskState: TaskState?
-    @Published private(set) var showSetup = false
     @Published private(set) var permissionState = PermissionState(camera: false, microphone: false)
     @Published private(set) var requestingPermissions = false
     @Published private(set) var calibrationIndex: Int?
@@ -34,6 +33,8 @@ final class SessionCoordinator: ObservableObject {
     private(set) var context: SessionContext?
     private var startWork: Task<Void, Never>?
     private var adapterStartInFlight = false
+    private var permissionStartPending = false
+    private var applicationActive = true
     private var requestWork: [RequestContext: Task<Void, Never>] = [:]
     private var deadline: ScheduledWork?
     private var frameWatchdog: ScheduledWork?
@@ -130,9 +131,20 @@ final class SessionCoordinator: ObservableObject {
             message = "The previous connection attempt is still stopping. Try Start again shortly."
             return
         }
-        guard preferences.setupComplete else { showSetup = true; return }
+        guard !requestingPermissions else {
+            message = "Finish the permission request before starting another call."
+            return
+        }
         permissionState = permissions.current()
-        guard !requiresPermissions || permissionState.ready else { showSetup = true; message = permissionState.explanation; return }
+        if requiresPermissions && !permissionState.ready {
+            guard permissionState.canRequest else {
+                phase = .failed
+                message = permissionState.explanation
+                return
+            }
+            requestAccessAndStart()
+            return
+        }
         startupEpoch = UUID()
         let epoch = startupEpoch
         let id = UUID().uuidString
@@ -176,11 +188,11 @@ final class SessionCoordinator: ObservableObject {
                 self.capabilities.conversation = self.simulated ? .simulated : .ready
                 self.startupDeadline?.cancel(); self.startupDeadline = nil
                 self.phase = .active; self.activity = .listening
-                let localObjects = self.conversation is NativeAudioCoordinator
+                let objectIntroduction = (self.evidence as? GeminiObjectEvidenceClient)?.introduction
                 self.message = self.simulated ? "SIMULATED assistance. Use the fixture input below; the microphone is not listening." :
-                    (localObjects ? "Ask to find a cup, can, bottle or bowl. Say Stop or use Pause to stop guidance." : "Voice assistance is available. Wristbands require connection and calibration.")
+                    (objectIntroduction ?? "Voice assistance is available. Wristbands require connection and calibration.")
                 self.speech.speak(self.simulated ? "SIMULATED session. No real camera or wristbands. Enter a simulated request to try the flow." :
-                    (localObjects ? "Ask me to find a cup, can, bottle or bowl. Say stop to pause. Your wristbands are not active." : "I'm ready. What would you like help with? Your wristbands are not active."), priority: 4, context: context)
+                    (objectIntroduction ?? "I'm ready. What would you like help with? Your wristbands are not active."), priority: 4, context: context)
                 UIApplication.shared.isIdleTimerDisabled = true
                 self.armFrameWatchdog()
                 self.nativeMedia?.start(localSessionID: context.sessionID)
@@ -198,19 +210,52 @@ final class SessionCoordinator: ObservableObject {
 
     func refreshPermissions() { permissionState = permissions.current() }
 
-    func requestPermissions() {
-        guard !requestingPermissions else { return }
+    private func requestAccessAndStart() {
+        startupEpoch = UUID()
+        let epoch = startupEpoch
+        permissionStartPending = true
         requestingPermissions = true
+        phase = .preparing; activity = .preparing
+        message = "Allow camera, microphone and speech recognition access to start your call."
         let permissions = self.permissions
         Task { [weak self] in
+            guard self?.permissionStartPending == true, self?.startupEpoch == epoch else {
+                self?.requestingPermissions = false
+                return
+            }
             let state = await permissions.request()
             guard let self else { return }
-            self.permissionState = state
             self.requestingPermissions = false
+            self.permissionState = state
+            guard self.permissionStartPending, self.startupEpoch == epoch else { return }
+            guard state.ready else {
+                self.permissionStartPending = false
+                self.phase = .failed
+                self.message = state.explanation
+                return
+            }
+            self.continueAfterPermissions()
         }
     }
-    func finishSetup() { preferences.setupComplete = true; showSetup = false; start() }
-    func dismissSetup() { showSetup = false }
+
+    private func continueAfterPermissions() {
+        guard permissionStartPending, !requestingPermissions, applicationActive,
+              phase == .preparing, permissionState.ready else { return }
+        permissionStartPending = false
+        phase = .idle
+        start()
+    }
+
+    func becameActive() {
+        applicationActive = true
+        refreshPermissions()
+        continueAfterPermissions()
+    }
+
+    func becameInactive() {
+        applicationActive = false
+        if !permissionStartPending { backgrounded() }
+    }
 
     /// Serialized synchronous stop: invalidate first, cancel work, stop BLE, then request R1 speech.
     /// No await, network request, BLE acknowledgment, or audio completion can block this path.
@@ -219,6 +264,7 @@ final class SessionCoordinator: ObservableObject {
     private func stop(_ cause: SessionStopCause, preparedFriendEffects: [TaskEffect]?) {
         if [.userEnd, .background, .microphoneMuted, .cameraChanged, .providerFailure].contains(cause) { nativeMedia?.stop() }
         guard phase != .ended && phase != .idle else { return }
+        permissionStartPending = false
         startupEpoch = UUID()
         let stopEpoch = startupEpoch
         friendAssistance?.preemptForStop()
@@ -319,6 +365,11 @@ final class SessionCoordinator: ObservableObject {
         }
     }
     func backgrounded() {
+        applicationActive = false
+        if permissionStartPending {
+            stop(.userEnd)
+            return
+        }
         nativeMedia?.stop()
         if phase == .active || phase == .preparing || phase == .recovering || calibrationIndex != nil { stop(.background) }
         else { friendAssistance?.close() }
@@ -337,13 +388,13 @@ final class SessionCoordinator: ObservableObject {
         apply(.start(request))
     }
 
-    private func apply(_ event: TaskEvent) {
+    private func apply(_ event: TaskEvent, failureExplanation: String? = nil) {
         guard var engine else { return }
         let effects = engine.reduce(event, nowMs: clock.nowMs)
         self.engine = engine
-        applyEffects(effects)
+        applyEffects(effects, failureExplanation: failureExplanation)
     }
-    private func applyEffects(_ effects: [TaskEffect]) {
+    private func applyEffects(_ effects: [TaskEffect], failureExplanation: String? = nil) {
         guard let engine else { return }
         let effectEpoch = startupEpoch
         synchronizeContext()
@@ -355,7 +406,10 @@ final class SessionCoordinator: ObservableObject {
             guard self.engine?.state == engine.state, startupEpoch == effectEpoch else { return }
             // The unified Stop cancels speech; announce the reason after it completes.
             if pausesSession, case .speak = effect { continue }
-            execute(effect)
+            if let explanation = failureExplanation, case .speak(_, let priority) = effect {
+                message = explanation
+                execute(.speak(text: explanation, priority: priority))
+            } else { execute(effect) }
         }
         // Cancel obsolete requests even when their providers ignore Swift task cancellation.
         let pending = self.engine?.state.pendingRequest
@@ -674,22 +728,28 @@ private extension SessionCoordinator {
         requestWork[request] = Task { [weak self] in
             defer { self?.requestWork.removeValue(forKey: request) }
             let response: TaskResponse
+            var failureExplanation: String?
             do { try Task.checkCancellation(); response = try await operation() }
             catch is CancellationError { return }
+            catch let error as GeminiObjectError {
+                response = .unavailable(.lowConfidence)
+                failureExplanation = error.localizedDescription
+            }
             catch { response = .unavailable(.lowConfidence) }
             guard !Task.isCancelled, let self else { return }
             self.requestWork.removeValue(forKey: request)
-            self.receiveResponse(request, source: source, response: response)
+            self.receiveResponse(request, source: source, response: response, failureExplanation: failureExplanation)
         }
     }
-    func receiveResponse(_ request: RequestContext, source: EventSource, response: TaskResponse) {
+    func receiveResponse(_ request: RequestContext, source: EventSource, response: TaskResponse,
+                         failureExplanation: String? = nil) {
         guard let context, request.task.sessionID == context.sessionID,
               request.task.generation == context.generation, phase == .active else {
             log("late_response_rejected"); return
         }
         let now = clock.nowMs
         apply(.receive(.init(eventID: UUID().uuidString, context: request, monotonicMs: now,
-                            expiresAtMs: request.expiresAtMs, source: source), response))
+                            expiresAtMs: request.expiresAtMs, source: source), response), failureExplanation: failureExplanation)
     }
     func receiveConversation(_ event: ConversationEvent) {
         guard event.context == context, !seenConversationEvents.contains(event.eventID),
@@ -877,10 +937,8 @@ extension SessionCoordinator {
             return
         }
         guard !hasActiveTask else { return }
-        let objectWords = ["cup", "can", "bottle", "bowl"]
-        let words = Set(normalized.components(separatedBy: CharacterSet.alphanumerics.inverted))
-        guard objectWords.contains(where: words.contains) else {
-            message = "Local hand guidance supports a cup, can, bottle, or bowl. Say which object to find."
+        guard input.utf16.count <= 500 else {
+            message = "Describe one object in a shorter request."
             if let context { speech.speak(message, priority: 4, context: context) }
             return
         }

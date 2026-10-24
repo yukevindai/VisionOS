@@ -61,9 +61,6 @@ struct HomeView: View {
             }
             .sheet(isPresented: $settingsPresented) { SettingsView(dependencies: dependencies) }
             .sheet(isPresented: $toolsPresented) { AssistanceToolsView(simulated: dependencies.simulated) }
-            .sheet(isPresented: Binding(get: { session.showSetup }, set: { if !$0 { session.dismissSetup() } })) {
-                SetupView(session: session, preferences: dependencies.preferences)
-            }
             .onChange(of: session.phase) { _, phase in
                 if phase == .ended || phase == .failed { callFocused = true }
             }
@@ -135,6 +132,9 @@ struct HomeView: View {
                         Text(session.message).font(.body)
                             .fixedSize(horizontal: false, vertical: true)
                             .accessibilityIdentifier("session.error")
+                        if session.requiresPermissions && session.permissionState.needsSettings {
+                            permissionRecovery
+                        }
                     }
                     VStack(spacing: 28) {
                         Spacer(minLength: 24)
@@ -158,13 +158,13 @@ struct HomeView: View {
                         .accessibilityLabel("Call")
                         .accessibilityHint(dependencies.simulated
                                            ? "Starts simulated assistance. The microphone is not listening."
-                                           : "Starts voice assistance immediately after required camera and microphone setup.")
+                                           : "Starts voice assistance and requests camera, microphone and speech recognition access if needed.")
                         .accessibilityIdentifier("home.start")
                         .accessibilityFocused($callFocused)
                         Text(dependencies.simulated ? "Try simulated assistance." : "Voice assistance starts right away.")
                             .font(.title3.weight(.semibold)).multilineTextAlignment(.center)
                             .fixedSize(horizontal: false, vertical: true)
-                        Text(dependencies.simulated ? "No real camera, microphone or wristbands." : "Ask to find a cup, can, bottle or bowl.")
+                        Text(dependencies.simulated ? "No real camera, microphone or wristbands." : "Describe the object you want to find.")
                             .font(.body).foregroundStyle(AssistanceColors.secondaryText).multilineTextAlignment(.center)
                             .fixedSize(horizontal: false, vertical: true)
                         Spacer(minLength: 24)
@@ -177,6 +177,30 @@ struct HomeView: View {
             }
         }
         .onAppear { callFocused = true }
+    }
+
+    @ViewBuilder
+    private var permissionRecovery: some View {
+        #if DEBUG
+        if let permissions = session.permissions as? UITestPermissionClient {
+            Button("Simulate returning from Settings with access allowed") {
+                permissions.simulateSettingsRecovery()
+                session.start()
+            }
+            .frame(minHeight: 44)
+            .accessibilityIdentifier("home.permission.simulatedRecovery")
+        } else {
+            openPermissionSettings
+        }
+        #else
+        openPermissionSettings
+        #endif
+    }
+
+    private var openPermissionSettings: some View {
+        Link("Open Settings", destination: URL(string: UIApplication.openSettingsURLString)!)
+            .frame(minHeight: 44)
+            .accessibilityIdentifier("home.permission.settings")
     }
 
     private var brand: some View {

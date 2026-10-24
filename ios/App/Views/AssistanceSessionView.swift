@@ -26,7 +26,7 @@ struct AssistanceSessionView: View {
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                     .textSelection(.enabled)
                                     .padding(16)
-                                    .cameraIsland()
+                                    .cameraIsland(opaque: true)
                                     .accessibilityIdentifier("session.caption")
                             }
                             confirmation
@@ -116,7 +116,8 @@ struct AssistanceSessionView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
-        .cameraIsland()
+        // Status and instructions need stable contrast as the camera image changes.
+        .cameraIsland(opaque: true)
     }
 
     @ViewBuilder

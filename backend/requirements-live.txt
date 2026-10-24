@@ -1,0 +1,5 @@
+# Optional Windows desktop experiment dependencies. Compatible with the existing pipeline.
+# Separate from pinned server requirements to support newer desktop Python versions.
+Pillow>=11.1,<13
+numpy>=1.26,<3  # 1.26 matches the existing R1 prototype venv; do not force an upgrade there
+opencv-python>=4.10,<6

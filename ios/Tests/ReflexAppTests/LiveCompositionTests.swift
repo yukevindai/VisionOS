@@ -54,10 +54,26 @@ private final class CompositionEvidence: TargetEvidenceClient {
     private let base: FixtureEvidence
     private(set) var resolutions = 0
     private(set) var menuReads = 0
+    private(set) var resolvedQueries: [String] = []
+    private(set) var resolvedKinds: [TaskKind] = []
+    var resolutionError: GeminiObjectError?
+    var holdResolution = false
+    private var pendingResolution: CheckedContinuation<Void, Never>?
+    var hasPendingResolution: Bool { pendingResolution != nil }
     init(clock: any AppClock) { base = FixtureEvidence(clock: clock) }
     func resolve(_ request: RequestContext, query: String, kind: TaskKind) async throws -> ResolvedTarget {
         resolutions += 1
+        resolvedQueries.append(query)
+        resolvedKinds.append(kind)
+        if holdResolution {
+            await withCheckedContinuation { pendingResolution = $0 }
+        }
+        if let resolutionError { throw resolutionError }
         return try await base.resolve(request, query: query, kind: kind)
+    }
+    func releaseResolution() {
+        pendingResolution?.resume()
+        pendingResolution = nil
     }
     func readScreen(_ request: RequestContext) async throws -> TaskScreen { try await base.readScreen(request) }
     func readMenu(_ request: RequestContext, query: String) async throws -> MenuContent {
@@ -115,7 +131,6 @@ final class LiveCompositionTests: XCTestCase {
             evidence: evidence, framePolicy: .init(minimumIntervalMs: 200, maximumEncodedBytes: 4), bands: bands)
         let dependencies = AppDependencies(simulated: false, live: live, clock: clock,
             permissions: FixturePermissionClient(state: permissions), defaults: defaults)
-        dependencies.preferences.setupComplete = true
         return .init(dependencies: dependencies, clock: clock, perception: perception,
                      speech: speech, conversation: conversation, evidence: evidence)
     }
@@ -161,6 +176,92 @@ final class LiveCompositionTests: XCTestCase {
         XCTAssertEqual(h.speech.localStops, 1)
         XCTAssertEqual(h.speech.successes, 0)
         XCTAssertNil(h.session.bands.lastStopReport, "No transport delivery may be claimed without H1")
+    }
+
+    func testOwnerCanRequestArbitraryObjectsWithoutFourNounFilter() async {
+        for query in ["find my silver keys", "where is my phone", "find the red book"] {
+            let h = harness()
+            h.session.start(); await settle()
+            XCTAssertEqual(h.session.phase, .active)
+            h.session.receiveLocalOwnerUtterance(query)
+            await settle()
+            XCTAssertEqual(h.evidence.resolvedQueries, [query])
+            XCTAssertEqual(h.evidence.resolvedKinds, [.object])
+            XCTAssertEqual(h.perception.guidanceRequests, 1)
+            h.session.stop(.userEnd)
+        }
+    }
+
+    func testObjectRecognitionFailuresAreSpokenAndDisplayedWithoutGuidance() async {
+        for error in [GeminiObjectError.notConfigured, .identificationOnly("silver keys")] {
+            let h = harness()
+            h.session.start(); await settle()
+            h.evidence.resolutionError = error
+            var spoken: [String] = []
+            h.speech.onSpeech = { spoken.append(h.session.caption) }
+            h.session.receiveLocalOwnerUtterance("what is this")
+            await settle()
+            XCTAssertEqual(h.evidence.resolvedQueries, ["what is this"])
+            XCTAssertEqual(h.session.message, error.localizedDescription)
+            XCTAssertEqual(h.session.caption, error.localizedDescription)
+            XCTAssertTrue(spoken.contains(error.localizedDescription))
+            XCTAssertEqual(h.perception.guidanceRequests, 0)
+            XCTAssertEqual(h.speech.successes, 0)
+            XCTAssertNotEqual(h.session.taskState?.phase, .guiding)
+            h.speech.onSpeech = nil
+            h.session.stop(.userEnd)
+        }
+    }
+
+    func testStopUtteranceTakesPrecedenceOverObjectQuery() async {
+        let h = harness()
+        defer { h.session.stop(.userEnd) }
+        h.session.start(); await settle()
+        h.session.receiveLocalOwnerUtterance("stop finding my keys")
+        XCTAssertEqual(h.session.phase, .paused)
+        XCTAssertEqual(h.speech.localStops, 1)
+        await settle()
+        XCTAssertTrue(h.evidence.resolvedQueries.isEmpty)
+        XCTAssertEqual(h.perception.guidanceRequests, 0)
+    }
+
+    func testMutedOwnerUtterancesCannotResolveObjects() async {
+        let h = harness()
+        defer { h.session.stop(.userEnd) }
+        h.session.start(); await settle()
+        h.session.setMuted(true)
+        XCTAssertTrue(h.session.microphoneMuted)
+        h.session.receiveLocalOwnerUtterance("find my phone")
+        await settle()
+        XCTAssertTrue(h.evidence.resolvedQueries.isEmpty)
+        XCTAssertEqual(h.perception.guidanceRequests, 0)
+        XCTAssertNotEqual(h.session.phase, .active)
+    }
+
+    func testLateObjectFailureCannotReplaceOrSpeakAfterStop() async throws {
+        let h = harness()
+        defer { h.speech.onSpeech = nil; h.session.stop(.userEnd) }
+        h.session.start(); await settle()
+        h.evidence.holdResolution = true
+        h.evidence.resolutionError = .identificationOnly("silver keys")
+        var spoken: [String] = []
+        h.speech.onSpeech = { spoken.append(h.session.caption) }
+        h.session.receiveLocalOwnerUtterance("find my keys")
+        await settle()
+        XCTAssertTrue(h.evidence.hasPendingResolution)
+        XCTAssertEqual(h.evidence.resolutions, 1)
+        h.session.receiveLocalOwnerUtterance("stop")
+        let stoppedMessage = h.session.message
+        let stoppedCaption = h.session.caption
+        let speechAtStop = spoken
+        XCTAssertEqual(h.session.phase, .paused)
+        h.evidence.releaseResolution()
+        await settle()
+        XCTAssertEqual(h.session.message, stoppedMessage)
+        XCTAssertEqual(h.session.caption, stoppedCaption)
+        XCTAssertEqual(spoken, speechAtStop)
+        XCTAssertEqual(h.perception.guidanceRequests, 0)
+        XCTAssertFalse(spoken.contains(GeminiObjectError.identificationOnly("silver keys").localizedDescription))
     }
 
     func testMissingOfflineStopBlocksPhysicalTaskWhileMenuRemainsAvailable() async {
@@ -242,8 +343,8 @@ final class LiveCompositionTests: XCTestCase {
     func testLiveCompositionStillRequiresCameraAndMicrophonePermission() async {
         let h = harness(permissions: .init(camera: false, microphone: true))
         h.session.start(); await settle()
-        XCTAssertEqual(h.session.phase, .idle)
-        XCTAssertTrue(h.session.showSetup)
+        XCTAssertEqual(h.session.phase, .failed)
+        XCTAssertTrue(h.session.message.contains("Camera access is denied"))
         XCTAssertEqual(h.conversation.startCount, 0)
         XCTAssertNil(h.perception.context)
     }
