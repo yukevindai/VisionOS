@@ -1,0 +1,3 @@
+# Combined visual preview; isolated hand_tracking/ implementation remains owned by Claude.
+-r requirements-live.txt
+mediapipe>=0.10,<2
