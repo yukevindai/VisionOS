@@ -75,7 +75,13 @@ class TrackingWorker:
                         sourceKind='REC3D' if self.args.host else 'video')
         prepared = None
         try:
-            process_capture(raw, self.args.rotation, job.query, metadata, self.client, directory)
+            client = self.client
+            if getattr(self.args, 'target_kind', 'control') == 'object':
+                import copy
+                from .gemini import object_prompt
+                client = copy.copy(self.client)
+                client.prompt = object_prompt(job.query)
+            process_capture(raw, self.args.rotation, job.query, metadata, client, directory)
             result = json.loads((directory/'result.json').read_text(encoding='utf-8'))
             if getattr(self.args, 'target_kind', 'control') == 'object' and result.get('screenModel'):
                 from . import object_select

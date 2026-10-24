@@ -38,6 +38,10 @@ class LockSession(TrackingSession):
         current = self.inflight is job and job.generation == self.generation
         super().complete(job, result, now, prepared_tracker)
         selection = result.get('selection', {})
+        if current and selection.get('status') == 'NOT_FOUND' and result.get('provider', {}).get('ok'):
+            seen = [c.get('label', '') for c in (result.get('screenModel') or {}).get('controls', []) if c.get('label')]
+            if seen:
+                self.detail += ' | Gemini saw: ' + ', '.join(seen[:8]) + ' | try one of these names'
         if current and selection.get('status') == 'AMBIGUOUS':
             labels = selection.get('candidateLabels') or []
             self.needs_clarification = True
