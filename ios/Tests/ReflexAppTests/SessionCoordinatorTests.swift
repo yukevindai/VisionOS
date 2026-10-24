@@ -30,7 +30,7 @@ private final class DelayedEvidence: TargetEvidenceClient {
         received = request
         return try await withCheckedThrowingContinuation { pending = $0 }
     }
-    func readScreen(_ request: RequestContext) async throws -> ScreenModel { try await base.readScreen(request) }
+    func readScreen(_ request: RequestContext) async throws -> TaskScreen { try await base.readScreen(request) }
     func readMenu(_ request: RequestContext, query: String) async throws -> MenuContent { try await base.readMenu(request, query: query) }
     func answerMenu(_ request: RequestContext, question: String, menu: MenuContent) async throws -> String { try await base.answerMenu(request, question: question, menu: menu) }
     func verify(_ request: RequestContext, action: ActionKind, target: ResolvedTarget) async throws -> VerificationOutcome { .unavailable }

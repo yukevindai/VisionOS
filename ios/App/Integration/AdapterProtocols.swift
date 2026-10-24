@@ -54,6 +54,7 @@ struct ConversationEvent {
 }
 
 enum ConversationPayload {
+    case localOwnerUtterance(String)
     case intent(TaskRequest)
     case command(LocalCommand)
     case confirmation(promptID: String, answer: ConfirmationAnswer, explicitUserResponse: Bool)
@@ -81,7 +82,7 @@ protocol ConversationClient: AnyObject {
 @MainActor
 protocol TargetEvidenceClient: AnyObject {
     func resolve(_ request: RequestContext, query: String, kind: TaskKind) async throws -> ResolvedTarget
-    func readScreen(_ request: RequestContext) async throws -> ScreenModel
+    func readScreen(_ request: RequestContext) async throws -> TaskScreen
     func readMenu(_ request: RequestContext, query: String) async throws -> MenuContent
     func answerMenu(_ request: RequestContext, question: String, menu: MenuContent) async throws -> String
     func verify(_ request: RequestContext, action: ActionKind, target: ResolvedTarget) async throws -> VerificationOutcome

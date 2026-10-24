@@ -39,3 +39,6 @@ recordings/
 *.onnx
 *.task
 *.npz
+
+# Generated from the hash-pinned teammate model; prepare_native_model.py rebuilds it
+/ios/Resources/Models/*.mlmodelc/

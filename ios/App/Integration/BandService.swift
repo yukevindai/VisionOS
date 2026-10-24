@@ -17,7 +17,7 @@ final class BandService: ObservableObject {
     var synchronizationChallengeID: UUID? { controller?.synchronizationChallengeID }
     private let controller: HapticLinkController?
     let simulated: Bool
-    private var desiredContext: HapticContext?
+    private(set) var desiredContext: HapticContext?
     private var calibrationContext = false
     private let clock: any AppClock
     var isReady: Bool { pairSignature != nil }

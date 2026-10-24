@@ -7,6 +7,7 @@ ScreenModel, which the selector reports as NOT_FOUND / SCREEN_UNAVAILABLE.
 from __future__ import annotations
 
 import time
+import math
 import uuid
 
 from . import gemini, image_prep, selector
@@ -37,7 +38,7 @@ def box_2d_to_region(box) -> dict | None:
     rejects them as INVALID_REGION instead of guiding toward a repaired guess.
     """
     if not isinstance(box, list) or len(box) != 4 or not all(
-            isinstance(v, (int, float)) and not isinstance(v, bool) for v in box):
+            isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) for v in box):
         return None
     ymin, xmin, ymax, xmax = (v / 1000 for v in box)
     return {"x": round(xmin, 4), "y": round(ymin, 4), "width": round(xmax - xmin, 4), "height": round(ymax - ymin, 4)}
@@ -105,12 +106,9 @@ def build_screen_model(result: gemini.ProviderResult, image: image_prep.Prepared
     return model
 
 
-def run(image_bytes: bytes, request: str, client: gemini.GeminiClient, frame_id: str | None = None,
-        captured_at_ms: int | None = None) -> dict:
-    """Never raises for provider or image problems; they are reported in the result.
-
-    Pass the phone's frame ID and capture time (UTC ms) so the model stays tied to that frame.
-    """
+def read_screen(image_bytes: bytes, client: gemini.GeminiClient, frame_id: str | None = None,
+                captured_at_ms: int | None = None) -> dict:
+    """Read semantic evidence only; native callers select with the Swift reference implementation."""
     started = time.perf_counter()
     received_at = captured_at_ms if captured_at_ms is not None else _now_ms()
     try:
@@ -124,20 +122,31 @@ def run(image_bytes: bytes, request: str, client: gemini.GeminiClient, frame_id:
         provider = client.describe(image.jpeg)
     described = time.perf_counter()
     screen_model = build_screen_model(provider, image, received_at, frame_id)
-    selection = selector.select(request, screen_model)
-    finished = time.perf_counter()
     error = dict(provider.error) if provider.error else None
     if error and error["kind"] == "PROVIDER_TIMEOUT":
         error["errorCode"] = "PROVIDER_TIMEOUT"
-        selection["errorCode"] = "PROVIDER_TIMEOUT"
     return {
         "mode": "REAL_API" if provider.live else "SIMULATED",
         "screenModel": screen_model,
-        "selection": selection,
         "provider": {"ok": provider.ok, "httpStatus": provider.http_status, "error": error,
                      "usage": provider.usage},
         "timingMs": {"prepare": round((prepared - started) * 1000, 1),
                      "provider": round((described - prepared) * 1000, 1),
-                     "select": round((finished - described) * 1000, 1),
-                     "total": round((finished - started) * 1000, 1)},
+                     "total": round((described - started) * 1000, 1)},
     }
+
+
+def run(image_bytes: bytes, request: str, client: gemini.GeminiClient, frame_id: str | None = None,
+        captured_at_ms: int | None = None) -> dict:
+    """CLI/evaluation path, including the portable Python selector."""
+    result = read_screen(image_bytes, client, frame_id, captured_at_ms)
+    started = time.perf_counter()
+    selection = selector.select(request, result["screenModel"])
+    elapsed = (time.perf_counter() - started) * 1000
+    error = result["provider"]["error"]
+    if error and error["kind"] == "PROVIDER_TIMEOUT":
+        selection["errorCode"] = "PROVIDER_TIMEOUT"
+    result["selection"] = selection
+    result["timingMs"]["select"] = round(elapsed, 1)
+    result["timingMs"]["total"] = round(result["timingMs"]["total"] + elapsed, 1)
+    return result

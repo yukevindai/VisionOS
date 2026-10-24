@@ -4,6 +4,8 @@ struct HomeView: View {
     @ObservedObject var dependencies: AppDependencies
     @ObservedObject var session: SessionCoordinator
     @State private var settingsPresented = false
+    @State private var videoPresented = false
+    @State private var targetReaderPresented = false
     @AccessibilityFocusState private var startFocused: Bool
     var body: some View {
         NavigationStack {
@@ -25,15 +27,31 @@ struct HomeView: View {
                         }.padding(24).frame(maxWidth: 650)
                     }
                     .safeAreaInset(edge: .bottom) {
-                        Button(action: session.start) {
-                            Label("Start assistance", systemImage: "waveform")
-                                .frame(maxWidth: .infinity, minHeight: 52)
+                        VStack(spacing: 10) {
+                            Button(action: session.start) {
+                                Label("Start assistance", systemImage: "waveform")
+                                    .frame(maxWidth: .infinity, minHeight: 52)
+                            }
+                            .buttonStyle(.borderedProminent).controlSize(.large)
+                            .tint(AssistanceColors.primaryActionFill).foregroundStyle(.white)
+                            .accessibilityIdentifier("home.start")
+                            .accessibilityHint(dependencies.simulated ? "Starts simulated assistance with typed requests. No real camera or microphone." : "Starts an assistance session using the rear camera.")
+                            .accessibilityFocused($startFocused)
+                            if !dependencies.simulated && (session.phase == .idle || session.phase == .ended || session.phase == .failed) {
+                                Button { videoPresented = true } label: {
+                                    Label("Share live video with a friend", systemImage: "video")
+                                        .frame(maxWidth: .infinity, minHeight: 48)
+                                }
+                                .buttonStyle(.bordered)
+                                .accessibilityIdentifier("home.friendVideo")
+                                Button { targetReaderPresented = true } label: {
+                                    Label("Read a camera image", systemImage: "viewfinder")
+                                        .frame(maxWidth: .infinity, minHeight: 48)
+                                }
+                                .buttonStyle(.bordered)
+                                .accessibilityIdentifier("home.targetReader")
+                            }
                         }
-                        .buttonStyle(.borderedProminent).controlSize(.large)
-                        .tint(AssistanceColors.primaryActionFill).foregroundStyle(.white)
-                        .accessibilityIdentifier("home.start")
-                        .accessibilityHint(dependencies.simulated ? "Starts simulated assistance with typed requests. No real camera or microphone." : "Starts an assistance session using the rear camera.")
-                        .accessibilityFocused($startFocused)
                         .padding().background(.regularMaterial)
                     }
                 }
@@ -47,10 +65,18 @@ struct HomeView: View {
                 }
             }
             .sheet(isPresented: $settingsPresented) { SettingsView(dependencies: dependencies) }
+            .fullScreenCover(isPresented: $videoPresented) { OwnerVideoDemoView() }
+            .fullScreenCover(isPresented: $targetReaderPresented) { TargetReaderView() }
             .sheet(isPresented: Binding(get: { session.showSetup }, set: { if !$0 { session.dismissSetup() } })) {
                 SetupView(session: session, preferences: dependencies.preferences)
             }
             .onAppear { startFocused = true }
+            .onChange(of: session.phase) { _, phase in
+                if phase != .idle && phase != .ended && phase != .failed {
+                    videoPresented = false
+                    targetReaderPresented = false
+                }
+            }
         }
         .preferredColorScheme(uiTestingAppearance)
     }

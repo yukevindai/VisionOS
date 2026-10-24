@@ -4,14 +4,43 @@ import XCTest
 final class KioskAndMenuTests: XCTestCase {
     typealias Harness = TaskEngineTests.Harness
     func screen(_ id: String = "menu", labels: [String] = ["Tea", "Coffee", "Back"], payment: Bool = false,
-                welcome: Bool = false, expected: String? = nil, observation: VerificationEvidence? = nil) -> ScreenModel {
+                welcome: Bool = false, expected: String? = nil, observation: VerificationEvidence? = nil) -> TaskScreen {
         let controls = labels.enumerated().map { index, label in
             TaskFixtures.target(id: "\(id)-\(index)", kind: .screenControl, label: label, screenID: id,
                                 frameID: "\(id)-frame", expectedDestination: expected)
         }
-        return ScreenModel(id: id, frameID: "\(id)-frame", title: id, controls: controls,
+        return TaskScreen(id: id, frameID: "\(id)-frame", title: id, controls: controls,
                            isPaymentScreen: payment, isWelcomeScreen: welcome, total: payment ? "$7.00" : nil,
                            transitionEvidence: observation)
+    }
+
+    func testCanonicalSelectorUnderstandsNaturalLanguageAndRetainsAmbiguity() {
+        var h = Harness(); h.start(.kiosk)
+        h.send(.screen(screen(labels: ["5", "Tea"])), source: .r3)
+        h.send(.choice("please choose the fifth button"), source: .user)
+        XCTAssertEqual(h.engine.state.target?.label, "5")
+        XCTAssertEqual(h.engine.state.phase, .reacquiring)
+        var ambiguous = Harness(); ambiguous.start(.kiosk)
+        ambiguous.send(.screen(screen(labels: ["Small fries", "Large fries"])), source: .r3)
+        ambiguous.send(.choice("fries"), source: .user)
+        XCTAssertEqual(ambiguous.engine.state.phase, .choosing)
+        XCTAssertNil(ambiguous.engine.state.target)
+    }
+
+    func testControlIDDoesNotOverrideConflictingVisibleLabel() {
+        var h = Harness(); h.start(.kiosk)
+        h.send(.screen(screen(labels: ["Tea", "menu-0"])), source: .r3)
+        h.send(.choice("menu-0"), source: .user)
+        XCTAssertEqual(h.engine.state.phase, .choosing)
+        XCTAssertNil(h.engine.state.target)
+    }
+
+    func testCanonicalSelectionStillStopsBeforePayment() {
+        var h = Harness(); h.start(.kiosk)
+        h.send(.screen(screen(labels: ["Checkout"])), source: .r3)
+        h.send(.choice("please choose checkout"), source: .user)
+        XCTAssertEqual(h.engine.state.result?.error, .paymentBoundary)
+        XCTAssertNil(h.engine.state.target)
     }
 
     func testKioskTapInvalidatesCoordinatesAndRereadsBeforeNextChoice() {
@@ -135,7 +164,7 @@ final class KioskAndMenuTests: XCTestCase {
     func testMalformedScreenRegionsAndFrameBindingRejected() {
         var h = Harness(); h.start(.kiosk)
         let target = TaskFixtures.target(kind: .screenControl, screenID: "other", frameID: "old")
-        h.send(.screen(ScreenModel(id: "current", frameID: "new", title: "Current", controls: [target])), source: .r3)
+        h.send(.screen(TaskScreen(id: "current", frameID: "new", title: "Current", controls: [target])), source: .r3)
         XCTAssertEqual(h.engine.state.result?.status, .failed)
     }
 

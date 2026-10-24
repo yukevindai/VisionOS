@@ -1,0 +1,89 @@
+{
+  "input": "SYNTHETIC button panel; no real camera image",
+  "mode": "REAL_API",
+  "thinkingLevel": "low",
+  "providerOK": true,
+  "httpStatus": 200,
+  "errorKind": null,
+  "timingMs": {
+    "prepare": 1.8,
+    "provider": 2339.6,
+    "total": 2341.6,
+    "select": 0.2
+  },
+  "selection": {
+    "request": "2",
+    "frameId": "synthetic-panel-live-api-check",
+    "source": "visionModel",
+    "candidateIds": [],
+    "status": "SELECTED",
+    "target": {
+      "targetId": "el-002",
+      "label": "2",
+      "elementType": "button",
+      "imageRegion": {
+        "x": 0.563,
+        "y": 0.27,
+        "width": 0.313,
+        "height": 0.376
+      },
+      "coordinateSystem": "normalizedImageTopLeft",
+      "frameId": "synthetic-panel-live-api-check",
+      "capturedAtMs": 1792855539808,
+      "panelType": "other",
+      "source": "visionModel",
+      "match": "exact"
+    }
+  },
+  "screenModel": {
+    "schemaVersion": 3,
+    "frameId": "synthetic-panel-live-api-check",
+    "capturedAtMs": 1792855539808,
+    "coordinateSystem": "normalizedImageTopLeft",
+    "source": "visionModel",
+    "evidence": {
+      "provider": "gemini",
+      "model": "gemini-3.8-flash",
+      "live": true,
+      "latencyMs": 2339.3,
+      "modelVersion": "gemini-3.8-flash",
+      "responseId": "9M3carTRAbm639IPy6jUMQ"
+    },
+    "image": {
+      "widthPx": 640,
+      "heightPx": 480,
+      "exifOrientation": 1,
+      "orientationApplied": true
+    },
+    "panelType": "other",
+    "availability": "available",
+    "controls": [
+      {
+        "id": "el-001",
+        "label": "1",
+        "type": "button",
+        "legibility": "clear",
+        "region": {
+          "x": 0.126,
+          "y": 0.27,
+          "width": 0.314,
+          "height": 0.376
+        }
+      },
+      {
+        "id": "el-002",
+        "label": "2",
+        "type": "button",
+        "legibility": "clear",
+        "region": {
+          "x": 0.563,
+          "y": 0.27,
+          "width": 0.313,
+          "height": 0.376
+        }
+      }
+    ],
+    "sections": [],
+    "isPaymentScreen": false
+  }
+}

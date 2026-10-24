@@ -1,3 +1,9 @@
 // Copy this file to Local.xcconfig to customize the bundle identifier.
 // Local.xcconfig is ignored by git and is included by Debug and Release.
 REFLEX_BUNDLE_ID = com.yourorganization.reflex
+
+// Public project identifiers only. Keep LiveKit API secrets on Convex.
+// Hostnames without https:// avoid xcconfig comment parsing.
+REFLEX_CONVEX_HOST = YOUR_DEPLOYMENT.convex.cloud
+REFLEX_AUTH0_DOMAIN = YOUR_TENANT.auth0.com
+REFLEX_AUTH0_NATIVE_CLIENT_ID = YOUR_NATIVE_CLIENT_ID

@@ -33,6 +33,8 @@ def prepare(data: bytes, max_edge: int = MAX_SENT_EDGE_PX) -> PreparedImage:
     """Raises ValueError when the bytes are not a readable image."""
     try:
         with Image.open(io.BytesIO(data)) as source:
+            if source.format not in ("JPEG", "PNG") or source.width * source.height > 16_000_000:
+                raise ValueError("expected JPEG/PNG up to 16 megapixels")
             orientation = int(source.getexif().get(EXIF_ORIENTATION_TAG, 1) or 1)
             upright = ImageOps.exif_transpose(source).convert("RGB")
     except Exception as error:  # Pillow raises several unrelated types for bad input

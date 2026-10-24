@@ -1,4 +1,5 @@
 import Foundation
+import Targets
 
 /// Pure, deterministic task reducer. Execute returned effects in order on a serialized coordinator.
 /// Revalidate fresh R1 evidence again at actual guidance dispatch; async queues must not extend cue lifetime.
@@ -17,6 +18,9 @@ public struct TaskEngine: Sendable {
     private var previousScreenID: String?
     private var hasLeftWelcome = false
     private var recoveringBack = false
+    /// The semantic identity accepted by the owner. Every resume and retry still requests
+    /// fresh R1 reacquisition of this target; its old frame is never physical evidence.
+    private var acceptedFriendTarget: ResolvedTarget?
 
     public init(sessionID: String, initialGeneration: UInt64 = 0, guidingHand: GuidingHand = .right, configuration: TaskConfiguration = .init()) {
         state = TaskState(context: TaskContext(sessionID: sessionID, taskID: "", generation: initialGeneration))
@@ -69,6 +73,79 @@ public struct TaskEngine: Sendable {
         }
     }
 
+    /// Installs a trusted local owner-accepted binding after `.stop(.replaced)` has cancelled
+    /// old work and delivered ALL_STOP, and after the worker has acknowledged this exact
+    /// binding. The stop already advanced the generation; this entry must not advance it again.
+    /// A rejected binding leaves the stopped engine unchanged. Kiosk controls require a
+    /// current TaskScreen and are deliberately unsupported by this entry.
+    public mutating func beginAcceptedSelection(_ binding: FriendSelectionAccepted,
+                                                nowMs: Int64) -> [TaskEffect] {
+        let old = state.context
+        guard nowMs >= lastNow, nowMs >= 0,
+              state.phase == .paused, state.lastStop == .replaced,
+              old.sessionID == binding.scope.sessionID,
+              old.taskID == binding.oldTaskID,
+              binding.oldTaskGeneration < FriendSelectionPolicy.maximumSafeGeneration,
+              old.generation == binding.oldTaskGeneration + 1,
+              binding.newTaskGeneration == old.generation,
+              binding.proposalGeneration > 0,
+              !binding.selectionID.isEmpty, !binding.promptID.isEmpty,
+              binding.newTaskID == "friend:\(binding.scope.sessionID):\(binding.scope.sessionEpoch):\(binding.proposalGeneration)",
+              binding.newTaskID != binding.oldTaskID else { return [.rejected(.wrongContext)] }
+
+        let kind: TaskKind
+        switch binding.target.kind {
+        case .button: kind = .button
+        case .object: kind = .object
+        case .handle, .door: kind = .door
+        case .opener: kind = binding.target.doorAction == nil ? .button : .door
+        case .screenControl: return [.rejected(.unsupportedState)]
+        }
+        let query = binding.target.label
+        guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              query.count <= 2_000 else { return [.rejected(.invalidRequest)] }
+
+        // Stage the existing target validator so an unsafe or malformed binding cannot
+        // consume the accepted generation or turn a stopped task into a failed new task.
+        var staged = self
+        staged.state = TaskState(context: TaskContext(sessionID: old.sessionID,
+                                                      taskID: binding.newTaskID,
+                                                      generation: binding.newTaskGeneration))
+        staged.state.request = TaskRequest(id: binding.newTaskID, kind: kind, query: query)
+        staged.resetInternals()
+        staged.acceptedFriendTarget = binding.target
+        let effects = staged.acceptTarget(binding.target, now: nowMs)
+        guard effects.contains(where: {
+            if case .reacquire = $0 { return true }
+            if case .askConfirmation(let prompt) = $0 { return prompt.purpose == .doorAction }
+            return false
+        }) else { return [.rejected(.unsafeTarget)] }
+        staged.lastNow = nowMs
+        self = staged
+        return effects
+    }
+
+    /// Prepare exactly one accepted binding by invalidating the old task before the worker
+    /// ACK wait. The caller must execute these Stop effects locally before sending that wait.
+    /// Unlike an ordinary repeated Stop, a fresh accepted binding after an ACK timeout must
+    /// advance the generation again; the old generation in this binding makes replay fail.
+    public mutating func prepareAcceptedSelection(_ binding: FriendSelectionAccepted,
+                                                  nowMs: Int64) -> [TaskEffect] {
+        let old = state.context
+        guard nowMs >= lastNow, nowMs >= 0 else { return [.rejected(.stale)] }
+        guard old.sessionID == binding.scope.sessionID,
+              old.taskID == binding.oldTaskID,
+              old.generation == binding.oldTaskGeneration,
+              old.generation < FriendSelectionPolicy.maximumSafeGeneration,
+              binding.newTaskGeneration == old.generation + 1,
+              binding.proposalGeneration > 0,
+              !binding.selectionID.isEmpty, !binding.promptID.isEmpty,
+              binding.newTaskID == "friend:\(binding.scope.sessionID):\(binding.scope.sessionEpoch):\(binding.proposalGeneration)",
+              binding.newTaskID != binding.oldTaskID else { return [.rejected(.wrongContext)] }
+        lastNow = nowMs
+        return stop(.replaced, force: true)
+    }
+
     private func validate(_ envelope: EventEnvelope, now: Int64) -> Rejection? {
         guard envelope.schemaVersion == 3, !envelope.eventID.isEmpty,
               envelope.monotonicMs >= 0, envelope.expiresAtMs > envelope.monotonicMs else { return .malformed }
@@ -99,6 +176,7 @@ public struct TaskEngine: Sendable {
         approachCompleted = false; actionContext = nil; actionTarget = nil; previousScreenID = nil
         hasLeftWelcome = false; recoveringBack = false; resumeConfirmationNeeded = false
         seenIDs.removeAll(keepingCapacity: true)
+        acceptedFriendTarget = nil
     }
 
     private mutating func begin(now: Int64) -> [TaskEffect] {
@@ -115,6 +193,7 @@ public struct TaskEngine: Sendable {
             state.phase = .readingScreen
             return [.readScreen(makeRequest(now: now))]
         default:
+            if let acceptedFriendTarget { return acceptTarget(acceptedFriendTarget, now: now) }
             state.phase = .resolving
             return [.resolveTarget(makeRequest(now: now), query: request.query)]
         }
@@ -141,9 +220,10 @@ public struct TaskEngine: Sendable {
         return [.cancelWork(old), .allStop(state.context)]
     }
 
-    private mutating func stop(_ reason: StopReason) -> [TaskEffect] {
-        if state.phase == .paused, reason != .cancelled, reason != .ended { return [] }
-        if state.phase == .cancelled { return [] }
+    private mutating func stop(_ reason: StopReason, force: Bool = false) -> [TaskEffect] {
+        if state.phase == .paused, reason != .cancelled, reason != .ended,
+           !force && !(reason == .replaced && state.lastStop != .replaced) { return [] }
+        if state.phase == .cancelled && !force { return [] }
         var effects = invalidate(reason: reason)
         actionContext = nil; actionTarget = nil
         state.phase = (reason == .cancelled || reason == .ended) ? .cancelled : .paused
@@ -472,7 +552,7 @@ public struct TaskEngine: Sendable {
         return effects + [.speak(text: text, priority: 1), .finished(result)]
     }
 
-    private mutating func acceptScreen(_ screen: ScreenModel, now: Int64) -> [TaskEffect] {
+    private mutating func acceptScreen(_ screen: TaskScreen, now: Int64) -> [TaskEffect] {
         guard !screen.id.isEmpty, !screen.frameID.isEmpty, screen.controls.count <= 100,
               Set(screen.controls.map(\.id)).count == screen.controls.count,
               screen.controls.allSatisfy({ !$0.id.isEmpty && $0.region.isValid && $0.frameID == screen.frameID && $0.sourceScreenID == screen.id }) else {
@@ -517,14 +597,26 @@ public struct TaskEngine: Sendable {
 
     private mutating func choose(_ label: String, now: Int64) -> [TaskEffect] {
         guard let screen = state.screen, !label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return [.rejected(.invalidRequest)] }
-        let matches = screen.controls.filter { $0.label.caseInsensitiveCompare(label) == .orderedSame || $0.id == label }
-        guard matches.count == 1, let target = matches.first else {
+        let direct = screen.controls.filter { $0.id == label }
+        let proposal = Targets.ScreenModel(frameId: screen.frameID, capturedAtMs: 0,
+            panelType: .orderingKiosk, source: .unknown,
+            controls: screen.controls.map {
+                InteractiveElement(id: $0.id, label: $0.label, type: .screenControl, region: $0.region)
+            }, isPaymentScreen: screen.isPaymentScreen)
+        let selection = TargetSelector().select(label, in: proposal)
+        let selectedID: String?
+        if let identified = direct.first, direct.count == 1 {
+            selectedID = selection.status == .notFound || selection.target?.targetId == identified.id ? identified.id : nil
+        } else {
+            selectedID = selection.target?.targetId
+        }
+        guard let selectedID, let target = screen.controls.first(where: { $0.id == selectedID }) else {
             return [.speak(text: "That choice is ambiguous. Please say the exact control label.", priority: 4), .awaitChoice(makeRequest(now: now, confirmation: true))]
         }
         return acceptTarget(target, now: now)
     }
 
-    private mutating func recoverBack(_ screen: ScreenModel, now: Int64) -> [TaskEffect] {
+    private mutating func recoverBack(_ screen: TaskScreen, now: Int64) -> [TaskEffect] {
         let back = screen.controls.filter { $0.label.lowercased() == "back" && $0.safety == .ordinary }
         guard !recoveringBack, back.count == 1, let target = back.first else {
             return fail(.screenChanged, "An unexpected screen opened and a safe Back control is unavailable. Please ask staff for help.")
