@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+logs/
+models/*.onnx
+models/*.task
+models/*.pt
+models/nanodet.py

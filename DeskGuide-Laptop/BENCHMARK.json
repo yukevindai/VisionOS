@@ -1,0 +1,46 @@
+{
+  "kind": "blank-input synthetic CPU benchmark; NOT live validation",
+  "python": "3.12.15",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "elapsed_s": 30.04700000002049,
+  "iterations": 615,
+  "loop_fps": 20.46793357072522,
+  "object_calls": 139,
+  "hand_calls": 383,
+  "object": {
+    "p50_ms": 78.09820002876222,
+    "p95_ms": 109.39157993998379,
+    "max_ms": 116.02119996678084
+  },
+  "hand": {
+    "p50_ms": 15.338300028815866,
+    "p95_ms": 23.95135004771873,
+    "max_ms": 31.49580000899732
+  },
+  "pipeline": {
+    "p50_ms": 15.000000013969839,
+    "p95_ms": 109.00000005494803,
+    "max_ms": 141.0000000614673
+  },
+  "process_cpu_machine_percent": 5.759206409953806,
+  "logical_cpus": 12,
+  "rss_start_mb": 201.70703125,
+  "rss_end_mb": 137.92578125,
+  "rss_peak_mb": 204.4296875,
+  "config": {
+    "host": "192.168.1.253",
+    "port": 8888,
+    "target": "cup",
+    "max_width": 640,
+    "rotation": 0,
+    "opencv_threads": 2,
+    "object_interval_ms": 100,
+    "hand_interval_ms": 70,
+    "reacquire_interval_ms": 35,
+    "max_frame_age_ms": 200,
+    "max_anchor_age_s": 8,
+    "object_score": 0.4,
+    "audio_volume": 0.12,
+    "audio_device": null
+  }
+}
