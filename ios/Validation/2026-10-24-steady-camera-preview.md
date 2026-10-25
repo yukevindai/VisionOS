@@ -18,3 +18,19 @@ The preview still clears when no fresh capture arrives for 300 ms. Stop, End, ba
 - Full UI/accessibility audits were not rerun locally for this change. Historical light/dark simulated-caption contrast failures remain unsuppressed; required-check success is not a full iOS pass.
 
 Local logs: `/tmp/reflex-steady-preview-final-tests.log`, `/tmp/reflex-steady-preview-order-tests.log`, `/tmp/reflex-steady-preview-{Guidance,Targets,Tasks,HapticLink}.log`.
+
+## Merge with raw camera tracking
+
+Reconciled this preview change with `714cca2` (raw capture tracking liveness).
+The native adapter now supplies both independent callbacks from the same AR session,
+retaining the capture's context, rotation and geometry. Tracking-loss reasons and
+all 300 ms expiry and Stop gates are preserved. The generated project includes
+both implementations and test files.
+
+Added a combined-source coordinator regression: fresh tracking cannot extend a
+frozen preview, and fresh preview images cannot replace missing tracking updates.
+Conflict-marker checks, deterministic project regeneration and whitespace checks
+passed. The merge was independently reviewed. Swift/Xcode are unavailable in the
+merge environment, so the combined regression and simulator/device build still
+require CI or Xcode validation; the earlier test totals above describe the
+pre-merge branch only.

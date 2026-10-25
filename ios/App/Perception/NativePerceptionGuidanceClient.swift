@@ -19,8 +19,10 @@ struct NativePerceptionDiagnostics {
 }
 
 @MainActor
-final class NativePerceptionGuidanceClient: NSObject, PerceptionGuidanceClient, NativeMediaCaptureClient, CameraPreviewSource {
+final class NativePerceptionGuidanceClient: NSObject, PerceptionGuidanceClient, NativeMediaCaptureClient, CameraPreviewSource, CameraTrackingSource {
     var onEvent: ((PerceptionEvent) -> Void)?
+    var onTrackingState: ((CameraTrackingState) -> Void)?
+    var onTrackingIssue: ((SessionContext, String) -> Void)?
     var onFrame: ((FrameSnapshot) -> Void)?
     var onPreview: ((CameraPreviewFrame) -> Void)?
     var onLocalCommand: ((SessionContext, LocalCommand) -> Void)?
@@ -96,6 +98,7 @@ final class NativePerceptionGuidanceClient: NSObject, PerceptionGuidanceClient, 
             let depthAvailable = ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth)
             let mailbox = NativePerceptionObservationMailbox()
             let previewMailbox = NativeCameraPreviewMailbox()
+            let trackingMailbox = CameraTrackingMailbox()
             let processor = NativePerceptionProcessor(context: context, rotation: currentRotation(),
                                                        preferredHand: preferredHand(), delivery: { [weak self] observation in
                 guard mailbox.offer(observation) else { return }
@@ -109,11 +112,15 @@ final class NativePerceptionGuidanceClient: NSObject, PerceptionGuidanceClient, 
                     guard let preview = previewMailbox.take() else { return }
                     self?.receivePreview(preview, attempt: attempt)
                 }
-            }, failure: { [weak self] in
+            }, trackingDelivery: { [weak self] state in
+                guard trackingMailbox.offer(state) else { return }
+                Task { @MainActor [weak self] in
+                    for state in trackingMailbox.take() { self?.receiveTracking(state, attempt: attempt) }
+                }
+            }, failure: { [weak self] reason in
                 Task { @MainActor [weak self] in
                     guard let self, self.startID == attempt, let context = self.context else { return }
-                    self.cancelGuidance(context: context)
-                    self.onEvent?(.trackingLost(context))
+                    self.reportTrackingLoss(context, reason: reason)
                 }
             })
             let session = ARSession()
@@ -242,6 +249,28 @@ final class NativePerceptionGuidanceClient: NSObject, PerceptionGuidanceClient, 
         onPreview?(preview)
     }
 
+    private func receiveTracking(_ state: CameraTrackingState, attempt: UUID) {
+        guard startID == attempt, state.context == context,
+              state.geometryID == processor?.geometryID, state.isActionable(at: nowMs) else { return }
+        onTrackingState?(state)
+        if state.status == .normal {
+            if !wasTracking { onEvent?(.recovered(state.context)) }
+            wasTracking = true
+        } else {
+            let notify = wasTracking
+            wasTracking = false
+            if notify || guidance != nil {
+                reportTrackingLoss(state.context, reason: "AR_STATE_" + state.status.rawValue)
+            }
+        }
+    }
+
+    private func reportTrackingLoss(_ context: SessionContext, reason: String) {
+        onTrackingIssue?(context, reason)
+        cancelGuidance(context: context)
+        onEvent?(.trackingLost(context))
+    }
+
     private func receive(_ observation: NativePerceptionObservation, attempt: UUID) {
         guard startID == attempt, observation.context == context, let context,
               observation.geometryID == processor?.geometryID, fresh(observation.capturedAtMs) else { return }
@@ -261,15 +290,6 @@ final class NativePerceptionGuidanceClient: NSObject, PerceptionGuidanceClient, 
                                                    handVisible: observation.handVisible,
                                                    measuredHand: observation.finger != nil,
                                                    processingMs: observation.processingMs))
-        if observation.trackingNormal {
-            if !wasTracking { onEvent?(.recovered(context)) }
-            wasTracking = true
-        } else {
-            let notify = wasTracking
-            wasTracking = false
-            cancelGuidance(context: context)
-            if notify { onEvent?(.trackingLost(context)) }
-        }
         if attachedSessionID == context.sessionID { captureReceiver?(observation.video) }
         if let snapshot = observation.snapshot { onFrame?(snapshot) }
         guard let guidance else { return }
@@ -332,8 +352,7 @@ final class NativePerceptionGuidanceClient: NSObject, PerceptionGuidanceClient, 
                 try? await Task.sleep(nanoseconds: 75_000_000)
                 guard !Task.isCancelled, let self, self.startID == attempt, let context = self.context else { return }
                 if self.guidance != nil && (self.lastObservation.map { !self.fresh($0.capturedAtMs) } ?? true) {
-                    self.cancelGuidance(context: context)
-                    self.onEvent?(.trackingLost(context))
+                    self.reportTrackingLoss(context, reason: "GUIDANCE_OBSERVATION_EXPIRED")
                 }
             }
         }
@@ -460,9 +479,10 @@ private final class NativePerceptionProcessor: NSObject, ARSessionDelegate, @unc
     private let lock = NSLock()
     private let queue = DispatchQueue(label: "Reflex.NativePerception.Vision", qos: .userInitiated)
     private let delivery: (NativePerceptionObservation) -> Void
-    private let failure: () -> Void
+    private let failure: (String) -> Void
     private let previewPipeline: NativeCameraPreviewPipeline
     private var capturedDimensions: CGSize?
+    private let trackingDelivery: (CameraTrackingState) -> Void
     private var open = true
     private var pending: Capture?
     private var processing = false
@@ -483,9 +503,10 @@ private final class NativePerceptionProcessor: NSObject, ARSessionDelegate, @unc
 
     init(context: SessionContext, rotation: NativeMediaVideoRotation, preferredHand: GuidingHand,
          delivery: @escaping (NativePerceptionObservation) -> Void,
-         previewDelivery: @escaping (CameraPreviewFrame) -> Void, failure: @escaping () -> Void) {
+         previewDelivery: @escaping (CameraPreviewFrame) -> Void,
+         trackingDelivery: @escaping (CameraTrackingState) -> Void, failure: @escaping (String) -> Void) {
         self.context = context; self.rotation = rotation; self.preferredHand = preferredHand
-        self.delivery = delivery; self.failure = failure
+        self.delivery = delivery; self.failure = failure; self.trackingDelivery = trackingDelivery
         self.previewPipeline = NativeCameraPreviewPipeline(deliver: previewDelivery)
     }
 
@@ -535,11 +556,28 @@ private final class NativePerceptionProcessor: NSObject, ARSessionDelegate, @unc
             previewPipeline.offer(.init(context: context, geometryID: geometryID,
                 video: .init(localSessionID: context.sessionID, pixelBuffer: frame.capturedImage,
                              capturedAtMs: Int64(frame.timestamp * 1_000), rotation: rotation)))
+            trackingDelivery(.init(context: context, geometryID: geometryID,
+                capturedAtMs: Int64(frame.timestamp * 1_000), status: Self.trackingStatus(frame.camera.trackingState)))
         }
         if schedule { queue.async { [self] in drain() } }
     }
-    func sessionWasInterrupted(_ session: ARSession) { failure() }
-    func session(_ session: ARSession, didFailWithError error: Error) { failure() }
+    func sessionWasInterrupted(_ session: ARSession) { failure("AR_SESSION_INTERRUPTED") }
+    func session(_ session: ARSession, didFailWithError error: Error) { failure("AR_SESSION_FAILED") }
+
+    private static func trackingStatus(_ state: ARCamera.TrackingState) -> CameraTrackingState.Status {
+        switch state {
+        case .normal: return .normal
+        case .notAvailable: return .unavailable
+        case .limited(let reason):
+            switch reason {
+            case .initializing: return .initializing
+            case .excessiveMotion: return .excessiveMotion
+            case .insufficientFeatures: return .insufficientFeatures
+            case .relocalizing: return .relocalizing
+            @unknown default: return .unavailable
+            }
+        }
+    }
 
     private func drain() {
         lock.lock()
