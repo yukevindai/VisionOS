@@ -163,10 +163,16 @@ class Coordinator:
                 self._event('error', error=self.error)
                 self.stop_local()
                 return False
+            if result.status == 'pending' and self.status not in ('running', 'pending'):
+                # The local worker may finish the handoff before the initiating
+                # callback returns its pending acknowledgement.
+                return True
             self.agent, self.status = result.agent, result.status
             self.response = result.text
             self.latency_ms = round((self.clock()-context.created_at)*1000)
-            if result.status not in ('pending', 'running'):
+            if result.status == 'handoff':
+                self.deadline = self.clock() + self.timeout_s
+            elif result.status not in ('pending', 'running'):
                 self.deadline = None
             self.target, self.observed_at = result.target, result.observed_at
             self.clarification = result.text if result.status in ('clarify', 'ambiguous') else ''
