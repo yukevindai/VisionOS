@@ -1185,6 +1185,9 @@ def main(argv=None):
         if command == 'wake':
             root.bell()  # Local acknowledgement; never starts or cancels tracking.
             return
+        if command == 'sleep':
+            stop()  # Local cancellation: never route the closing phrase to a model.
+            return
         if worker.agents is not None:
             if command in ('quiet', 'stop_tracking'):
                 stop()
@@ -1248,11 +1251,14 @@ def main(argv=None):
                     worker.describe()
         if voice is not None:
             voice.tick(time.monotonic())
-        while voice is not None and not voice.commands.empty():
-            command, argument, _ = voice.commands.get_nowait()
+        while voice is not None:
+            try:
+                command, argument, _ = voice.commands.get_nowait()
+            except queue.Empty:
+                break
             voice_command(command, argument)
         if voice is not None and voice.transcript:
-            names = {'wake': 'LISTENING', 'find': 'FIND', 'describe': 'DESCRIBE', 'quiet': 'QUIET', 'stop_tracking': 'STOP TRACKING',
+            names = {'wake': 'LISTENING', 'sleep': 'PAUSED', 'find': 'FIND', 'describe': 'DESCRIBE', 'quiet': 'QUIET', 'stop_tracking': 'STOP TRACKING',
                      'request': 'REQUEST'}
             lines = [f'"{item["text"]}"' + (f'  →  {names[item["command"]]}' if item['command'] else '')
                      for item in list(voice.transcript)[::-1][:3]]

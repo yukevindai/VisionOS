@@ -16,12 +16,14 @@ class InterpretTests(unittest.TestCase):
         self.assertEqual(interpret('what is around me'), ('describe', None))
         self.assertEqual(interpret('stop'), ('stop_tracking', None))
         self.assertEqual(interpret('stop tracking'), ('stop_tracking', None))
+        self.assertEqual(interpret('Thanks Vision!'), ('sleep', None))
+        self.assertEqual(interpret('Thank you, Vision.'), ('sleep', None))
         self.assertEqual(interpret('pepsi'), (None, None))  # no verb: background mention
         self.assertEqual(interpret('find the bagel'), (None, None))  # ambiguous: not in the grammar
 
     def test_grammar_has_every_object_behind_a_verb(self):
         grammar = set(phrases())
-        for text in ('find the pepsi can', 'where is the coca cola', 'find the cards', 'stop talking'):
+        for text in ('find the pepsi can', 'where is the coca cola', 'find the cards', 'stop talking', 'thanks vision', 'thank you vision'):
             self.assertIn(text, grammar)
 
 

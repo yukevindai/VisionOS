@@ -1,11 +1,14 @@
-"""Always-listening voice commands for the Windows preview: offline Windows speech recognition, optional open dictation.
+"""Wake-aware voice commands for the Windows preview: offline Windows speech recognition, optional open dictation.
 
 A PowerShell child process hosts System.Speech on the laptop. The normal demo
 keeps its command grammar and transcribes Windows dictation. With open_ended=True,
-free requests and clarification answers also reach the coordinator; Stop retains its explicit grammar and queue priority. Recognition
+free requests and clarification answers also reach the coordinator during an active
+session. Thanks Vision or 30 seconds without an accepted command pauses routing.
+The local microphone still listens for Hey Vision and Stop while paused; ordinary
+speech is not retained or routed. Stop retains its explicit grammar and queue priority. Recognition
 quality depends on the installed Windows language pack and microphone.
 
-Echo guard: while VisionOS is speaking (and briefly after), only "stop"/"be quiet" are accepted, so its own voice
+Echo guard: while VisionOS is speaking (and briefly after), only "stop"/"be quiet"/"Thanks Vision" are accepted, so its own voice
 ("Pepsi can, right") never triggers a command, yet the user can always interrupt it. Low-confidence results are
 ignored silently.
 """
@@ -21,7 +24,10 @@ import time
 from .demo_objects import OBJECTS
 
 WAKE_PHRASE = 'hey vision'
-READY_STATUS = 'LISTENING (direct commands or optional Hey Vision)'
+READY_STATUS = 'LISTENING (Thanks Vision to pause; 30 s idle timeout)'
+PAUSED_STATUS = 'PAUSED (local microphone listens for Hey Vision and Stop)'
+SLEEP_PHRASES = ('thanks vision', 'thank you vision')
+INTERRUPTS = ('quiet', 'stop_tracking', 'sleep')
 
 VERBS = ('find', 'find me', 'where is', 'get', 'locate', 'track', 'show me')
 DESCRIBE = ("what's around me", 'whats around me', 'what is around me', 'describe the surroundings', 'describe surroundings',
@@ -46,7 +52,7 @@ def object_phrases():
 def phrases():
     objects = object_phrases()
     finds = {f'{verb} {article}{name}' for verb in VERBS for name in objects for article in ('', 'the ', 'my ')}
-    commands = finds | set(DESCRIBE) | set(QUIET) | set(STOP_TRACKING)
+    commands = finds | set(DESCRIBE) | set(QUIET) | set(STOP_TRACKING) | set(SLEEP_PHRASES)
     return sorted(commands | {WAKE_PHRASE} | {f'{WAKE_PHRASE} {p}' for p in commands})
 
 
@@ -59,6 +65,8 @@ def interpret(text):
         return 'wake', None
     if text.startswith(WAKE_PHRASE + ' '):
         text = text[len(WAKE_PHRASE) + 1:]
+    if text in SLEEP_PHRASES:
+        return 'sleep', None
     if text in STOP_TRACKING:
         return 'stop_tracking', None
     if text in QUIET:
@@ -103,10 +111,16 @@ while ($true) {
 
 class VoiceCommands:
     """Starts the recognizer process; recognized commands arrive on self.commands as (command, argument, text)."""
-    def __init__(self, folder, speaking=lambda: False, min_confidence=.6, echo_gap_s=.5, wave=None, log=print, open_ended=False):
+    def __init__(self, folder, speaking=lambda: False, min_confidence=.6, echo_gap_s=.5, wave=None, log=print, open_ended=False, idle_timeout_s=30.):
         self.folder, self.speaking, self.min_confidence, self.echo_gap_s = folder, speaking, min_confidence, echo_gap_s
         self.log = log
         self.open_ended = open_ended
+        self.state_lock = threading.RLock()
+        self.idle_timeout_s = float(idle_timeout_s)
+        if not 0 < self.idle_timeout_s <= 300:
+            raise ValueError('idle_timeout_s must be between 0 and 300 seconds')
+        self.listening = True
+        self.listen_until = time.monotonic() + self.idle_timeout_s
         self.commands = queue.Queue(maxsize=8)
         self.transcript = collections.deque(maxlen=6)
         self.transcript_confidence = .35
@@ -135,7 +149,7 @@ class VoiceCommands:
             for line in self.process.stdout:
                 line = line.strip()
                 if line == 'READY':
-                    self.status = READY_STATUS
+                    self.status = READY_STATUS if self.listening else PAUSED_STATUS
                     self.log('VOICE_READY')
                 elif line.startswith('HEARD|'):
                     _, confidence, grammar, text = line.split('|', 3)
@@ -147,8 +161,20 @@ class VoiceCommands:
             self.status = f'voice unavailable ({type(exc).__name__})'
 
     def handle(self, text, confidence, now, grammar='commands'):
+        from contextlib import nullcontext
+        with getattr(self, 'state_lock', nullcontext()):
+            return self._handle(text, confidence, now, grammar)
+
+    def _handle(self, text, confidence, now, grammar):
+        self.tick(now)
         text = ' '.join(str(text).split())[:500]
         command, argument = interpret(text)
+        normalized = ' '.join(re.sub(r"[^\w\s']", ' ', text.lower().replace('-', ' ')).split())
+        wakes = normalized == WAKE_PHRASE or normalized.startswith(WAKE_PHRASE + ' ')
+        paused = not getattr(self, 'listening', True)
+        if paused and (confidence < self.min_confidence or not (wakes or command in INTERRUPTS)):
+            # Local recognizer remains awake; background speech is neither retained nor routed.
+            return None
         if command is None and text and getattr(self, 'open_ended', False):
             command, argument = 'request', re.sub(r'^hey\s+vision\b[\s,!.:;-]*', '', text, flags=re.I) or text
         if not self.speaking() and now >= self.quiet_until and confidence >= self.transcript_confidence and text:
@@ -161,23 +187,29 @@ class VoiceCommands:
             return None
         if self.speaking():
             self.quiet_until = now + self.echo_gap_s
-        if (self.speaking() or now < self.quiet_until) and command not in ('quiet', 'stop_tracking'):
+        if (self.speaking() or now < self.quiet_until) and command not in INTERRUPTS:
             # Stop and quiet commands always interrupt; other speech may be an echo.
             self.log('VOICE_IGNORED_WHILE_SPEAKING', text=text, confidence=round(confidence, 2))
             return None
-        if command == 'wake':
-            # Optional acknowledgement only: direct commands never depend on this window.
+        if command == 'sleep':
+            self._pause()
+        elif command == 'wake':
+            # Wake resumes the request session; direct commands work while active.
             if now < getattr(self, 'wake_until', 0.):
                 return None
             self.wake_until = now + 6.
             self.status = 'Listening for your command… (Hey Vision heard)'
         else:
             self.wake_until = 0.
-            self.status = READY_STATUS
+            self.status = PAUSED_STATUS if paused and not wakes else READY_STATUS
+        if command != 'sleep' and (not paused or wakes):
+            self.listening = True
+            if hasattr(self, 'listen_until'):
+                self.listen_until = now + getattr(self, 'idle_timeout_s', 30.)
         self.last_heard = f'"{text}" ({confidence:.2f})'
         self.log('VOICE_COMMAND', command=command, argument=argument, text=text, confidence=round(confidence, 2))
         with self.commands.mutex:
-            if command in ('stop_tracking', 'quiet'):
+            if command in INTERRUPTS:
                 self.commands.queue.clear()
             elif self.commands.maxsize and len(self.commands.queue) >= self.commands.maxsize:
                 self.commands.queue.popleft()
@@ -185,7 +217,27 @@ class VoiceCommands:
             self.commands.not_empty.notify()
         return command
 
+    def _pause(self):
+        self.listening = False
+        self.wake_until = 0.
+        self.listen_until = None
+        if not getattr(self, 'status', '').startswith(('voice error', 'voice unavailable', 'voice recognition stopped')):
+            self.status = PAUSED_STATUS
+        with self.commands.mutex:
+            retained = [item for item in self.commands.queue if item[0] in INTERRUPTS]
+            self.commands.queue.clear()
+            self.commands.queue.extend(retained)
+        self.log('VOICE_PAUSED')
+
     def tick(self, now):
+        from contextlib import nullcontext
+        with getattr(self, 'state_lock', nullcontext()):
+            self._tick(now)
+
+    def _tick(self, now):
+        deadline = getattr(self, 'listen_until', None)
+        if getattr(self, 'listening', True) and deadline is not None and now >= deadline:
+            self._pause()
         if getattr(self, 'wake_until', 0.) and now >= self.wake_until:
             self.wake_until = 0.
             # Preserve recognizer errors rather than masking them with a ready state.
