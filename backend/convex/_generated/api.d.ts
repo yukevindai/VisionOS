@@ -16,6 +16,8 @@ import type {
 import type * as assistance from "../assistance.js";
 import type * as authTables from "../authTables.js";
 import type * as crons from "../crons.js";
+import type * as devices from "../devices.js";
+import type * as devicesNode from "../devicesNode.js";
 import type * as friends from "../friends.js";
 import type * as http from "../http.js";
 import type * as inviteLimitTables from "../inviteLimitTables.js";
@@ -23,11 +25,15 @@ import type * as inviteLimits from "../inviteLimits.js";
 import type * as invites from "../invites.js";
 import type * as lib_auth from "../lib/auth.js";
 import type * as lib_cartesia from "../lib/cartesia.js";
+import type * as lib_deviceKeys from "../lib/deviceKeys.js";
+import type * as lib_familyComponents from "../lib/familyComponents.js";
+import type * as lib_familyMatch from "../lib/familyMatch.js";
 import type * as lib_friendPagination from "../lib/friendPagination.js";
 import type * as lib_leases from "../lib/leases.js";
 import type * as lib_livekitProvider from "../lib/livekitProvider.js";
 import type * as lib_mediaLifecycle from "../lib/mediaLifecycle.js";
 import type * as lib_objectVision from "../lib/objectVision.js";
+import type * as lib_speechLimits from "../lib/speechLimits.js";
 import type * as lib_visionService from "../lib/visionService.js";
 import type * as livekit from "../livekit.js";
 import type * as media from "../media.js";
@@ -35,6 +41,9 @@ import type * as mediaRequestLimitTables from "../mediaRequestLimitTables.js";
 import type * as mediaRequestLimits from "../mediaRequestLimits.js";
 import type * as mediaState from "../mediaState.js";
 import type * as mediaTables from "../mediaTables.js";
+import type * as noteTables from "../noteTables.js";
+import type * as notes from "../notes.js";
+import type * as notesAudio from "../notesAudio.js";
 import type * as sessionTables from "../sessionTables.js";
 import type * as sessions from "../sessions.js";
 import type * as speech from "../speech.js";
@@ -42,6 +51,8 @@ import type * as speechCache from "../speechCache.js";
 import type * as speechTables from "../speechTables.js";
 import type * as users from "../users.js";
 import type * as vision from "../vision.js";
+import type * as voices from "../voices.js";
+import type * as voicesNode from "../voicesNode.js";
 
 /**
  * A utility for referencing Convex functions in your app's API.
@@ -55,6 +66,8 @@ declare const fullApi: ApiFromModules<{
   assistance: typeof assistance;
   authTables: typeof authTables;
   crons: typeof crons;
+  devices: typeof devices;
+  devicesNode: typeof devicesNode;
   friends: typeof friends;
   http: typeof http;
   inviteLimitTables: typeof inviteLimitTables;
@@ -62,11 +75,15 @@ declare const fullApi: ApiFromModules<{
   invites: typeof invites;
   "lib/auth": typeof lib_auth;
   "lib/cartesia": typeof lib_cartesia;
+  "lib/deviceKeys": typeof lib_deviceKeys;
+  "lib/familyComponents": typeof lib_familyComponents;
+  "lib/familyMatch": typeof lib_familyMatch;
   "lib/friendPagination": typeof lib_friendPagination;
   "lib/leases": typeof lib_leases;
   "lib/livekitProvider": typeof lib_livekitProvider;
   "lib/mediaLifecycle": typeof lib_mediaLifecycle;
   "lib/objectVision": typeof lib_objectVision;
+  "lib/speechLimits": typeof lib_speechLimits;
   "lib/visionService": typeof lib_visionService;
   livekit: typeof livekit;
   media: typeof media;
@@ -74,6 +91,9 @@ declare const fullApi: ApiFromModules<{
   mediaRequestLimits: typeof mediaRequestLimits;
   mediaState: typeof mediaState;
   mediaTables: typeof mediaTables;
+  noteTables: typeof noteTables;
+  notes: typeof notes;
+  notesAudio: typeof notesAudio;
   sessionTables: typeof sessionTables;
   sessions: typeof sessions;
   speech: typeof speech;
@@ -81,6 +101,8 @@ declare const fullApi: ApiFromModules<{
   speechTables: typeof speechTables;
   users: typeof users;
   vision: typeof vision;
+  voices: typeof voices;
+  voicesNode: typeof voicesNode;
 }>;
 export declare const api: FilterApi<
   typeof fullApi,

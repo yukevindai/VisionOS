@@ -24,6 +24,13 @@ class OpenVoiceTests(unittest.TestCase):
         self.assertEqual(voice.handle('The red one beside the cup', .9, 11), 'request')
         self.assertEqual(voice.commands.qsize(), 2)
 
+    def test_agent_receives_complete_pickup_and_named_object_prompts(self):
+        for text, expected in [('Hey Vision, help me pick up this can.', 'help me pick up this can.'),
+                               ('Hey Vision, find the Pepsi can.', 'find the Pepsi can.')]:
+            voice = self.voice()
+            self.assertEqual(voice.handle(text, .9, 10, 'dictation'), 'request')
+            self.assertEqual(voice.commands.get_nowait(), ('request', expected, text))
+
     def test_stop_evicts_requests_even_during_playback(self):
         voice = self.voice(True)
         voice.commands.put(('request', 'old', 'old'))
