@@ -14,6 +14,8 @@
     "dev": "convex dev"
   },
   "dependencies": {
+    "@convex-dev/action-retrier": "0.3.1",
+    "@convex-dev/rate-limiter": "0.4.2",
     "convex": "1.48.0",
     "livekit-server-sdk": "2.19.2"
   },
