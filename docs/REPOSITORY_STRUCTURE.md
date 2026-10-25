@@ -24,6 +24,7 @@ The root README contains the canonical directory tree. This layout was recorded 
 | `backend/convex/` | R3 | Auth/trust/media state and authenticated vision proxy; server-side configuration |
 | `backend/r3_vision/` | R3 | Teammate Gemini parser/image preparation, private vision HTTP service and CLI |
 | `backend/eval/` | R3 | Offline and real-photo evaluation tooling; simulation labels remain explicit |
+| `apps/demo-dashboard/` | R2/R3 demo integration | Local audience dashboard for the Python R3 live-tracking pipeline |
 | `apps/friend-web/` | R3 client integration | Authenticated watch-only browser helper |
 | `firmware/` | H1 | Wristband firmware and independent failsafe |
 | `hardware/` | H1 | Electronics, actuator and enclosure information |

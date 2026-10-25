@@ -798,6 +798,8 @@ def arguments(argv=None):
                    help='Gemini 3 image detail: low 280, medium 560, default/high 1120 image tokens; lower is faster')
     p.add_argument('--thinking', choices=['minimal', 'low', 'medium', 'high'], default='low',
                    help='Gemini 3 thinking level for live identification; high measured 22-30 s per request')
+    p.add_argument('--web-dashboard', action='store_true', help='Serve the local browser display at 127.0.0.1')
+    p.add_argument('--web-port', type=int, default=8765, help='Loopback dashboard port (default 8765)')
     p.add_argument('--panel', action=argparse.BooleanOptionalAction, default=True,
                    help='Large spatial readout beside the video (default on)')
     p.add_argument('--distance-calibration', type=Path,
@@ -821,6 +823,8 @@ def arguments(argv=None):
     p.add_argument('--replay', type=Path, help='SIMULATED fixed provider reply; no API calls')
     p.add_argument('--output', type=Path, default=Path(__file__).resolve().parents[1]/'recordings/r3-tracking')
     args = p.parse_args(argv)
+    if not 1 <= args.web_port <= 65535:
+        p.error('--web-port must be 1..65535')
     args.roi = None  # Existing Source interface; ROI remains in the frozen debugging tool.
     if args.reidentify_after is None:
         args.reidentify_after = 5. if args.tracker == 'lock' else 2.
@@ -906,8 +910,12 @@ def main(argv=None):
         nonlocal ticket, last
         if re.search(r"\b(describe|what'?s around|what is around|around me|surroundings)\b", query.get().lower()):
             worker.describe_surroundings()
+            if dashboard is not None:
+                dashboard.allow_current_ticket()
             return
         ticket += 1
+        if dashboard is not None:
+            dashboard.invalidate()
         last = None
         preview.configure(image='', text='SEARCHING - waiting for new target identification')
         preview.image = None
@@ -920,6 +928,8 @@ def main(argv=None):
     def stop():
         nonlocal ticket, last
         ticket += 1
+        if dashboard is not None:
+            dashboard.invalidate()
         last = None
         worker.cancel_scene_speech()
         worker.commands.put((ticket, ''))
@@ -962,8 +972,32 @@ def main(argv=None):
         elif command == 'stop_tracking':
             stop()
 
+    dashboard = None
+    last_publish = 0.
+    if args.web_dashboard:
+        from .dashboard import Dashboard
+        try:
+            dashboard = Dashboard(args.web_port)
+            dashboard.start()
+            print(f'Reflex browser dashboard: {dashboard.url}', flush=True)
+        except OSError as error:
+            print(f'Browser dashboard unavailable: {error}. Desktop tracking remains available.', flush=True)
+
     def tick():
-        nonlocal last, last_size
+        nonlocal last, last_size, last_publish
+        if dashboard is not None:
+            while not dashboard.commands.empty():
+                command = dashboard.commands.get_nowait()
+                action = command['action']
+                if action == 'find':
+                    query.set(command['query'])
+                    find()
+                elif action == 'stop':
+                    stop()
+                elif action == 'describe':
+                    worker.describe_surroundings()
+                elif action == 'quick' and args.detection == 'demo':
+                    worker.describe()
         while voice is not None and not voice.commands.empty():
             command, argument, _ = voice.commands.get_nowait()
             voice_command(command, argument)
@@ -1000,6 +1034,11 @@ def main(argv=None):
             mode.set(f'{source_mode or ("SIMULATED" if args.replay else "REAL_API")} | {model_info} {effort} | image {getattr(client, 'media_resolution', '') or 'default'} | API requests: {requests}/{args.max_requests} | {"AUDIO ON" if getattr(args, "audio", False) else "audio off"}'
                      + (f' | VOICE: {voice.status}' + (f' | heard {voice.last_heard}' if voice.last_heard else '')
                         if voice is not None else ''))
+        if dashboard is not None and time.monotonic() - last_publish >= .1:
+            last_publish = time.monotonic()
+            dashboard.publish(worker.output, worker.panel, ticket,
+                              mode='SIMULATED' if args.replay else 'LIVE',
+                              quick=args.detection == 'demo', voice=voice)
         root.after(30, tick)
 
     def close():
@@ -1007,6 +1046,8 @@ def main(argv=None):
             voice.close()
         root.destroy()
         worker.close()
+        if dashboard is not None:
+            dashboard.close()
     root.protocol('WM_DELETE_WINDOW', close)
     tick()
     root.mainloop()
