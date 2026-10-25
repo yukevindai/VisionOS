@@ -37,7 +37,7 @@
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Reflex recognizes on-device voice commands so Stop can interrupt guidance without a network connection.</string>
 	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>Reflex uses Bluetooth to connect to your optional guidance wristbands.</string>
+	<string>Reflex uses Bluetooth to connect to optional guidance wristbands or the Arduino 101 hardware test.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

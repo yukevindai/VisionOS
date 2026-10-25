@@ -80,6 +80,10 @@ private struct SettingsContents: View {
                 NavigationLink("Calibrate patterns") { CalibrationView(session: session) }
                     .accessibilityIdentifier("settings.calibration")
             }
+            Section("Hardware test") {
+                NavigationLink("Arduino 101") { Arduino101SetupView() }
+                    .accessibilityIdentifier("settings.arduino101")
+            }
             Section("Simulation") {
                 Toggle("Use simulated assistance", isOn: Binding(get: { dependencies.simulated }, set: dependencies.setSimulation))
                     .accessibilityIdentifier("settings.simulation")
