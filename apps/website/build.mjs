@@ -4,7 +4,7 @@ const root = new URL('./', import.meta.url);
 const output = new URL('dist/', root);
 await rm(output, { recursive: true, force: true });
 await mkdir(output, { recursive: true });
-for (const path of ['index.html', 'accessibility.html', 'styles.css', 'assets']) {
+for (const path of ['index.html', 'accessibility.html', 'styles.css', 'components.js', 'THIRD_PARTY_NOTICES.md', 'assets']) {
   await cp(new URL(path, root), new URL(path, output), { recursive: true });
 }
 console.log('Built VisionOS company website in apps/website/dist');
