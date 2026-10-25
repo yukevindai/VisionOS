@@ -47,3 +47,7 @@ Open `ios/VisionOS.xcodeproj` in Xcode and select the shared `VisionOS` scheme. 
 - [Team build specification](docs/Cal_Hacks_13_Build_Spec_v3.md)
 
 Local session relay and handoff files are ignored by Git and retained only on the developer's machine.
+
+## Company website
+
+The public VisionOS product and mission website lives in [`apps/website/`](apps/website/README.md), with its own Vercel build configuration. It is independent of the live demo dashboard and hardware runtime.
