@@ -126,6 +126,8 @@ class TrackingWorker:
         self.latest_hand = None
         self.hand_bridge = None
         self.hand_status = 'INITIALIZING' if getattr(args, 'hands', False) else 'OFF'
+        from .hand_setup import HandSetup
+        self.hand_setup = HandSetup() if getattr(args, 'hands', False) else None
         self.ticket = 0
         self.agents = None
         if getattr(args, 'agents', False):
@@ -524,6 +526,8 @@ class TrackingWorker:
                     self.spatial = SpatialOffset()
             except Exception as exc:
                 self.hand_status = f'ERROR ({type(exc).__name__}); check MediaPipe/model installation'
+                self.hand_setup.fail()
+                print(f'HAND_SETUP_ERROR: {self.hand_status}. Install requirements-preview.txt and the hand_landmarker.task model.', flush=True)
         while not self.stopped.is_set():
             if self.agents is not None:
                 self.agents.drain()
@@ -533,6 +537,8 @@ class TrackingWorker:
                     self.cancel_scene_speech()
                     self.ticket = ticket
                     self.session.find(query)
+                    if not query and self.hand_setup is not None:
+                        self.hand_setup.cancel()
                     self.hardware_gate(bool(query))
                     self.latency.start(query, time.monotonic())
                     if self.audio is not None:
@@ -639,7 +645,8 @@ class TrackingWorker:
                                 hand = hand_future.result()
                                 display = self.hand_bridge.draw(display, packet, hand, time.monotonic())
                                 self.latest_hand = hand
-                                self.hand_status = f'{hand.result.status} ({len(hand.result.hands)} hands)'
+                                self.hand_setup.observe(packet.stamp, hand.result, time.monotonic())
+                                self.hand_status = f'{self.hand_setup.status} | {hand.result.status} ({len(hand.result.hands)} hands)'
                                 primary = hand.result.primary
                                 if primary is not None and primary.index_tip_in_frame:
                                     guide_tip = tuple(map(float, primary.index_tip_px))
@@ -664,6 +671,7 @@ class TrackingWorker:
                             except Exception as exc:
                                 self.latest_hand = None
                                 self.hand_status = f'ERROR ({type(exc).__name__}); hand overlay hidden'
+                                self.hand_setup.observe(packet.stamp, None, time.monotonic())
                         from .audio_guidance import Evidence
                         box = None
                         if polygon is not None:
@@ -772,6 +780,9 @@ class TrackingWorker:
                 self.session.state, self.session.detail = 'ERROR', f'Local tracker failure ({type(exc).__name__}); box hidden'
                 self.output = (self.ticket, None, time.monotonic(), 'ERROR', self.session.detail,
                                self.session.mode, self.session.budget.total)
+            if self.hand_setup is not None:
+                if self.hand_setup.expire(time.monotonic()):
+                    self.hand_status = self.hand_setup.status + ' | camera frame stale'
             if self.audio is not None and not (self.family_notes is not None and self.family_notes.holding()):
                 audio_now = time.monotonic()
                 stamp = self.latest_frame.stamp if self.latest_frame is not None else None
@@ -783,6 +794,8 @@ class TrackingWorker:
                     self.audio.reason = 'no fresh validated frame (300 ms limit)'
                 else:
                     self.audio.tick(audio_now)
+                if self.hand_setup is not None:
+                    self.hand_setup.speak(self.audio.player, priority_wrapper=self.agents is not None)
             self.stopped.wait(.005 if getattr(self.args, 'tracker', 'orb') == 'lock' else .07)
         if self.all_objects is not None:
             self.all_objects.close()
@@ -921,6 +934,8 @@ class TrackingWorker:
             is_current=lambda: self.session.active and self.session.query == query)
 
     def close(self):
+        if getattr(self, 'hand_setup', None) is not None:
+            self.hand_setup.cancel()
         if getattr(self, 'hardware', None) is not None:
             self.hardware_gate()
             self.hardware.close()
@@ -1116,12 +1131,11 @@ def main(argv=None):
         row=0, column=5, padx=(8, 0))
     viewport = tk.Frame(root)
     viewport.grid(row=3, column=0, sticky='nsew', padx=8, pady=6)
-    heard = tk.StringVar(value='')
-    if getattr(args, 'voice', False):
-        # Everything the microphone hears, newest first; commands show what they triggered.
-        heard.set('YOU SAID: (listening...)')
-        tk.Label(root, textvariable=heard, anchor='w', justify='left', font=('Segoe UI', 14, 'bold'),
-                 fg='#1d4ed8', wraplength=window_width - 560).grid(row=4, column=0, sticky='ew', padx=12, pady=(0, 8))
+    heard = tk.StringVar(value='You said: No speech recognized yet.')
+    transcript_box = tk.Label(root, textvariable=heard, anchor='w', justify='left', font=('Segoe UI', 14, 'bold'),
+                              fg='#1d4ed8', wraplength=max(240, window_width - 48))
+    transcript_box.grid(row=4, column=0, columnspan=2, sticky='ew', padx=12, pady=(0, 8))
+    transcript_box.bind('<Configure>', lambda event: transcript_box.configure(wraplength=max(240, event.width - 24)))
     # Image dimensions must never enlarge the window or push controls off-screen.
     viewport.grid_propagate(False)
     viewport.pack_propagate(False)
@@ -1173,7 +1187,7 @@ def main(argv=None):
             if dashboard is not None:
                 dashboard.invalidate()
             last = None
-            return
+            return True
         if re.search(r"\b(describe|what'?s around|what is around|around me|surroundings)\b", query.get().lower()):
             worker.describe_surroundings()
             if dashboard is not None:
@@ -1191,6 +1205,8 @@ def main(argv=None):
 
     def stop():
         nonlocal ticket, last
+        if worker.hand_setup is not None:
+            worker.hand_setup.cancel()
         worker.hardware_gate()
         if worker.agents is not None:
             worker.agents.coordinator.stop()
@@ -1242,7 +1258,8 @@ def main(argv=None):
                 stop()
             elif command == 'request':
                 query.set(argument)
-                find()
+                if find():
+                    voice.last_agent_prompt = argument
             elif command == 'find':
                 query.set(f'Find the {OBJECTS[argument].name}')
                 find()
@@ -1306,15 +1323,9 @@ def main(argv=None):
             except queue.Empty:
                 break
             voice_command(command, argument)
-        if voice is not None and voice.transcript:
-            names = {'wake': 'LISTENING', 'sleep': 'PAUSED', 'find': 'FIND', 'describe': 'DESCRIBE', 'quiet': 'QUIET', 'stop_tracking': 'STOP TRACKING',
-                     'request': 'REQUEST'}
-            lines = [f'"{item["text"]}"' + (f'  →  {names[item["command"]]}' if item['command'] else '')
-                     for item in list(voice.transcript)[::-1][:3]]
-            heard.set('YOU SAID: ' + lines[0] + ('\nearlier: ' + '   |   '.join(lines[1:]) if lines[1:] else ''))
-        if voice is not None:
-            transcript = heard.get() if voice.transcript else 'You said: No speech recognized yet.'
-            heard.set(transcript + f'\nMIC INPUT: {voice.input_device_name} | {voice.status}')
+        from .voice_display import transcript_label
+        heard.set(transcript_label(voice) + ('\nMicrophone off — start with -Voice to speak.' if voice is None
+                  else f'\nMIC INPUT: {voice.input_device_name} | {voice.status}'))
         item = worker.output
         if item and item[0] == ticket:
             _, image, received, state, detail, source_mode, requests = item[:7]
