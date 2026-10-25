@@ -21,3 +21,11 @@ class VoiceDisplayTests(unittest.TestCase):
         voice = SimpleNamespace(transcript=[dict(text='uncertain words', command=None)])
         self.assertEqual(voice_view(voice)['recognition'], 'Not accepted as a command')
         self.assertNotIn('sent to agent', transcript_label(voice))
+
+    def test_microphone_identity_and_recent_history_survive_display_merge(self):
+        voice = SimpleNamespace(input_device_name='Headset mic', status='LISTENING',
+                                transcript=[dict(text='first'), dict(text='second'), dict(text='third')])
+        state, _, _ = snapshot(None, None, 1, voice=voice)
+        self.assertEqual(state['voice']['inputDevice'], 'Headset mic')
+        self.assertEqual(state['voice']['earlier'], ['second', 'first'])
+        self.assertIn('earlier: second   |   first', transcript_label(voice))
