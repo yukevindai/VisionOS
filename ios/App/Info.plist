@@ -13,7 +13,7 @@
 	<key>CFBundleURLTypes</key>
 	<array><dict><key>CFBundleURLName</key><string>Auth0</string><key>CFBundleURLSchemes</key><array><string>$(PRODUCT_BUNDLE_IDENTIFIER)</string></array></dict></array>
 	<key>CFBundleDisplayName</key>
-	<string>Reflex</string>
+	<string>VisionOS</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -31,13 +31,13 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>
-	<string>Reflex uses the rear camera to understand your surroundings and provide assistance.</string>
+	<string>VisionOS uses the rear camera to understand your surroundings and provide assistance.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Reflex uses the microphone so you can speak naturally with your assistant.</string>
+	<string>VisionOS uses the microphone so you can speak naturally with your assistant.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>Reflex recognizes on-device voice commands so Stop can interrupt guidance without a network connection.</string>
+	<string>VisionOS recognizes on-device voice commands so Stop can interrupt guidance without a network connection.</string>
 	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>Reflex uses Bluetooth to connect to optional guidance wristbands or the Arduino 101 hardware test.</string>
+	<string>VisionOS uses Bluetooth to connect to optional guidance wristbands or the Arduino 101 hardware test.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

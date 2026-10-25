@@ -9,8 +9,8 @@ import time
 import tkinter as tk
 import math
 
-BG, FG, DIM = '#101418', '#f2f5f7', '#9aa6b2'
-GOOD, WARN, BAD, CUE = '#5ee07a', '#ffb347', '#ff6b6b', '#ffe14d'
+BG, FG, DIM = '#ffffff', '#111827', '#6b7280'
+GOOD, WARN, BAD, CUE = '#15803d', '#b45309', '#b91c1c', '#a16207'  # darker shades stay readable on white
 STATE_COLORS = {'LOCKED': GOOD, 'UNCERTAIN': WARN, 'HIDDEN': WARN, 'REACQUIRING': WARN}
 
 
@@ -44,7 +44,8 @@ def estimate_preview(offset, readout, fresh, locked):
 
 class SpatialPanel:
     def __init__(self, parent, width=520):
-        self.frame = tk.Frame(parent, bg=BG, width=width, padx=14, pady=10)
+        self.frame = tk.Frame(parent, bg=BG, width=width, padx=14, pady=10, highlightthickness=1,
+                              highlightbackground='#d1d5db')
         self.frame.grid_propagate(False)
         self.depth_photo = None
 
@@ -69,10 +70,11 @@ class SpatialPanel:
         self.diagnostics = tk.Frame(self.frame, bg=BG)
         self.diagnostics.grid(row=8, column=0, columnspan=4, sticky='w')
         self.diagnostics.grid_remove()
-        tk.Checkbutton(self.frame, text='Diagnostics: raw XYZ and total distance', variable=self.diagnostic_toggle,
-                       bg=BG, fg=FG, selectcolor=BG, activebackground=BG, activeforeground=FG,
-                       command=lambda: self.diagnostics.grid() if self.diagnostic_toggle.get()
-                       else self.diagnostics.grid_remove()).grid(row=6, column=0, columnspan=4, sticky='w')
+        self.diagnostic_check = tk.Checkbutton(
+            self.frame, text='Diagnostics: raw XYZ and total distance', variable=self.diagnostic_toggle,
+            bg=BG, fg=FG, selectcolor=BG, activebackground=BG, activeforeground=FG,
+            command=lambda: self.diagnostics.grid() if self.diagnostic_toggle.get() else self.diagnostics.grid_remove())
+        self.diagnostic_check.grid(row=6, column=0, columnspan=4, sticky='w')
         self.total = tk.Label(self.diagnostics, text='', bg=BG, fg=DIM, font=('Segoe UI', -14))
         self.total.grid(row=0, column=0, columnspan=4, sticky='w')
         self.cells = {}
@@ -84,8 +86,8 @@ class SpatialPanel:
                 cell = tk.Label(self.diagnostics, text='-', bg=BG, fg=FG, font=('Consolas', -22, 'bold'))
                 cell.grid(row=row, column=column, padx=12, sticky='w')
                 self.cells[name, column] = cell
-        label('CAMERA axes: right / down / away from phone. Not body-relative. Calibrate before movement.',
-              15, WARN, row=7)
+        self.axes_note = label('CAMERA axes: right / down / away from phone. Not body-relative. '
+                               'Calibrate before movement.', 15, WARN, row=7)
         self.source = label('DEPTH SOURCE: -', 16, DIM, row=14, pady=(8, 0))
         self.confidence = label('DEPTH CONFIDENCE: -', 20, FG, True, row=9)
         self.pixels = label('2D OFFSET: -', 18, DIM, row=10)
@@ -93,6 +95,18 @@ class SpatialPanel:
         self.audio = label('AUDIO: OFF', 16, DIM, row=12, pady=(6, 0))
         self.depth = tk.Label(self.frame, bg=BG)
         self.depth.grid(row=15, column=0, columnspan=4, sticky='w', pady=(8, 0))
+        self.details = True
+
+    def set_details(self, show):
+        """Clean view (show False): target, tracking, the three direction fields and the last spoken cue only."""
+        self.details = bool(show)
+        for widget in (self.direction, self.diagnostic_check, self.axes_note, self.confidence, self.pixels,
+                       self.timing, self.source):
+            (widget.grid if self.details else widget.grid_remove)()
+        if not self.details:
+            self.diagnostics.grid_remove()
+        elif self.diagnostic_toggle.get():
+            self.diagnostics.grid()
 
     def _values(self, name, values, fmt='{:+.1f}'):
         for column in range(1, 4):
@@ -110,7 +124,10 @@ class SpatialPanel:
         self.timing.configure(text=f"FRAME AGE: {age * 1000:.0f} ms  |  {data.get('fps', 0):.1f} FPS",
                               fg=FG if fresh else BAD)
         audio = data.get('audio') or {}
-        self.audio.configure(text=(f"AUDIO: {'ON' if audio.get('enabled') else 'OFF'}"
+        if not self.details:
+            self.audio.configure(text=f"LAST SPOKEN: {audio.get('last_cue') or '-'}" if audio.get('enabled') else '')
+        else:
+            self.audio.configure(text=(f"AUDIO: {'ON' if audio.get('enabled') else 'OFF'}"
                                    + (f"  |  LAST CUE: {audio.get('last_cue') or '-'}  |  {audio.get('playback') or '-'}"
                                       f"\nSUPPRESSED: {audio.get('suppressed') or '-'}" if audio.get('enabled') else '')))
         offset = data.get('offset') if fresh else None
@@ -134,6 +151,10 @@ class SpatialPanel:
                 self.distance.configure(text=preview['z'] + '\n' + preview['qualifier'], fg=WARN)
                 self.side.configure(text=preview['x'], fg=WARN)
                 self.height.configure(text=preview['y'], fg=WARN)
+            elif not self.details:
+                self.distance.configure(text='FORWARD: -', fg=DIM)  # clean view: no alarming wording
+                self.side.configure(text='LEFT / RIGHT: -', fg=DIM)
+                self.height.configure(text='UP / DOWN: -', fg=DIM)
             else:
                 self.distance.configure(text='FORWARD: ' + ('ESTIMATED\nUNRELIABLE' if estimated else 'UNRELIABLE'), fg=BAD)
                 self.side.configure(text='LEFT / RIGHT: -', fg=DIM)

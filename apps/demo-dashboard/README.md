@@ -1,4 +1,4 @@
-# Reflex live demo dashboard
+# VisionOS live demo dashboard
 
 Audience-facing browser display for the **existing Windows R3 Python tracking process**.
 Implements the approved [Figma design](https://www.figma.com/design/JnmjymGdRQGturYhNuQcwo?node-id=3-138)
@@ -89,3 +89,20 @@ access. Automated browser verification was unavailable in the implementation env
 because Chromium could not be installed. Unit tests do not establish live camera,
 microphone, calibrated guidance or wearable acceptance. Run that complete
 path on the existing Windows laptop and iPhone before the physical demo.
+
+## Agent orchestration
+
+With orchestration enabled in the tracking process, Ask VisionOS submits an
+open-ended request to the coordinator. Describe surroundings and What did I miss?
+select the corresponding specialists. The agent panel displays reported activity,
+handoffs, latency, clarification and errors, independently of camera freshness.
+Provider prose is never used as a physical guidance cue. Without orchestration,
+legacy Find and Describe controls retain their existing behavior through the
+tracking process; recent-event recall requires orchestration.
+
+Laptop recognition enables Windows open dictation alongside the Stop command
+grammar in orchestration mode. Stop bypasses cloud intent routing and clears queued
+requests and output. Recognition quality and interruption latency still require
+microphone/speaker testing on the configured Windows laptop. Agent audio uses the
+existing output player, with local guidance above conversation and no replay of
+interrupted speech. The browser does not request microphone access.

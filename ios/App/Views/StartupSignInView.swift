@@ -17,7 +17,7 @@ struct StartupSignInView<Content: View>: View {
                 GeometryReader { geometry in
                     ScrollView {
                         VStack(alignment: .leading, spacing: 24) {
-                            Text("Welcome to Reflex")
+                            Text("Welcome to VisionOS")
                                 .font(.largeTitle.bold())
                                 .accessibilityAddTraits(.isHeader)
                             Text("Sign in to identify objects with your camera and connect with trusted friends.")

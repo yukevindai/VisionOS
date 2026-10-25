@@ -1,8 +1,8 @@
-# Reflex R2 Native iOS Implementation Spec
+# VisionOS R2 Native iOS Implementation Spec
 
 Version 1.0 — October 23, 2026
 
-Repository: `yukevindai/VisionOS` · Product: **Reflex** · Role: **R2 — Accessible session experience, task execution, and wristband integration**
+Repository: `yukevindai/VisionOS` · Product: **VisionOS** · Role: **R2 — Accessible session experience, task execution, and wristband integration**
 
 ## 1. Implementation assignment
 
@@ -12,7 +12,7 @@ The repository name `VisionOS` does not change the platform: this is an **iOS ap
 
 The everyday experience is:
 
-> Open Reflex → activate Start assistance → speak naturally with a live AI assistant that sees through the rear camera → receive speech and wristband guidance → pause or end whenever needed.
+> Open VisionOS → activate Start assistance → speak naturally with a live AI assistant that sees through the rear camera → receive speech and wristband guidance → pause or end whenever needed.
 
 The user must not select a task from a visual dashboard, manually choose a camera lens, operate a target overlay, or read a transcript to complete a supported task. The visible interface is intentionally small; most of R2 is coordination, task execution, and the Bluetooth connection.
 
@@ -45,7 +45,7 @@ VoiceOver remains a system accessibility service. Its navigation announcements a
 - `ios/App/`
 - `ios/Packages/Tasks/`
 - `ios/Packages/HapticLink/`
-- `ios/Reflex.xcodeproj/` and shared scheme
+- `ios/VisionOS.xcodeproj/` and shared scheme
 - R2 test targets, Xcode build/configuration files, and R2 setup/handoff documentation
 
 Do not modify `ios/Packages/Perception/`, `ios/Packages/Guidance/`, `ios/Packages/Targets/`, `firmware/`, `hardware/`, or `backend/` without coordination with that owner. H1 owns `contracts/ble.md` and `contracts/haptic_patterns.json`; consume them, do not silently revise them. If a shared type package already exists, reuse it. Otherwise keep R2-facing projections inside R2-owned code until owners agree a shared location.
@@ -68,11 +68,11 @@ Use equivalent existing names when present; do not create competing copies.
 
 ```text
 ios/
-  Reflex.xcodeproj/
+  VisionOS.xcodeproj/
     project.pbxproj
-    xcshareddata/xcschemes/Reflex.xcscheme
+    xcshareddata/xcschemes/VisionOS.xcscheme
   App/
-    ReflexApp.swift
+    VisionOSApp.swift
     Composition/AppDependencies.swift
     Session/SessionCoordinator.swift
     Session/SessionState.swift
@@ -102,8 +102,8 @@ ios/
       Package.swift
       Sources/HapticLink/
       Tests/HapticLinkTests/
-  Tests/ReflexAppTests/
-  UITests/ReflexUITests/
+  Tests/VisionOSAppTests/
+  UITests/VisionOSUITests/
   Config/Debug.xcconfig
   Config/Release.xcconfig
   Config/Local.example.xcconfig
@@ -115,7 +115,7 @@ The dependency graph must remain acyclic: app composition imports Tasks, HapticL
 
 If generating the Xcode project, commit the generation source and the generated project. A fresh clone must open directly in Xcode without first installing a project generator. Do not commit `xcuserdata`, DerivedData, certificates, provisioning profiles, or secret local configuration.
 
-Configure iPhone device and simulator builds, Debug/Release configurations, bundle identifier configuration, version/build number, launch resources, and the shared `Reflex` scheme with tests. Leave the signing team for the developer to select; document it. Do not hard-code a personal team ID.
+Configure iPhone device and simulator builds, Debug/Release configurations, bundle identifier configuration, version/build number, launch resources, and the shared `VisionOS` scheme with tests. Leave the signing team for the developer to select; document it. Do not hard-code a personal team ID.
 
 Include clear purpose strings for camera, microphone, and Bluetooth permissions. Add speech-recognition permission only if the integrated implementation actually uses the API requiring it. Do not request contacts, location, photos, or background modes that this MVP does not use.
 
@@ -568,11 +568,11 @@ Test progression: fixtures → sighted teammate → blindfolded teammate with a 
 Run on macOS with Xcode installed. Substitute a simulator/device actually listed by the toolchain, not a hard-coded unverified phone name.
 
 ```bash
-xcodebuild -list -project ios/Reflex.xcodeproj
-xcodebuild -showdestinations -project ios/Reflex.xcodeproj -scheme Reflex
-xcodebuild -project ios/Reflex.xcodeproj -scheme Reflex -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
-xcodebuild -project ios/Reflex.xcodeproj -scheme Reflex -destination 'platform=iOS Simulator,id=<available-simulator-id>' test
-xcodebuild -project ios/Reflex.xcodeproj -scheme Reflex -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO build
+xcodebuild -list -project ios/VisionOS.xcodeproj
+xcodebuild -showdestinations -project ios/VisionOS.xcodeproj -scheme VisionOS
+xcodebuild -project ios/VisionOS.xcodeproj -scheme VisionOS -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
+xcodebuild -project ios/VisionOS.xcodeproj -scheme VisionOS -destination 'platform=iOS Simulator,id=<available-simulator-id>' test
+xcodebuild -project ios/VisionOS.xcodeproj -scheme VisionOS -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO build
 ```
 
 The unsigned device build checks compilation only. Select the development team and actual phone in Xcode for signing/install/run. Validate physical camera, LiDAR, audio, and BLE on hardware. If working from Linux/Windows or a machine without Xcode, produce the source/project and run only supported checks; explicitly mark Xcode/device validation unrun, not passed.

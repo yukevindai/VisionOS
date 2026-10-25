@@ -23,7 +23,7 @@ struct NativeCameraPreviewInput {
 final class NativeCameraPreviewPipeline: @unchecked Sendable {
     typealias Renderer = (NativeCameraPreviewInput) -> UIImage?
     private let lock = NSLock()
-    private let queue = DispatchQueue(label: "Reflex.NativePerception.Preview", qos: .userInitiated)
+    private let queue = DispatchQueue(label: "VisionOS.NativePerception.Preview", qos: .userInitiated)
     private let render: Renderer
     private let deliver: (CameraPreviewFrame) -> Void
     private var pending: NativeCameraPreviewInput?

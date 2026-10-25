@@ -85,7 +85,7 @@ The existing 26 offline Python backend tests passed on this host using a workspa
 TEMP/TMP directory (the default sandbox temp directory initially caused one permission error).
 `git diff --check` passed. These results do not validate the new Swift implementation.
 
-After the owner wiring above, build the Reflex scheme on a LiDAR-capable iPhone.
+After the owner wiring above, build the VisionOS scheme on a LiDAR-capable iPhone.
 Use a printed ordinary labeled button with a sighted spotter, then a safe kiosk recreation.
 Log real frame IDs, monotonic measurement ages, geometry IDs and decision reasons.
 Wait through Gemini latency; verify no guidance until local reacquisition succeeds.

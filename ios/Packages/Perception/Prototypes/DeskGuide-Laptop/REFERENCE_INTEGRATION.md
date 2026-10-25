@@ -2,7 +2,7 @@
 
 # Reference integration repair - 24 October 2026
 
-Status: implementation updated; user hardware verification pending. This is a Windows development prototype for one Reflex feature. No native iOS submission files were changed. This report supersedes earlier manual-mode and asynchronous-detector descriptions.
+Status: implementation updated; user hardware verification pending. This is a Windows development prototype for one VisionOS feature. No native iOS submission files were changed. This report supersedes earlier manual-mode and asynchronous-detector descriptions.
 
 ## Observed failure
 
@@ -25,7 +25,7 @@ Reference: `C:/Users/ngkho/OneDrive/Desktop/testing_ver_calhack`. Its setup pins
 | PathOn / Record3DStream SDK | Reference's separately installed SDK has restricted personal/noncommercial terms and no-redistribution restrictions per its documented license | SDK source not transferred or bundled. Existing independently authored REC3D wire reader retained. |
 | WiLoR and other unused models | Separate model terms; evaluation README identifies WiLoR CC-BY-NC-4.0 | Not transferred or loaded. Only the existing YOLO11s and hand task are active. |
 
-The prototype's MIT license applies to original DeskGuide files only; it does not relicense AGPL/model dependencies. These files are not silently incorporated into the native Reflex submission. Upstream licensing permission remains unestablished, rather than a claim that copying is categorically impossible.
+The prototype's MIT license applies to original DeskGuide files only; it does not relicense AGPL/model dependencies. These files are not silently incorporated into the native VisionOS submission. Upstream licensing permission remains unestablished, rather than a claim that copying is categorically impossible.
 
 Model hashes (both reference and DeskGuide):
 - YOLO11s: `85a76fe86dd8afe384648546b56a7a78580c7cb7b404fc595f97969322d502d5`
@@ -53,4 +53,4 @@ No phone connection, new recording, live test, benchmark or audible playback was
 
 ## Still unverified
 
-Physical can detection/selection, hand and target XYZ accuracy, reflective LiDAR, movement/occlusion/reacquisition, sustained CPU performance below the 300 ms deadline and audible output/routing need the user's test. The model also labels the black tumbler as cup (0.8400 in the prior screenshot audit); a saved back-side can frame was missed. Matching the working class/selection configuration does not establish unique Pepsi identity. Original speech behavior is not reproduced. Native iOS camera/LiDAR/tracking/audio integration remains future Reflex work.
+Physical can detection/selection, hand and target XYZ accuracy, reflective LiDAR, movement/occlusion/reacquisition, sustained CPU performance below the 300 ms deadline and audible output/routing need the user's test. The model also labels the black tumbler as cup (0.8400 in the prior screenshot audit); a saved back-side can frame was missed. Matching the working class/selection configuration does not establish unique Pepsi identity. Original speech behavior is not reproduced. Native iOS camera/LiDAR/tracking/audio integration remains future VisionOS work.

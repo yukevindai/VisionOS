@@ -1,6 +1,6 @@
-# Reflex hand guidance
+# VisionOS hand guidance
 
-CPU RGB-D finger-to-object guidance prototype for Reflex. It receives paired RGB and LiDAR depth from an iPhone (PathOn REC3D stream), detects a beverage can automatically with YOLO11s (COCO cup/class 41), tracks the index fingertip with the official MediaPipe hand task, computes fingertip and target XYZ from current LiDAR depth, and emits one structured guidance event per frame: LEFT, RIGHT, UP, DOWN, FORWARD, BACKWARD or STOP. There is no sound output; audio will be provided later by a separate integration.
+CPU RGB-D finger-to-object guidance prototype for VisionOS. It receives paired RGB and LiDAR depth from an iPhone (PathOn REC3D stream), detects a beverage can automatically with YOLO11s (COCO cup/class 41), tracks the index fingertip with the official MediaPipe hand task, computes fingertip and target XYZ from current LiDAR depth, and emits one structured guidance event per frame: LEFT, RIGHT, UP, DOWN, FORWARD, BACKWARD or STOP. There is no sound output; audio will be provided later by a separate integration.
 
 ## Launch
 

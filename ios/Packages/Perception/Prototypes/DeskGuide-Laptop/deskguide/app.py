@@ -21,7 +21,7 @@ class Window:
     def __init__(self, config, preview=False):
         self.config = config
         self.root = tk.Tk()
-        self.root.title('Reflex | Hand guidance')
+        self.root.title('VisionOS | Hand guidance')
         width = min(1440, self.root.winfo_screenwidth() - 60)
         height = min(920, self.root.winfo_screenheight() - 90)
         self.root.geometry(f'{width}x{height}')
@@ -32,17 +32,17 @@ class Window:
         self.root.rowconfigure(1, weight=1)
         style = ttk.Style(self.root)
         style.theme_use('clam')
-        style.configure('Reflex.TButton', font=('Segoe UI', 12), padding=(12, 10),
+        style.configure('VisionOS.TButton', font=('Segoe UI', 12), padding=(12, 10),
                         foreground=TEXT, background='#2a405d', borderwidth=1)
-        style.map('Reflex.TButton', background=[('active', '#365679')],
+        style.map('VisionOS.TButton', background=[('active', '#365679')],
                   foreground=[('disabled', MUTED)])
         header = tk.Frame(self.root, bg=BG, padx=24, pady=16)
         header.grid(row=0, column=0, columnspan=2, sticky='ew')
-        tk.Label(header, text='REFLEX', bg=BG, fg=TEXT,
+        tk.Label(header, text='VisionOS', bg=BG, fg=TEXT,
                  font=('Segoe UI', 23, 'bold')).pack(side='left')
         tk.Label(header, text='HAND GUIDANCE', bg=BG, fg=MUTED,
                  font=('Segoe UI', 12)).pack(side='left', padx=22)
-        ttk.Button(header, text='Fullscreen', style='Reflex.TButton',
+        ttk.Button(header, text='Fullscreen', style='VisionOS.TButton',
                    command=self.full).pack(side='right')
         self.camera = tk.Label(self.root, bg='#050a12', fg=MUTED,
                                text='Connecting to camera…', font=('Segoe UI', 18))
@@ -67,10 +67,10 @@ class Window:
         self.performance = label('', 11, MUTED)
         actions = tk.Frame(self.root, bg=BG, padx=16, pady=14)
         actions.grid(row=2, column=0, columnspan=2, sticky='ew')
-        ttk.Button(actions, text='Find again', style='Reflex.TButton', command=self.reset).pack(side='left')
-        ttk.Button(actions, text='Pause guidance', style='Reflex.TButton',
+        ttk.Button(actions, text='Find again', style='VisionOS.TButton', command=self.reset).pack(side='left')
+        ttk.Button(actions, text='Pause guidance', style='VisionOS.TButton',
                    command=self.pause).pack(side='left', padx=10)
-        ttk.Button(actions, text='Rotate camera', style='Reflex.TButton',
+        ttk.Button(actions, text='Rotate camera', style='VisionOS.TButton',
                    command=self.rotate).pack(side='left')
         self.guidance = GuidanceOutput()
         self.engine = Engine(config, self.guidance, preview)

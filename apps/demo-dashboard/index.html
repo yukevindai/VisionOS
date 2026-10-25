@@ -2,16 +2,16 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="color-scheme" content="dark"><title>Reflex · Live assistance</title>
+<meta name="color-scheme" content="dark"><title>VisionOS · Live assistance</title>
 <link rel="stylesheet" href="styles.css"><script type="module" src="app.js"></script>
 </head>
 <body>
 <a class="skip" href="#workspace">Skip to live workspace</a>
 <main class="shell">
-<header><a class="wordmark" href="./" aria-label="Reflex home">reflex</a><span class="subtitle">Live assistance</span><span id="connection" class="status-badge">CONNECTING</span><div class="header-actions"><button id="setup-open">Operator setup</button><button id="presentation" aria-pressed="false">Presentation view</button></div></header>
+<header><a class="wordmark" href="./" aria-label="VisionOS home">VisionOS</a><span class="subtitle">Live assistance</span><span id="connection" class="status-badge">CONNECTING</span><div class="header-actions"><button id="setup-open">Operator setup</button><button id="presentation" aria-pressed="false">Presentation view</button></div></header>
 <form id="controls" class="controls" aria-label="Tracking controls">
-<label class="query-field"><span class="sr-only">Object to find</span><input id="query" maxlength="500" value="Find the Pepsi can" autocomplete="off" required></label>
-<button class="primary" id="find" type="submit" data-command>Find &amp; Track</button><button type="button" id="describe" data-command>Describe surroundings</button><button type="button" id="quick" data-command>Quick: 6 objects</button><button type="button" id="stop" class="stop" data-command>Stop tracking</button>
+<label class="query-field"><span>Ask VisionOS</span><input id="query" maxlength="500" value="Find the Pepsi can" autocomplete="off" required></label>
+<button class="primary" id="find" type="submit" data-command>Send request</button><button type="button" id="describe" data-command>Describe surroundings</button><button type="button" id="recall" data-command>What did I miss?</button><button type="button" id="quick" data-command>Quick: 6 objects</button><button type="button" id="stop" class="stop" data-command>Stop tracking</button>
 </form>
 <p id="notice" class="notice" role="status" aria-live="polite" hidden></p>
 <section class="workspace" id="workspace" tabindex="-1" aria-label="Live assistance dashboard">
@@ -28,6 +28,7 @@
 <p id="reason" class="fine">Fresh tracking and calibrated depth are required for physical guidance.</p>
 </aside>
 </section>
+<section class="agent-panel" aria-labelledby="agent-heading"><h2 id="agent-heading">Agent activity</h2><p id="agent-status" role="status" aria-live="polite" aria-atomic="true">Orchestration unavailable</p><p id="agent-goal" class="fine"></p><p id="agent-response"></p><ol id="agent-events" aria-label="Recent agent handoffs"></ol></section>
 <ol class="timeline" aria-label="Current analysis state"><li><span>01 &nbsp; Scene captured</span><small id="step-scene">Waiting</small></li><li><span>02 &nbsp; Object selected</span><small id="step-object">Waiting</small></li><li><span>03 &nbsp; Hand tracked</span><small id="step-hand">Waiting</small></li><li><span>04 &nbsp; Depth validated</span><small id="step-depth">Waiting</small></li><li><span>05 &nbsp; Guidance output</span><small id="step-guidance">Waiting</small></li></ol>
 <footer><span>iPhone video → laptop processing → audio + wearable</span><button id="diagnostics-toggle" aria-expanded="false" aria-controls="diagnostics">Diagnostics</button><span id="mode-note">Waiting for local tracking process</span></footer>
 <section id="diagnostics" hidden aria-label="Diagnostics"><h2>Pipeline diagnostics</h2><pre id="diagnostic-data">No snapshot received.</pre></section>

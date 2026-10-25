@@ -1,6 +1,6 @@
 > 2026-10-24 update: audio.py, providers.py and diagnose_live.py were removed; guidance.py emits silent LEFT/RIGHT/UP/DOWN/FORWARD/BACKWARD/STOP events. The Mute control and audio status were removed from the UI. Statements below about audio describe the earlier state.
 
-# Reflex module and presentation handoff — 2026-10-24
+# VisionOS module and presentation handoff — 2026-10-24
 
 
 
@@ -12,7 +12,7 @@ Branch: feature/reflex-modular-ui. Recovery point: b9e99f7e526ae9d17e552fd5a0bf8
 
 
 
-Original Reflex title and camera/sidebar layout, large fingertip-to-target distance, XYZ directions, hand/depth/target state and audio status. No research-origin banner, baseline-status sentence or splash is displayed. No splash screen was introduced. CLI title is Reflex hand guidance. Required notices and provenance remain outside the interface. SIMULATED labels remain mandatory for synthetic sources; none are represented as real observations.
+Original VisionOS title and camera/sidebar layout, large fingertip-to-target distance, XYZ directions, hand/depth/target state and audio status. No research-origin banner, baseline-status sentence or splash is displayed. No splash screen was introduced. CLI title is VisionOS hand guidance. Required notices and provenance remain outside the interface. SIMULATED labels remain mandatory for synthetic sources; none are represented as real observations.
 
 
 
@@ -64,11 +64,11 @@ This branch changes the existing independently authored prototype, not the copie
 
 - MediaPipe hand task/library: official Google distribution, Apache-2.0 notices and publisher model terms retained.
 
-- Ultralytics/YOLO11s: AGPL-3.0; required notice remains in third_party. Original-code MIT terms do not relicense this dependency. Licensing must be resolved before a closed-source Reflex app uses this detector, or it must be replaced using an appropriately licensed implementation.
+- Ultralytics/YOLO11s: AGPL-3.0; required notice remains in third_party. Original-code MIT terms do not relicense this dependency. Licensing must be resolved before a closed-source VisionOS app uses this detector, or it must be replaced using an appropriately licensed implementation.
 
 - NumPy, OpenCV, Pillow, sounddevice/PortAudio, psutil and Python: existing licensed packages; full installed notices and THIRD_PARTY.md remain authoritative.
 
-- Original Proprio source and reference voice assets: redistribution rights unestablished, isolated locally and excluded. They are not Reflex-owned replacements and are not shipped here.
+- Original Proprio source and reference voice assets: redistribution rights unestablished, isolated locally and excluded. They are not VisionOS-owned replacements and are not shipped here.
 
 - No provider, haptic implementation, model or dependency version was added or changed.
 

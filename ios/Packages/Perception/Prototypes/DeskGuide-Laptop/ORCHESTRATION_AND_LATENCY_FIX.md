@@ -60,7 +60,7 @@ Hand landmarks alongside LOST were a display inconsistency: the GUI deliberately
 5. deskguide/app.py: clear stale hand/tip overlays instead of drawing an old hand while reporting LOST. Existing GUI layout/status/distance fields remain intact.
 6. tests/test_automatic_can.py: regressions for a blocked NN while publication continues, older semantic identity with CURRENT depth, no-source-depth reuse, failed current-image support, reconnect invalidation, predicted-anchor audio stop, source-hand feature exclusion, fresh measured/estimated distance display and stale overlay clearing. The asynchronous test requires an actual detected event rather than accepting a pending state as acquisition.
 
-Documentation updated: this report, README.md and CURRENT_VALIDATION.md. Implementation mirrored to the sibling Git checkout without changing native Reflex files.
+Documentation updated: this report, README.md and CURRENT_VALIDATION.md. Implementation mirrored to the sibling Git checkout without changing native VisionOS files.
 
 ## Why this does not bypass 300 ms
 

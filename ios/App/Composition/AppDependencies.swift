@@ -47,8 +47,8 @@ final class AppDependencies: ObservableObject {
         let preferenceDefaults: UserDefaults
         if let defaults { preferenceDefaults = defaults }
         else if ProcessInfo.processInfo.arguments.contains("--uitesting") {
-            preferenceDefaults = UserDefaults(suiteName: "Reflex.UITests")!
-            preferenceDefaults.removePersistentDomain(forName: "Reflex.UITests")
+            preferenceDefaults = UserDefaults(suiteName: "VisionOS.UITests")!
+            preferenceDefaults.removePersistentDomain(forName: "VisionOS.UITests")
         } else { preferenceDefaults = .standard }
         self.defaults = preferenceDefaults
         preferences = UserPreferences(defaults: preferenceDefaults)

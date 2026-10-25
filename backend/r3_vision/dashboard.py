@@ -34,10 +34,11 @@ def number(value):
     return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
 
 
-def snapshot(item, panel, ticket, *, mode='LIVE', quick=False, voice=None, now=None):
+def snapshot(item, panel, ticket, *, mode='LIVE', quick=False, voice=None, now=None, orchestration=None):
     """Return a serializable snapshot plus private frame/evidence deadlines."""
     now = time.monotonic() if now is None else now
     state = empty_state(mode, quick)
+    state['orchestration'] = copy.deepcopy(orchestration) if isinstance(orchestration, dict) else None
     state['voice'] = dict(status=str(getattr(voice, 'status', 'Off'))[:200],
                           lastHeard=str(getattr(voice, 'last_heard', ''))[:500])
     if not item or item[0] != ticket or len(item) < 7:
@@ -95,7 +96,7 @@ class Dashboard:
         self.server = ThreadingHTTPServer(('127.0.0.1', port), self.handler())
         self.server.daemon_threads = True
         self.port = self.server.server_port
-        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True, name='reflex-dashboard')
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True, name='visionos-dashboard')
 
     @property
     def url(self):
@@ -212,12 +213,12 @@ class Dashboard:
                     if not 0 < length <= 2048 or self.headers.get('Transfer-Encoding'):
                         raise ValueError('Invalid body size')
                     command = json.loads(self.rfile.read(length))
-                    if not isinstance(command, dict) or command.get('action') not in ('find', 'stop', 'describe', 'quick'):
+                    if not isinstance(command, dict) or command.get('action') not in ('find', 'stop', 'describe', 'quick', 'request', 'recall'):
                         raise ValueError('Invalid action')
                     query = command.get('query', '')
                     if not isinstance(query, str) or len(query) > 500 or any(ord(c) < 32 for c in query):
                         raise ValueError('Invalid query')
-                    if command['action'] == 'find' and not query.strip():
+                    if command['action'] in ('find', 'request') and not query.strip():
                         raise ValueError('A target request is required')
                     accepted = owner.enqueue(dict(action=command['action'], query=query.strip()))
                     return self.respond(202 if accepted else 429, {'accepted': accepted})

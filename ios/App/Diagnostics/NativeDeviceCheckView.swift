@@ -38,7 +38,7 @@ final class NativeDeviceCheckModel: ObservableObject {
             self.processingMs = data.processingMs
             self.tracking = data.trackingNormal ? "Normal" : "Limited"
             if self.frames == 1 || self.frames % 30 == 0 {
-                print("REFLEX_DEVICE_CHECK frames=\(self.frames) depth=\(self.depthFrames) hand=\(self.handFrames) measuredHand=\(self.measuredHandFrames) processingMs=\(data.processingMs)")
+                print("VISIONOS_DEVICE_CHECK frames=\(self.frames) depth=\(self.depthFrames) hand=\(self.handFrames) measuredHand=\(self.measuredHandFrames) processingMs=\(data.processingMs)")
             }
         }
         do {
@@ -59,7 +59,7 @@ final class NativeDeviceCheckModel: ObservableObject {
         preview = nil
         tracking = "Stopped"
         message = "Sensors stopped. Recorded counts remain above."
-        print("REFLEX_DEVICE_CHECK stopped frames=\(frames) depth=\(depthFrames) hand=\(handFrames) measuredHand=\(measuredHandFrames)")
+        print("VISIONOS_DEVICE_CHECK stopped frames=\(frames) depth=\(depthFrames) hand=\(handFrames) measuredHand=\(measuredHandFrames)")
     }
 }
 
@@ -86,7 +86,7 @@ struct NativeDeviceCheckView: View {
                     Button("Stop sensors", role: .destructive) { model.stop() }
                         .frame(minHeight: 52).accessibilityIdentifier("deviceCheck.stop")
                 }.padding()
-            }.navigationTitle("Reflex device check")
+            }.navigationTitle("VisionOS device check")
         }
         .onChange(of: phase) { _, phase in if phase == .background { model.stop() } }
         .onDisappear { model.stop() }

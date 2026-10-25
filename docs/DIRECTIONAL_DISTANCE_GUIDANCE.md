@@ -20,7 +20,7 @@ Read-only inspection of `C:/Users/ngkho/OneDrive/Desktop/testing_ver_calhack/ups
 - `hands.py`: optical backprojection using measured depth and intrinsics.
 - `guidance.py`, `_line`: aligned/release hysteresis, historically 2.5/5 cm.
 
-Reflex already vendors its own DeskGuide `geometry.backproject`, `surface`, `fingertip_depth`
+VisionOS already vendors its own DeskGuide `geometry.backproject`, `surface`, `fingertip_depth`
 and `stream.prepare`. These remain the calculation source; no upstream Proprio source was
 copied. The existing nearest visible front-surface target selection is retained, with hand
 pixels and pixels outside the tracked target polygon excluded. Intrinsics/depth/confidence

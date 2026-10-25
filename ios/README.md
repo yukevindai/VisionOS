@@ -1,17 +1,17 @@
-# Reflex for iPhone
+# VisionOS for iPhone
 
-Reflex is a native SwiftUI iPhone app with a minimum deployment target of iOS 17. The project uses Swift 5 language mode and was inspected with Xcode 26.6 (17F113) and Apple Swift 6.3.3. VS Code works for editing; Xcode is required to build, run, sign, and test the iOS app.
+VisionOS is a native SwiftUI iPhone app with a minimum deployment target of iOS 17. The project uses Swift 5 language mode and was inspected with Xcode 26.6 (17F113) and Apple Swift 6.3.3. VS Code works for editing; Xcode is required to build, run, sign, and test the iOS app.
 
 ## Open and run
 
-1. On a fresh clone, prepare the native object model using the commands below, then open `ios/Reflex.xcodeproj` in Xcode. No external project generator needs to be installed.
-2. Select the shared `Reflex` scheme and an iPhone simulator or connected iPhone.
-3. For a physical device, open the Reflex target's **Signing & Capabilities**, enable automatic signing, and select your development team. The project does not include a team ID.
+1. On a fresh clone, prepare the native object model using the commands below, then open `ios/VisionOS.xcodeproj` in Xcode. No external project generator needs to be installed.
+2. Select the shared `VisionOS` scheme and an iPhone simulator or connected iPhone.
+3. For a physical device, open the VisionOS target's **Signing & Capabilities**, enable automatic signing, and select your development team. The project does not include a team ID.
 4. Build and run. Normal assistance composes the native camera, hand/depth guidance, audio and Gemini object client. Object recognition, the separate snapshot reader and friend-video demo require service configuration and sign-in. None of these flows silently substitutes simulation.
 
 The sample bundle identifier is `com.example.reflex`. To use a different one, copy `ios/Config/Local.example.xcconfig` to `ios/Config/Local.xcconfig` and change `REFLEX_BUNDLE_ID`. The local file is ignored by git. The project has camera, microphone, speech-recognition and Bluetooth permission descriptions; no provider credentials or real H1 Bluetooth UUIDs are bundled.
 
-To refresh Xcode target membership after adding or removing Swift files under `ios/App`, `ios/Tests/ReflexAppTests`, or `ios/UITests`, run:
+To refresh Xcode target membership after adding or removing Swift files under `ios/App`, `ios/Tests/VisionOSAppTests`, or `ios/UITests`, run:
 
 ```sh
 python3 ios/Scripts/generate_project.py
@@ -21,7 +21,7 @@ The generated `.xcodeproj` is included with the source and opens without running
 
 ## Start a call
 
-Choose the assisted role and tap **Call**. Reflex requests any missing camera,
+Choose the assisted role and tap **Call**. VisionOS requests any missing camera,
 microphone and speech-recognition permissions, then starts assistance automatically.
 There is no mandatory setup screen or speech-only Continue button. If access is
 denied, the home screen explains which permission is missing and offers **Open
@@ -74,7 +74,7 @@ microphone, echo-cancellation, or physical-device acceptance.
 
 Simulation is off by default. Turn it on from **Settings → Use simulated assistance**, or launch the app with `--simulate`. The home and active-session views show a persistent **SIMULATED** label. Fixtures use sample scene/task events and typed requests; they do not connect to the camera, microphone, or wristbands. Inside a simulated session, enter a request in the simulated voice input field and submit it to exercise a fixture flow. This typed path is for fixture development. Normal assistance uses the native adapters described below and requires their actual camera, microphone, speech-recognition and depth readiness.
 
-For UI automation, launch with both `--simulate` and `--uitesting`. The latter uses and clears a separate `Reflex.UITests` preferences domain and disables fixture speech output so the simulator does not speak during tests. UI tests set these arguments themselves.
+For UI automation, launch with both `--simulate` and `--uitesting`. The latter uses and clears a separate `VisionOS.UITests` preferences domain and disables fixture speech output so the simulator does not speak during tests. UI tests set these arguments themselves.
 
 Debug UI automation can also add `--ui-permission-scenario` followed by `denied`, `camera-denied`, `microphone-denied`, `restricted`, or `requestable`. These scenarios enforce the app's permission gate using simulated authorization, without opening the camera/microphone or showing system prompts. Recovery is an explicitly labeled simulated Settings action. These injections require both simulation/test flags and are excluded from Release builds.
 
@@ -89,12 +89,12 @@ swift test --package-path ios/Packages/Tasks
 swift test --package-path ios/Packages/HapticLink
 ```
 
-The shared `Reflex` scheme includes the app unit-test target and the UI-test target. To run both against the iPhone 17 Pro simulator recorded for this checkout, with parallel test runners disabled:
+The shared `VisionOS` scheme includes the app unit-test target and the UI-test target. To run both against the iPhone 17 Pro simulator recorded for this checkout, with parallel test runners disabled:
 
 ```sh
 xcodebuild \
-  -project ios/Reflex.xcodeproj \
-  -scheme Reflex \
+  -project ios/VisionOS.xcodeproj \
+  -scheme VisionOS \
   -destination 'platform=iOS Simulator,id=F6C5FDA3-8DE1-441D-BFFE-2FE0E7F272FB' \
   -parallel-testing-enabled NO \
   test
@@ -104,8 +104,8 @@ If that simulator is not installed, use `xcrun simctl list devices available` an
 
 ```sh
 xcodebuild \
-  -project ios/Reflex.xcodeproj \
-  -scheme Reflex \
+  -project ios/VisionOS.xcodeproj \
+  -scheme VisionOS \
   -configuration Debug \
   -sdk iphonesimulator \
   -destination 'generic/platform=iOS Simulator' \
@@ -137,7 +137,7 @@ The script creates a fresh temporary artifact directory unless `CI_ARTIFACT_DIR`
 
 ## Adapter and lifecycle verification
 
-`Tests/ReflexAppTests/AdapterCompatibilityHarness.swift` provides test-only recording speech and controllable conversation/evidence clients. Tests deliberately hold callbacks after cancellation and check latest-frame delivery, capacity recovery, scoped calibration answers, and release of the session coordinator. The composition accepts alternate R2-facing adapters for future integration tests; it does not establish compatibility with unpushed teammate code.
+`Tests/VisionOSAppTests/AdapterCompatibilityHarness.swift` provides test-only recording speech and controllable conversation/evidence clients. Tests deliberately hold callbacks after cancellation and check latest-frame delivery, capacity recovery, scoped calibration answers, and release of the session coordinator. The composition accepts alternate R2-facing adapters for future integration tests; it does not establish compatibility with unpushed teammate code.
 
 The coordinator retains a single occupied frame slot until its adapter returns, even after Stop. Only the newest current frame waits behind it. Cancelled task requests remain counted against the eight-operation limit until they return, using the full request context to keep sessions separate. Startup and conversation recovery also share one occupied attempt slot until the adapter actually returns. A stalled cancelled attempt blocks a new Start with an explanation and leaves recovery paused; after it returns, the user can explicitly Start again. Providers should still implement cancellation and bound their internal queues; R2 cannot force a third-party operation to finish.
 
@@ -162,7 +162,7 @@ Bands are currently omitted, so no BLE controller is constructed and calibration
 The package boundaries are:
 
 ```text
-Reflex app
+VisionOS app
 ├── Guidance    measured geometry and hand-guidance policy (Foundation)
 ├── Targets     teammate ScreenModel and deterministic target selection
 ├── Tasks       deterministic task state/effect engine
@@ -175,7 +175,7 @@ See [the native R1/R3 validation record](Validation/2026-10-24-native-r1-r3.md) 
 
 ## Role-based interface
 
-On launch, Reflex restores a saved sign-in and prepares the account in Convex. Otherwise, a **Welcome to Reflex** screen offers **Sign in** before the **Blind / Not blind** choices. **Continue without signing in** keeps the camera and local controls available; online object recognition still requires an account. A failed restore or account setup leaves a retry available. Explicit simulation bypasses the account screen. Blind opens a large **Call** action, which starts the existing native voice/object-assistance coordinator after any required first-use setup. There is no task grid or friend picker in that path. The live camera uses aspect-fit and semi-transparent native material islands; Stop and End call remain reachable, including with large text. Reduce Transparency switches the islands to opaque surfaces. Settings and separate camera tools remain outside the call.
+On launch, VisionOS restores a saved sign-in and prepares the account in Convex. Otherwise, a **Welcome to VisionOS** screen offers **Sign in** before the **Blind / Not blind** choices. **Continue without signing in** keeps the camera and local controls available; online object recognition still requires an account. A failed restore or account setup leaves a retry available. Explicit simulation bypasses the account screen. Blind opens a large **Call** action, which starts the existing native voice/object-assistance coordinator after any required first-use setup. There is no task grid or friend picker in that path. The live camera uses aspect-fit and semi-transparent native material islands; Stop and End call remain reachable, including with large text. Reduce Transparency switches the islands to opaque surfaces. Settings and separate camera tools remain outside the call.
 
 Not blind opens authenticated shared sessions, invitation redemption, and a watch-only rear-camera viewer. It shows only server-authorized joinable sessions. It never opens this phone's camera or microphone. Missing cloud setup is explicit; hand landmarks, object labels, task state and distances remain unavailable until a real shared telemetry feed exists. Full call audio and automatic friend sharing from the normal Call are not wired yet. The existing owner-video tool provides the separate consented sharing path.
 
@@ -209,3 +209,14 @@ Open **Blind → More tools → Share live video with a friend** with simulation
 Use [the setup guide](../docs/LIVE_VIDEO_DEMO_SETUP.md) for the missing Convex/Auth0/LiveKit projects, callback/webhook URLs, ignored local config and physical iPhone instructions. No Gemini/Claude/Cartesia key is needed for this demo. Camera, microphone and provider secrets are not simulated into a live success.
 
 The [video-demo validation record](Validation/2026-10-24-live-video-demo.md) distinguishes the passing local builds/tests from the still-unrun real iPhone-to-helper call. The ordinary assistance frame tap is owned by the new native R1 adapter. This separate video-demo capture source remains exclusive and must never run alongside it.
+
+## Product name and compatibility
+
+The product and Xcode project are **VisionOS**. Open `VisionOS.xcodeproj`
+and select the `VisionOS` scheme. The app and test modules use the same name.
+Existing `Local.xcconfig` files continue to work: the `REFLEX_*` build settings,
+internal service plist keys, bundle identifiers, Auth0 keychain key, saved
+wristband pairing key, LiveKit room prefix and dashboard token header retain
+their existing values for compatibility. They are internal identifiers, not
+product names. Historical validation logs, screenshots and branch references
+retain their original names as evidence of the runs performed at that time.

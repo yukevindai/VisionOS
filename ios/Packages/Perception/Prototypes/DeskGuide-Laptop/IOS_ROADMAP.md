@@ -2,7 +2,7 @@
 
 User decision: **everything runs on the iPhone, including detection, tracking, depth and audio**. A laptop-connected camera app is not the final product. The current Windows app remains the runnable experimental reference; PathOn and USB are temporary acquisition adapters used for development.
 
-Reflex integration clarification: this is one shared feature for OBJ, BTN, MNU and DOR, not a second app. Native perception and guidance belong in the existing R1 packages once their real contracts are available. Reuse the app's existing ARSession and central audio/haptic scheduler; the component mapping below describes platform responsibilities, not permission to create duplicate services. R2 owns app/tasks/HapticLink, R3 owns approved target selection, and H1 owns wristband firmware. See PROPRIO_METHOD_REVIEW.md for the currently missing repository/contracts and source-grounded implementation differences.
+VisionOS integration clarification: this is one shared feature for OBJ, BTN, MNU and DOR, not a second app. Native perception and guidance belong in the existing R1 packages once their real contracts are available. Reuse the app's existing ARSession and central audio/haptic scheduler; the component mapping below describes platform responsibilities, not permission to create duplicate services. R2 owns app/tasks/HapticLink, R3 owns approved target selection, and H1 owns wristband firmware. See PROPRIO_METHOD_REVIEW.md for the currently missing repository/contracts and source-grounded implementation differences.
 
 ## Native implementation boundary
 

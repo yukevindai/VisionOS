@@ -10,3 +10,14 @@ test('unlocking cannot retain physical guidance',()=>{const s=projectSnapshot({.
 test('disconnected snapshot fails closed',()=>{assert.equal(projectSnapshot({...valid,connected:false}).frame,null);assert.equal(projectSnapshot({}).fresh,false);});
 test('bad expiry or nonnumeric measurement never becomes a distance',()=>{assert.equal(projectSnapshot({...valid,validForMs:NaN}).fresh,false);assert.equal(axisValue({cm:NaN}),'—');assert.equal(axisValue({cm:-4.2}),'4.2 cm');});
 test('pipeline stage labels are evidence based',()=>{assert.deepEqual(stageStates(projectSnapshot(valid,130)),['Waiting','Waiting','Not verified','Unavailable','Paused']);});
+
+
+test('agent telemetry remains descriptive and uses reported handoffs', async () => {
+  const {agentView} = await import('./state.js');
+  const view = agentView({agent:'scene',status:'complete',goal:'describe',response:'A chair',latency_ms:123,
+    events:[{source:'coordinator',destination:'scene',kind:'handoff'}]});
+  assert.match(view.status, /scene: complete/);
+  assert.equal(view.response, 'A chair');
+  assert.deepEqual(view.events, ['coordinator -> scene']);
+  assert.equal(agentView(null).status, 'Orchestration unavailable');
+});

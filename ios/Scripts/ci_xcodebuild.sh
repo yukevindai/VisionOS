@@ -8,7 +8,7 @@ else
   artifact_dir="$(mktemp -d "${TMPDIR:-/tmp}/ios-ci-artifacts.XXXXXX")" || exit 2
 fi
 simulator_udid="${IOS_SIMULATOR_UDID:-}"
-result_bundle="$artifact_dir/Reflex-tests.xcresult"
+result_bundle="$artifact_dir/VisionOS-tests.xcresult"
 overall_status=0
 
 mkdir -p "$artifact_dir" || exit 2
@@ -44,8 +44,8 @@ run_logged tasks-package-tests swift test --package-path ios/Packages/Tasks
 run_logged hapticlink-package-tests swift test --package-path ios/Packages/HapticLink
 
 run_logged simulator-app-and-ui-tests xcodebuild \
-  -project ios/Reflex.xcodeproj \
-  -scheme Reflex \
+  -project ios/VisionOS.xcodeproj \
+  -scheme VisionOS \
   -destination "platform=iOS Simulator,id=$simulator_udid" \
   -parallel-testing-enabled NO \
   -resultBundlePath "$result_bundle" \
@@ -53,8 +53,8 @@ run_logged simulator-app-and-ui-tests xcodebuild \
   test
 
 run_logged unsigned-release-build xcodebuild \
-  -project ios/Reflex.xcodeproj \
-  -scheme Reflex \
+  -project ios/VisionOS.xcodeproj \
+  -scheme VisionOS \
   -configuration Release \
   -sdk iphoneos \
   -destination 'generic/platform=iOS' \

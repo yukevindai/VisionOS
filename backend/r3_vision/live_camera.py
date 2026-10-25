@@ -221,7 +221,7 @@ def main(argv=None):
         p.error('Set GEMINI_API_KEY and GEMINI_MODEL in environment or backend/.env; no API call made')
     import tkinter as tk
     root = tk.Tk()
-    root.title('Reflex R3 camera test - frozen interpretation, NO GUIDANCE')
+    root.title('VisionOS R3 camera test - frozen interpretation, NO GUIDANCE')
     request = tk.StringVar(value=args.request)
     tk.Entry(root, textvariable=request, width=70).pack()
     status = tk.StringVar(value='Ready. Edit request, then click Capture or press F5.')
