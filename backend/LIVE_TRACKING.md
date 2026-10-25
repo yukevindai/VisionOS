@@ -76,6 +76,27 @@ heard, inspect the terminal's `VOICE_READY`, `VOICE_HEARD`, `VOICE_COMMAND`, and
 `VOICE_IGNORED` messages, plus the actual output device in `AUDIO_INITIALIZED` and
 `PLAYBACK_STARTED`. A completed playback event does not prove audible sound.
 
+## Select the actual microphone
+
+Speech input now opens a specific capture device and pipes its mono PCM audio
+into the Windows recognizer. The `MIC INPUT` line and `VOICE_INPUT_DEVICE` log
+show the selected device name instead of the generic "laptop mic" label.
+With no override, it resolves the Windows default input when starting. Restart
+tracking after changing the selected device; active streams are not hot-swapped.
+
+To require AirPods, add `-VoiceInputDevice 'AirPods'` to the launcher command
+(direct Python: `--voice-input-device AirPods`). This selects an input device,
+not the AirPods output. Missing or ambiguous names fail visibly; an explicitly
+selected headset never falls back to the built-in microphone. A numeric input
+index also works, but indices can change when Bluetooth devices reconnect.
+The existing `-AudioDevice` flag controls output only. Install
+`requirements-preview.txt` in the launcher's Python environment for sounddevice.
+
+The recognizer consumes the selected PCM stream using Microsoft's
+[SetInputToAudioStream API](https://learn.microsoft.com/en-us/dotnet/api/system.speech.recognition.speechrecognitionengine.setinputtoaudiostream).
+No recording is saved or uploaded. The local microphone remains open for wake
+and Stop while request routing is paused. Say "Hey Vision" to resume after idle.
+
 ## HYBRID detection and audio guidance (optional, 2026-10-24)
 
 `python -m r3_vision.detector_bench` (DeskGuide venv, Ultralytics) on 12 saved PathOn frames, Gemini boxes as reference:
