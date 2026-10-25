@@ -1,11 +1,13 @@
 import XCTest
+import UIKit
 import Tasks
 import HapticLink
 @testable import Reflex
 
 @MainActor
-private final class TrackingPerception: PerceptionGuidanceClient, CameraTrackingSource {
+private final class TrackingPerception: PerceptionGuidanceClient, CameraTrackingSource, CameraPreviewSource {
     let base: FixturePerception
+    var onPreview: ((CameraPreviewFrame) -> Void)?
     var onTrackingState: ((CameraTrackingState) -> Void)?
     var onTrackingIssue: ((SessionContext, String) -> Void)?
     var onEvent: ((PerceptionEvent) -> Void)? { get { base.onEvent } set { base.onEvent = newValue } }
@@ -66,6 +68,34 @@ final class CameraTrackingStateTests: XCTestCase {
         for _ in 0..<12 { heartbeat(session, clock, source); clock.advance(100) }
         XCTAssertEqual(session.phase, .active)
         XCTAssertFalse(session.diagnostics.events.contains { $0.name == "tracking_loss" })
+        session.stop(.userEnd)
+    }
+
+    func testPreviewAndTrackingKeepIndependentExpiryWhenBothSourcesArePresent() async {
+        let (session, clock, source) = harness()
+        session.start(); await settle()
+        session.submitTask(.init(id: "object-request", kind: .object, query: "find my bottle")); await settle()
+        XCTAssertTrue(session.hasActiveTask)
+        XCTAssertNotNil(source.onPreview)
+        XCTAssertNotNil(source.onTrackingState)
+        source.base.staleFrames = true
+        let image = UIImage()
+        source.onPreview?(.init(context: session.context!, geometryID: source.base.camera.geometryID,
+                               capturedAtMs: clock.nowMs, image: image))
+        XCTAssertTrue(session.preview === image)
+
+        for _ in 0..<3 { heartbeat(session, clock, source); clock.advance(100) }
+        XCTAssertEqual(session.phase, .active)
+        XCTAssertNil(session.preview, "Fresh tracking cannot extend a frozen preview's 300 ms lifetime")
+
+        for _ in 0..<2 {
+            source.onPreview?(.init(context: session.context!, geometryID: source.base.camera.geometryID,
+                                   capturedAtMs: clock.nowMs, image: image))
+            XCTAssertTrue(session.preview === image)
+            clock.advance(100)
+        }
+        XCTAssertEqual(session.phase, .paused, "Fresh display images cannot replace raw tracking liveness")
+        XCTAssertNil(session.preview, "Tracking loss still clears the display through Stop")
         session.stop(.userEnd)
     }
 
