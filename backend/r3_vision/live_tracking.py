@@ -1039,6 +1039,9 @@ def main(argv=None):
     def voice_command(command, argument):
         from .demo_objects import OBJECTS
         player = worker.audio.player if worker.audio is not None else None
+        if command == 'wake':
+            root.bell()  # Local acknowledgement; never starts or cancels tracking.
+            return
         if command == 'quiet':
             worker.cancel_scene_speech()
             if player is not None:
@@ -1083,11 +1086,13 @@ def main(argv=None):
                     worker.describe_surroundings()
                 elif action == 'quick' and args.detection == 'demo':
                     worker.describe()
+        if voice is not None:
+            voice.tick(time.monotonic())
         while voice is not None and not voice.commands.empty():
             command, argument, _ = voice.commands.get_nowait()
             voice_command(command, argument)
         if voice is not None and voice.transcript:
-            names = {'find': 'FIND', 'describe': 'DESCRIBE', 'quiet': 'QUIET', 'stop_tracking': 'STOP TRACKING'}
+            names = {'wake': 'LISTENING', 'find': 'FIND', 'describe': 'DESCRIBE', 'quiet': 'QUIET', 'stop_tracking': 'STOP TRACKING'}
             lines = [f'"{item["text"]}"' + (f'  →  {names[item["command"]]}' if item['command'] else '')
                      for item in list(voice.transcript)[::-1][:3]]
             heard.set('YOU SAID: ' + lines[0] + ('\nearlier: ' + '   |   '.join(lines[1:]) if lines[1:] else ''))

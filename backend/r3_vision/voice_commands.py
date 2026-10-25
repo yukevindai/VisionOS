@@ -19,6 +19,9 @@ import time
 
 from .demo_objects import OBJECTS
 
+WAKE_PHRASE = 'hey vision'
+READY_STATUS = 'LISTENING (direct commands or optional Hey Vision)'
+
 VERBS = ('find', 'find me', 'where is', 'get', 'locate', 'track', 'show me')
 DESCRIBE = ("what's around me", 'whats around me', 'what is around me', 'describe the surroundings', 'describe surroundings',
             'what do you see', 'describe')
@@ -42,7 +45,8 @@ def object_phrases():
 def phrases():
     objects = object_phrases()
     finds = {f'{verb} {article}{name}' for verb in VERBS for name in objects for article in ('', 'the ', 'my ')}
-    return sorted(finds | set(DESCRIBE) | set(QUIET) | set(STOP_TRACKING))
+    commands = finds | set(DESCRIBE) | set(QUIET) | set(STOP_TRACKING)
+    return sorted(commands | {WAKE_PHRASE} | {f'{WAKE_PHRASE} {p}' for p in commands})
 
 
 def interpret(text):
@@ -50,6 +54,10 @@ def interpret(text):
     ('stop_tracking', None), or (None, None)."""
     # Dictation adds capitals and punctuation ("Find the Pepsi can."); the command list has neither.
     text = ' '.join(re.sub(r"[^\w\s']", ' ', text.lower().replace('-', ' ')).split())
+    if text == WAKE_PHRASE:
+        return 'wake', None
+    if text.startswith(WAKE_PHRASE + ' '):
+        text = text[len(WAKE_PHRASE) + 1:]
     if text in STOP_TRACKING:
         return 'stop_tracking', None
     if text in QUIET:
@@ -103,6 +111,7 @@ class VoiceCommands:
         self.status = 'starting voice recognition'
         self.last_heard = ''
         self.quiet_until = 0.
+        self.wake_until = 0.
         self.process = None
         folder.mkdir(parents=True, exist_ok=True)
         (folder / 'voice-phrases.txt').write_text('\n'.join(phrases()), encoding='utf-8')
@@ -124,7 +133,7 @@ class VoiceCommands:
             for line in self.process.stdout:
                 line = line.strip()
                 if line == 'READY':
-                    self.status = 'LISTENING (say "find the Pepsi can", "what is around me", "stop")'
+                    self.status = READY_STATUS
                     self.log('VOICE_READY')
                 elif line.startswith('HEARD|'):
                     _, confidence, grammar, text = line.split('|', 3)
@@ -151,10 +160,26 @@ class VoiceCommands:
             # Stop and quiet commands always interrupt; other speech may be an echo.
             self.log('VOICE_IGNORED_WHILE_SPEAKING', text=text, confidence=round(confidence, 2))
             return None
+        if command == 'wake':
+            # Optional acknowledgement only: direct commands never depend on this window.
+            if now < getattr(self, 'wake_until', 0.):
+                return None
+            self.wake_until = now + 6.
+            self.status = 'Listening for your command… (Hey Vision heard)'
+        else:
+            self.wake_until = 0.
+            self.status = READY_STATUS
         self.last_heard = f'"{text}" ({confidence:.2f})'
         self.log('VOICE_COMMAND', command=command, argument=argument, text=text, confidence=round(confidence, 2))
         self.commands.put((command, argument, text))
         return command
+
+    def tick(self, now):
+        if getattr(self, 'wake_until', 0.) and now >= self.wake_until:
+            self.wake_until = 0.
+            # Preserve recognizer errors rather than masking them with a ready state.
+            if self.status.startswith('Listening for your command'):
+                self.status = READY_STATUS
 
     def close(self):
         if self.process is not None and self.process.poll() is None:

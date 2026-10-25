@@ -59,6 +59,41 @@ class EchoGuardTests(unittest.TestCase):
                     self.assertEqual(v.handle(text, .9, 10.), 'stop_tracking')
                     self.assertEqual(v.commands.get_nowait(), ('stop_tracking', None, text))
 
+    def test_optional_wake_and_direct_commands(self):
+        v = self.voice(False)
+        self.assertEqual(v.handle('Hey Vision!', .9, 10.), 'wake')
+        self.assertEqual(v.commands.get_nowait()[0], 'wake')
+        self.assertIsNone(v.handle('hey vision', .9, 11.))
+        self.assertEqual(v.handle('find the pepsi can', .9, 12.), 'find')
+        self.assertEqual(v.wake_until, 0.)
+        self.assertEqual(v.handle('Hey Vision, find the Pepsi can.', .9, 13.), 'find')
+        self.assertEqual(v.handle('what is around me', .9, 14.), 'describe')
+
+    def test_timeout_does_not_disable_direct_commands(self):
+        v = self.voice(False)
+        v.handle('hey vision', .9, 10.)
+        v.tick(16.)
+        self.assertEqual(v.status, voice_commands.READY_STATUS)
+        self.assertEqual(v.handle('find the pepsi can', .9, 17.), 'find')
+
+    def test_wake_echo_confidence_and_stop(self):
+        v = self.voice(True)
+        self.assertIsNone(v.handle('hey vision', .9, 10.))
+        self.assertIsNone(v.handle('hey vision find the pepsi can', .9, 11.))
+        self.assertEqual(v.handle('Hey Vision, stop!', .9, 12.), 'stop_tracking')
+        v = self.voice(False)
+        self.assertIsNone(v.handle('hey vision', .4, 10.))
+        self.assertTrue(v.commands.empty())
+        self.assertEqual(interpret('they said hey vision'), (None, None))
+        self.assertEqual(interpret('hey visionary'), (None, None))
+
+    def test_all_original_phrases_have_optional_prefix(self):
+        grammar = set(phrases())
+        for phrase in grammar:
+            if not phrase.startswith('hey vision'):
+                self.assertIn('hey vision ' + phrase, grammar)
+                self.assertEqual(interpret('hey vision ' + phrase), interpret(phrase))
+
     def test_low_confidence_is_ignored_and_clear_commands_pass(self):
         v = self.voice(False)
         self.assertIsNone(v.handle('find the pepsi can', .4, 10.))
