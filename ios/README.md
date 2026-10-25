@@ -56,7 +56,7 @@ Read [the model notice](Resources/Models/NOTICE.txt) and [AGPL-3.0 license](Reso
 
 Normal native assistance uses Cartesia for priority-4 speech through the authenticated
 Convex `speech:synthesize` action when online configuration and an existing sign-in
-are available. Sign in through the image reader or friend tools first. The phone
+are available. Sign in on the welcome screen before choosing a role; the image reader and friend tools also retain their account controls. The phone
 contains no Cartesia key; R3 owns the backend action and its server configuration.
 This demo path does not implement the planned streaming STT/Claude/LiveKit worker.
 
@@ -175,7 +175,7 @@ See [the native R1/R3 validation record](Validation/2026-10-24-native-r1-r3.md) 
 
 ## Role-based interface
 
-Every app launch starts with **Blind / Not blind**. Blind opens a large **Call** action, which starts the existing native voice/object-assistance coordinator after any required first-use setup. There is no task grid or friend picker in that path. The live camera uses aspect-fit and semi-transparent native material islands; Stop and End call remain reachable, including with large text. Reduce Transparency switches the islands to opaque surfaces. Settings and separate camera tools remain outside the call.
+On launch, Reflex restores a saved sign-in and prepares the account in Convex. Otherwise, a **Welcome to Reflex** screen offers **Sign in** before the **Blind / Not blind** choices. **Continue without signing in** keeps the camera and local controls available; online object recognition still requires an account. A failed restore or account setup leaves a retry available. Explicit simulation bypasses the account screen. Blind opens a large **Call** action, which starts the existing native voice/object-assistance coordinator after any required first-use setup. There is no task grid or friend picker in that path. The live camera uses aspect-fit and semi-transparent native material islands; Stop and End call remain reachable, including with large text. Reduce Transparency switches the islands to opaque surfaces. Settings and separate camera tools remain outside the call.
 
 Not blind opens authenticated shared sessions, invitation redemption, and a watch-only rear-camera viewer. It shows only server-authorized joinable sessions. It never opens this phone's camera or microphone. Missing cloud setup is explicit; hand landmarks, object labels, task state and distances remain unavailable until a real shared telemetry feed exists. Full call audio and automatic friend sharing from the normal Call are not wired yet. The existing owner-video tool provides the separate consented sharing path.
 

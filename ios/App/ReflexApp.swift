@@ -19,7 +19,9 @@ struct ReflexApp: App {
         }
     }
     private var normalContent: some View {
-            HomeView(dependencies: dependencies, session: dependencies.session)
+            StartupSignInView(simulated: dependencies.simulated) {
+                HomeView(dependencies: dependencies, session: dependencies.session)
+            }
                 .onChange(of: scenePhase) { _, new in
                     switch new {
                     case .active: dependencies.session.becameActive()

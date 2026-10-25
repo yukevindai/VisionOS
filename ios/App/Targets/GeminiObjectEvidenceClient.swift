@@ -33,7 +33,7 @@ final class GeminiObjectEvidenceClient: FrameTargetEvidenceClient {
 
     var isConfigured: Bool { reader != nil }
     var introduction: String {
-        isConfigured ? "Describe the object you want to find. Online recognition requires sign-in. Say Stop to pause." :
+        isConfigured ? "Describe the object you want to find. Say Stop to pause." :
             "Camera and voice are ready. Online object recognition is not configured yet. Say Stop to pause."
     }
 
