@@ -81,6 +81,7 @@ final class GeminiObjectEvidenceTests: XCTestCase {
             let target = try await operation.value
             XCTAssertEqual(target.label, label)
             XCTAssertEqual(target.kind, .object)
+            XCTAssertEqual(target.safety, .unassessedObject)
             XCTAssertEqual(target.frameID, "source-frame")
             XCTAssertEqual(target.region.x, 0.2, accuracy: 0.0001)
             XCTAssertEqual(target.region.y, 0.35, accuracy: 0.0001)
@@ -93,7 +94,7 @@ final class GeminiObjectEvidenceTests: XCTestCase {
         }
     }
 
-    func testMissingConfidenceOrSafetyOnlyIdentifiesAndNeverProducesTarget() async throws {
+    func testMissingConfidenceOrSafetyProducesOnlyUnassessedCandidate() async throws {
         let cases: [(Double?, Targets.ControlSafety?)] = [(nil, nil), (0.9, nil), (nil, .ordinary)]
         for (confidence, safety) in cases {
             let reader = ControlledObjectReader(), clock = ManualAppClock()
@@ -102,8 +103,19 @@ final class GeminiObjectEvidenceTests: XCTestCase {
             let operation = Task { try await client.resolve(request(context), query: "find my keys", kind: .object) }
             try await waitForRequests(reader)
             reader.complete(recognition(confidence: confidence, safety: safety))
-            do { _ = try await operation.value; XCTFail("Identification authorized a target") }
-            catch { XCTAssertEqual(error as? GeminiObjectError, .identificationOnly("silver keys")) }
+            let target = try await operation.value
+            XCTAssertEqual(target.safety, .unassessedObject)
+            XCTAssertEqual(target.frameID, "source-frame")
+            XCTAssertFalse(target.requiresApproach)
+        }
+    }
+
+    func testExplicitUnsafeSafetyCannotBecomeGuidanceCandidate() {
+        for safety in [Targets.ControlSafety.emergency, .payment, .purchaseAuthorization, .unknownCheckout, .unknown] {
+            XCTAssertThrowsError(try GeminiObjectEvidenceClient.target(
+                recognition(safety: safety), transform: .identity)) { error in
+                XCTAssertEqual(error as? GeminiObjectError, .identificationOnly("silver keys"))
+            }
         }
     }
 

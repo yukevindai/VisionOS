@@ -18,8 +18,25 @@ struct NativePerceptionDiagnostics {
     let processingMs: Double
 }
 
+enum NativeTargetBindingPolicy {
+    enum Action: Equatable { case seed, continuous, reject }
+
+    static func action(target: ResolvedTarget, prepared: ResolvedTarget?, preparing: Bool) -> Action {
+        if prepared == target { return .continuous }
+        if preparing { return .seed }
+        // An unassessed Gemini object must have been tracked before asking for consent.
+        if target.safety == .unassessedObject { return .reject }
+        return .seed
+    }
+}
+
 @MainActor
-final class NativePerceptionGuidanceClient: NSObject, PerceptionGuidanceClient, NativeMediaCaptureClient, CameraPreviewSource, CameraTrackingSource {
+protocol ObjectTargetPreparing {
+    func prepareTarget(_ request: RequestContext, target: ResolvedTarget) async throws
+}
+
+@MainActor
+final class NativePerceptionGuidanceClient: NSObject, ObjectTargetPreparing, PerceptionGuidanceClient, NativeMediaCaptureClient, CameraPreviewSource, CameraTrackingSource {
     var onEvent: ((PerceptionEvent) -> Void)?
     var onTrackingState: ((CameraTrackingState) -> Void)?
     var onTrackingIssue: ((SessionContext, String) -> Void)?
@@ -162,6 +179,17 @@ final class NativePerceptionGuidanceClient: NSObject, PerceptionGuidanceClient, 
         }
         self.context = context
         processor?.updateContext(context, preferredHand: preferredHand())
+    }
+
+    func prepareTarget(_ request: RequestContext, target: ResolvedTarget) async throws {
+        guard valid(request), let processor else { throw NativePerceptionError.staleRequest }
+        let attempt = startID
+        let observation = try await processor.bind(target: target, request: request, preparing: true)
+        try Task.checkCancellation()
+        guard startID == attempt, valid(request), observation.context == context,
+              observation.targetVisible, observation.trackingNormal,
+              fresh(observation.capturedAtMs) else { throw NativePerceptionError.targetNotObserved }
+        // Preparation tracks only. Hand/depth readiness and all output remain gated by reacquire/guide.
     }
 
     func reacquire(_ request: RequestContext, target: ResolvedTarget) async throws -> PhysicalEvidence {
@@ -494,6 +522,9 @@ private final class NativePerceptionProcessor: NSObject, ARSessionDelegate, @unc
     private var history: [StoredFrame] = []
     private var lastProcessedAt: TimeInterval = -.infinity
     private var lastPublishedAt: TimeInterval = -.infinity
+    private var preparedTarget: ResolvedTarget?
+    private var latestObservation: NativePerceptionObservation?
+    private var trackedGeometryID: String?
     private var trackedTarget: ResolvedTarget?
     private var tracker: VNTrackObjectRequest?
     private var trackedBox: CGRect?
@@ -523,19 +554,27 @@ private final class NativePerceptionProcessor: NSObject, ARSessionDelegate, @unc
         let changed = self.context != context
         self.context = context; self.preferredHand = preferredHand
         lock.unlock()
-        if changed { clearTarget() }
+        if changed {
+            clearTarget()
+            queue.async { [self] in preparedTarget = nil; latestObservation = nil }
+        }
     }
     func setRotation(_ rotation: NativeMediaVideoRotation) {
         lock.lock(); self.rotation = rotation; lock.unlock()
     }
     func clearTarget() {
-        queue.async { [self] in trackedTarget = nil; tracker = nil; trackedBox = nil; sequence = VNSequenceRequestHandler() }
+        queue.async { [self] in
+            trackedTarget = nil; tracker = nil; trackedBox = nil; trackedGeometryID = nil
+            latestObservation = nil; sequence = VNSequenceRequestHandler()
+            // Keep the attempted identity as a tombstone: loss cannot reseed a confirmed target.
+        }
     }
     func close() {
         lock.lock(); open = false; pending = nil; lock.unlock()
         previewPipeline.close()
         queue.async { [self] in
             history.removeAll(); latestFrame = nil; trackedTarget = nil; tracker = nil
+            preparedTarget = nil; latestObservation = nil; trackedGeometryID = nil
         }
     }
 
@@ -592,14 +631,16 @@ private final class NativePerceptionProcessor: NSObject, ARSessionDelegate, @unc
            frame.timestamp - lastProcessedAt >= 0.075 {
             lastProcessedAt = frame.timestamp
             latestFrame = capture
-            delivery(observe(capture, publish: true))
+            let observation = observe(capture, publish: true)
+            latestObservation = observation
+            delivery(observation)
         }
         // Yield the worker between frames so bind/cancel commands cannot starve
         // when capture runs faster than Vision can process it.
         queue.async { [self] in drain() }
     }
 
-    func bind(target: ResolvedTarget, request: RequestContext) async throws -> NativePerceptionObservation {
+    func bind(target: ResolvedTarget, request: RequestContext, preparing: Bool = false) async throws -> NativePerceptionObservation {
         try await withCheckedThrowingContinuation { continuation in
             queue.async { [self] in
                 lock.lock()
@@ -607,6 +648,25 @@ private final class NativePerceptionProcessor: NSObject, ARSessionDelegate, @unc
                 let context = self.context, rotation = self.rotation
                 lock.unlock()
                 let now = Int64(ProcessInfo.processInfo.systemUptime * 1_000)
+                let action = NativeTargetBindingPolicy.action(target: target, prepared: preparedTarget, preparing: preparing)
+                if action == .reject {
+                    continuation.resume(throwing: NativePerceptionError.targetNotObserved)
+                    return
+                }
+                if action == .continuous {
+                    guard allowed, request.expiresAtMs > now, preparedTarget == target,
+                          trackedTarget == target, tracker != nil,
+                          let observation = latestObservation, observation.context == context,
+                          observation.geometryID == geometry(rotation), observation.targetID == target.id,
+                          observation.targetVisible, observation.trackingNormal,
+                          observation.capturedAtMs <= now, now - observation.capturedAtMs < 300 else {
+                        continuation.resume(throwing: NativePerceptionError.targetNotObserved)
+                        return
+                    }
+                    continuation.resume(returning: observation)
+                    return
+                }
+                if preparing { preparedTarget = target }
                 guard allowed, request.expiresAtMs > now, target.region.isValid,
                       let source = history.first(where: { $0.id == target.frameID }),
                       source.context == context, source.geometryID == geometry(rotation),
@@ -635,7 +695,9 @@ private final class NativePerceptionProcessor: NSObject, ARSessionDelegate, @unc
                     self.tracker = tracker
                     trackedBox = first.boundingBox
                     trackedTarget = target
+                    trackedGeometryID = source.geometryID
                     let observation = observe(current, publish: false)
+                    latestObservation = observation
                     guard observation.targetVisible else { throw NativePerceptionError.targetNotObserved }
                     continuation.resume(returning: observation)
                 } catch {
@@ -662,6 +724,9 @@ private final class NativePerceptionProcessor: NSObject, ARSessionDelegate, @unc
         let normal: Bool
         if case .normal = frame.camera.trackingState { normal = true } else { normal = false }
         let depth = Self.depthPlane(frame)
+        if !normal || trackedGeometryID.map({ $0 != geometryID }) == true {
+            tracker = nil; trackedTarget = nil; trackedBox = nil
+        }
         var box: CGRect?
         let targetID = trackedTarget?.id
         if normal, let tracker {

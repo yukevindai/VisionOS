@@ -328,7 +328,9 @@ public struct TaskEngine: Sendable {
         guard !target.label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               target.safety != .ambiguous else { return fail(.labelAmbiguous, "The label is unclear. Please specify a clearly labeled target.") }
         if isFinancial(target) { return paymentBoundary(total: state.screen?.total) }
-        guard target.safety == .ordinary, !target.isHingeSide else { return fail(.labelAmbiguous, "I cannot safely guide to that control. Please ask for help.") }
+        let unassessedObject = target.safety == .unassessedObject
+        guard target.safety == .ordinary || (unassessedObject && state.request?.kind == .object && target.kind == .object && !target.requiresApproach),
+              !target.isHingeSide else { return fail(.labelAmbiguous, "I cannot safely guide to that control. Please ask for help.") }
         let allowed: [TargetKind]
         switch state.request?.kind {
         case .button: allowed = [.button, .opener]
@@ -345,6 +347,9 @@ public struct TaskEngine: Sendable {
         state.target = target
         var effects: [TaskEffect] = []
         if let caution = target.caution, !caution.isEmpty { effects.append(.speak(text: caution, priority: 1)) }
+        if unassessedObject {
+            return effects + ask(.objectGuidance, "I found \(target.label), but cannot assess whether it is safe to touch. Is this the intended object, safe to touch and within reach? Keep your hand and camera steady, then say yes or no.", now: now)
+        }
         if state.request?.kind == .door {
             state.selectedDoorAction = target.doorAction
             if target.doorAction == nil || ((target.doorAction == .push || target.doorAction == .pull) && !target.doorActionEvidence) {
@@ -375,6 +380,7 @@ public struct TaskEngine: Sendable {
         if evidence.hazardPresent || evidence.suspectedStep { return .hazard }
         if !evidence.trackingNormal || !evidence.outputReady { return .trackingLost }
         if !evidence.targetVisible { return .targetLost }
+        if state.target?.safety == .unassessedObject && !evidence.depthUsable { return .trackingLost }
         if mode == .hand && requiresHand && !evidence.handVisible { return .handLost }
         if mode == .approach {
             guard evidence.depthUsable, evidence.freeSpaceObserved, let distance = evidence.distanceM,
@@ -479,6 +485,14 @@ public struct TaskEngine: Sendable {
 
     private mutating func confirm(_ purpose: ConfirmationPurpose, answer: ConfirmationAnswer, now: Int64) -> [TaskEffect] {
         switch purpose {
+        case .objectGuidance:
+            if answer == .no { return stop(.cancelled) }
+            guard answer == .yes else { return [.rejected(.malformed)] }
+            guard state.request?.kind == .object, let target = state.target,
+                  target.kind == .object, target.safety == .unassessedObject,
+                  !target.requiresApproach else { return [.rejected(.wrongTarget)] }
+            state.confirmation = nil
+            return reacquire(now: now)
         case .doorAction:
             guard case .doorAction(let selected) = answer else { return [.rejected(.malformed)] }
             state.confirmation = nil; state.selectedDoorAction = selected

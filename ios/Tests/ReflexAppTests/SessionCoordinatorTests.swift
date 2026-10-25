@@ -91,8 +91,8 @@ private final class DelayedEvidence: TargetEvidenceClient {
     func answerMenu(_ request: RequestContext, question: String, menu: MenuContent) async throws -> String { try await base.answerMenu(request, question: question, menu: menu) }
     func verify(_ request: RequestContext, action: ActionKind, target: ResolvedTarget) async throws -> VerificationOutcome { .unavailable }
     func cancel(context: SessionContext) {} // Deliberately ignores cancellation to model a late provider response.
-    func complete() {
-        pending?.resume(returning: TaskFixtures.target())
+    func complete(_ target: ResolvedTarget = TaskFixtures.target()) {
+        pending?.resume(returning: target)
         pending = nil
     }
 }
@@ -115,7 +115,14 @@ private final class DeferredPermissionClient: PermissionClient {
 }
 
 @MainActor
-private final class PreviewFixturePerception: PerceptionGuidanceClient, CameraPreviewSource {
+private final class PreviewFixturePerception: PerceptionGuidanceClient, CameraPreviewSource, ObjectTargetPreparing {
+    var preparedTargets: [ResolvedTarget] = []
+    var preparation: CheckedContinuation<Void, Error>?
+    var guideCount = 0
+    func prepareTarget(_ request: RequestContext, target: ResolvedTarget) async throws {
+        preparedTargets.append(target)
+        try await withCheckedThrowingContinuation { preparation = $0 }
+    }
     let base: FixturePerception
     var onPreview: ((CameraPreviewFrame) -> Void)?
     var onEvent: ((PerceptionEvent) -> Void)? { get { base.onEvent } set { base.onEvent = newValue } }
@@ -126,7 +133,7 @@ private final class PreviewFixturePerception: PerceptionGuidanceClient, CameraPr
     func start(context: SessionContext, policy: CameraPolicy) async throws -> PerceptionReadiness { try await base.start(context: context, policy: policy) }
     func updateContext(_ context: SessionContext) { base.updateContext(context) }
     func reacquire(_ request: RequestContext, target: ResolvedTarget) async throws -> PhysicalEvidence { try await base.reacquire(request, target: target) }
-    func guide(_ request: RequestContext, mode: GuidanceMode, target: ResolvedTarget, hand: GuidingHand) async throws -> TaskResponse { try await base.guide(request, mode: mode, target: target, hand: hand) }
+    func guide(_ request: RequestContext, mode: GuidanceMode, target: ResolvedTarget, hand: GuidingHand) async throws -> TaskResponse { guideCount += 1; return try await base.guide(request, mode: mode, target: target, hand: hand) }
     func authorizePassage(_ request: RequestContext, target: ResolvedTarget) async throws -> PhysicalEvidence { try await base.authorizePassage(request, target: target) }
     func cancelGuidance(context: SessionContext) { base.cancelGuidance(context: context) }
     func stop(context: SessionContext) { base.stop(context: context) }
@@ -154,6 +161,60 @@ final class SessionCoordinatorTests: XCTestCase {
         return .init(session: session, clock: clock, perception: perception, conversation: conversation, speech: speech)
     }
     private func settle() async { for _ in 0..<80 { await Task.yield() } }
+
+    private func preparationHarness() -> (SessionCoordinator, PreviewFixturePerception, DelayedEvidence) {
+        let clock = ManualAppClock()
+        let perception = PreviewFixturePerception(FixturePerception(clock: clock))
+        let evidence = DelayedEvidence(clock: clock)
+        let session = SessionCoordinator(simulated: true,
+            preferences: UserPreferences(defaults: UserDefaults(suiteName: UUID().uuidString)!),
+            diagnostics: Diagnostics(capacity: 8),
+            bands: BandService(controller: nil, simulated: true, clock: clock), clock: clock,
+            perception: perception, speech: FixtureSpeech(audible: false), conversation: FixtureConversation(),
+            evidence: evidence, permissions: FixturePermissionClient(state: .init(camera: true, microphone: true)))
+        return (session, perception, evidence)
+    }
+
+    func testUnassessedTargetPreparationCompletesBeforeConfirmation() async {
+        let (session, perception, evidence) = preparationHarness()
+        session.start(); await settle()
+        session.submitFixtureText("pick up my keys"); await settle()
+        let target = TaskFixtures.target(kind: .object, label: "SIMULATED keys", safety: .unassessedObject)
+        evidence.complete(target); await settle()
+        XCTAssertEqual(perception.preparedTargets, [target])
+        XCTAssertNil(session.taskState?.confirmation)
+        XCTAssertEqual(perception.guideCount, 0)
+        perception.preparation?.resume(); perception.preparation = nil
+        await settle()
+        XCTAssertEqual(session.taskState?.confirmation?.purpose, .objectGuidance)
+        XCTAssertEqual(perception.guideCount, 0)
+        session.stop(.userEnd)
+    }
+
+    func testOrdinaryTargetSkipsPreparation() async {
+        let (session, perception, evidence) = preparationHarness()
+        session.start(); await settle()
+        session.submitFixtureText("press the blue button"); await settle()
+        evidence.complete(); await settle()
+        XCTAssertTrue(perception.preparedTargets.isEmpty)
+        XCTAssertEqual(session.taskState?.confirmation?.purpose, .actionResult)
+        session.stop(.userEnd)
+    }
+
+    func testFailedTargetPreparationCannotStartGuidance() async {
+        let (session, perception, evidence) = preparationHarness()
+        session.start(); await settle()
+        session.submitFixtureText("pick up my keys"); await settle()
+        evidence.complete(TaskFixtures.target(kind: .object, safety: .unassessedObject)); await settle()
+        XCTAssertNotNil(perception.preparation)
+        perception.preparation?.resume(throwing: NSError(domain: "SIMULATED-preparation", code: 1))
+        perception.preparation = nil
+        await settle()
+        XCTAssertNil(session.taskState?.confirmation)
+        XCTAssertEqual(perception.guideCount, 0)
+        XCTAssertNotEqual(session.taskState?.phase, .guiding)
+        session.stop(.userEnd)
+    }
 
     func testRepeatedStartAndEndAreIdempotent() async {
         let h = makeHarness()

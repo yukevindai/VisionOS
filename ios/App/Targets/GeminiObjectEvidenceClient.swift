@@ -127,8 +127,10 @@ final class GeminiObjectEvidenceClient: FrameTargetEvidenceClient {
             guard confidence.isFinite, (0...1).contains(confidence) else { throw GeminiObjectError.invalidResponse }
             guard confidence >= 0.6 else { throw GeminiObjectError.notFound }
         }
-        guard let confidence = object.confidence, confidence.isFinite, (0.6...1).contains(confidence),
-              object.safety == .ordinary, let box = object.region, box.isValid, transform.isValid else {
+        guard object.safety == nil || object.safety == .ordinary else {
+            throw GeminiObjectError.identificationOnly(object.label)
+        }
+        guard let box = object.region, box.isValid, transform.isValid else {
             throw GeminiObjectError.identificationOnly(object.label)
         }
         let region = ImageRegion(x: transform.originX + box.x * transform.scaleX,
@@ -136,7 +138,7 @@ final class GeminiObjectEvidenceClient: FrameTargetEvidenceClient {
                                  width: box.width * transform.scaleX, height: box.height * transform.scaleY)
         guard region.isValid else { throw GeminiObjectError.invalidResponse }
         return ResolvedTarget(id: object.id, kind: .object, label: object.label, region: region,
-                              frameID: model.frameId, safety: .ordinary, requiresApproach: false,
+                              frameID: model.frameId, safety: .unassessedObject, requiresApproach: false,
                               caution: "Object recognition does not verify temperature, sharp edges, contents or weight.")
     }
 

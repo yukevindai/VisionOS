@@ -689,7 +689,14 @@ private extension SessionCoordinator {
         case .resolveTarget(let request, let query):
             activity = .thinking
             let kind = engine?.state.request?.kind ?? .button
-            launch(request, source: .r3) { .target(try await evidence.resolve(request, query: query, kind: kind)) }
+            launch(request, source: .r3) {
+                let target = try await evidence.resolve(request, query: query, kind: kind)
+                if target.safety == .unassessedObject,
+                   let preparer = perception as? any ObjectTargetPreparing {
+                    try await preparer.prepareTarget(request, target: target)
+                }
+                return .target(target)
+            }
         case .reacquire(let request, let target):
             launch(request, source: .r1) { .physical(try await perception.reacquire(request, target: target)) }
         case .requestGuidance(let request, let mode, let target, let hand):
