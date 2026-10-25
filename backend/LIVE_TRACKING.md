@@ -56,6 +56,26 @@ run from Gemini's box on its own frame to the current frame (score, colour, size
 the next frame), for objects with few features. Two identical objects are detected from two separate consistent groups
 of tied feature matches, so neither path chooses between them.
 
+## Spoken pickup requests
+
+With `-Voice -Audio`, basic mode accepts "Hey Vision, help me pick up this can"
+without `-Agents`. "Pick up", "help me grab", and "grab" also work with named
+demo objects and the categories can, bottle, cup, mug, bowl, and bagel. A generic
+can stays a generic visual query; the system does not assume Pepsi or Red Bull.
+The existing visual selector must resolve the object and any ambiguity before
+tracking. A pickup request does not confirm a grasp or bypass hand/depth checks.
+
+Wake alone speaks an acknowledgment. Unsupported wake-prefixed requests get a
+short help response. Find acknowledgment runs after cancellation of previous
+speech and retries if synthesis is still busy. Stop cancels it. Commands spoken
+during playback remain echo-suppressed, except Stop/quiet/sleep; wait until speech
+ends before making another request.
+
+Speech and microphone input use the laptop, not the iPhone. If no response is
+heard, inspect the terminal's `VOICE_READY`, `VOICE_HEARD`, `VOICE_COMMAND`, and
+`VOICE_IGNORED` messages, plus the actual output device in `AUDIO_INITIALIZED` and
+`PLAYBACK_STARTED`. A completed playback event does not prove audible sound.
+
 ## Hand setup before finding an object
 
 Hands are processed on camera frames even when no object request is active.

@@ -104,6 +104,7 @@ class TrackingWorker:
         self.scene_generation = 0
         self.scene_inflight = False
         self.scene_note = ''
+        self.find_announcement = None
         self.responses = queue.Queue()
         self.stopped = threading.Event()
         self.output = None
@@ -243,6 +244,7 @@ class TrackingWorker:
 
     def cancel_scene_speech(self):
         with self.scene_lock:
+            self.find_announcement = None
             self.scene_generation += 1
             self.scene_note = ''
             try:
@@ -547,6 +549,12 @@ class TrackingWorker:
                         self.spatial.reset()
                     self.latest_frame = self.latest_target = self.latest_hand = None
                     last_frame = None
+                    if query and self.audio is not None and self.agents is None:
+                        # Acknowledge after cancellation/reset, otherwise the worker
+                        # immediately cancels speech started by the UI handler.
+                        self.audio.player.muted = False
+                        target = re.sub(r'^find\s+(?:the\s+)?', '', query, flags=re.I)
+                        self.find_announcement = (ticket, f'Looking for {target}.')
             except queue.Empty:
                 pass
             try:
@@ -794,6 +802,15 @@ class TrackingWorker:
                     self.audio.reason = 'no fresh validated frame (300 ms limit)'
                 else:
                     self.audio.tick(audio_now)
+                with self.scene_lock:
+                    announcement = self.find_announcement
+                    if announcement is not None:
+                        expected, text = announcement
+                        if expected != self.ticket or self.audio.current is not None:
+                            self.find_announcement = None
+                        elif self.audio.player.say(text, name='FINDING',
+                                is_current=lambda expected=expected: not self.stopped.is_set() and self.ticket == expected):
+                            self.find_announcement = None
                 if self.hand_setup is not None:
                     self.hand_setup.speak(self.audio.player, priority_wrapper=self.agents is not None)
             self.stopped.wait(.005 if getattr(self.args, 'tracker', 'orb') == 'lock' else .07)
@@ -1250,7 +1267,18 @@ def main(argv=None):
         from .demo_objects import OBJECTS
         player = worker.audio.player if worker.audio is not None else None
         if command == 'wake':
-            root.bell()  # Local acknowledgement; never starts or cancels tracking.
+            if player is not None:
+                player.muted = False
+                player.say('I am listening. What would you like me to find?', name='VOICE_WAKE')
+            else:
+                root.bell()
+            return
+        if command == 'unsupported':
+            status.set('Request not understood. Try: Hey Vision, help me pick up this can.')
+            if player is not None:
+                player.muted = False
+                player.say('I did not understand that request. Try saying, find the can, or describe surroundings.',
+                           name='VOICE_HELP')
             return
         if command == 'sleep':
             stop()  # Local cancellation: never route the closing phrase to a model.
@@ -1258,7 +1286,7 @@ def main(argv=None):
         if worker.agents is not None:
             if command in ('quiet', 'stop_tracking'):
                 stop()
-            elif command == 'request':
+            elif command in ('request', 'find_query'):
                 print('VOICE_AGENT_SUBMIT', flush=True)
                 query.set(argument)
                 if find():
@@ -1280,8 +1308,9 @@ def main(argv=None):
             player.muted = False
         if command == 'find':
             query.set(f'Find the {OBJECTS[argument].name}')
-            if player is not None:
-                player.play(f'FINDING_{argument}')
+            find()
+        elif command == 'find_query':
+            query.set(argument)
             find()
         elif command == 'describe':
             worker.describe_surroundings()

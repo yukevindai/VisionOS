@@ -19,7 +19,14 @@ class InterpretTests(unittest.TestCase):
         self.assertEqual(interpret('Thanks Vision!'), ('sleep', None))
         self.assertEqual(interpret('Thank you, Vision.'), ('sleep', None))
         self.assertEqual(interpret('pepsi'), (None, None))  # no verb: background mention
-        self.assertEqual(interpret('find the bagel'), (None, None))  # ambiguous: not in the grammar
+        self.assertEqual(interpret('find the bagel'), ('find_query', 'Find the bagel'))  # visual selector resolves ambiguity
+
+    def test_natural_pickup_requests_keep_generic_targets_generic(self):
+        self.assertEqual(interpret('Hey Vision, help me pick up this can.'), ('find_query', 'Find the can'))
+        self.assertEqual(interpret('pick up that Pepsi can'), ('find', 'pepsi'))
+        self.assertEqual(interpret('help me grab a bottle'), ('find_query', 'Find the bottle'))
+        self.assertIn('hey vision help me pick up this can', phrases())
+        self.assertEqual(interpret('I might pick up this can'), (None, None))
 
     def test_grammar_has_every_object_behind_a_verb(self):
         grammar = set(phrases())
@@ -51,6 +58,20 @@ class EchoGuardTests(unittest.TestCase):
         v = self.voice(True)
         self.assertIsNone(v.handle('find the pepsi can', .95, 10.))
         self.assertEqual(v.handle('be quiet', .9, 10.1), 'quiet')
+
+    def test_pickup_wakes_paused_basic_mode_without_agents(self):
+        v = self.voice(False)
+        v.listening, v.listen_until = False, None
+        text = 'Hey Vision, help me pick up this can.'
+        self.assertEqual(v.handle(text, .9, 10., 'dictation'), 'find_query')
+        self.assertTrue(v.listening)
+        self.assertEqual(v.commands.get_nowait(), ('find_query', 'Find the can', text))
+
+    def test_unknown_wake_request_gets_feedback_but_echo_does_not(self):
+        v = self.voice(False)
+        self.assertEqual(v.handle('Hey Vision, do a dance', .9, 10.), 'unsupported')
+        self.assertIsNone(self.voice(True).handle('Hey Vision, help me pick up this can', .9, 10.))
+        self.assertIsNone(self.voice(False).handle('Hey Vision, help me pick up this can', .4, 10.))
 
     def test_stop_commands_interrupt_speech_and_the_echo_gap(self):
         for text in ('stop', 'stop tracking', 'cancel', 'stop guiding'):

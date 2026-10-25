@@ -29,7 +29,9 @@ PAUSED_STATUS = 'PAUSED (local microphone listens for Hey Vision and Stop)'
 SLEEP_PHRASES = ('thanks vision', 'thank you vision')
 INTERRUPTS = ('quiet', 'stop_tracking', 'sleep')
 
-VERBS = ('find', 'find me', 'where is', 'get', 'locate', 'track', 'show me')
+VERBS = ('find', 'find me', 'where is', 'get', 'locate', 'track', 'show me',
+         'help me pick up', 'help me grab', 'pick up', 'grab')
+GENERIC_OBJECTS = ('can', 'bottle', 'cup', 'mug', 'bowl', 'bagel')
 DESCRIBE = ("what's around me", 'whats around me', 'what is around me', 'describe the surroundings', 'describe surroundings',
             'what do you see', 'describe')
 QUIET = ('stop talking', 'be quiet', 'quiet', 'silence')
@@ -51,7 +53,8 @@ def object_phrases():
 
 def phrases():
     objects = object_phrases()
-    finds = {f'{verb} {article}{name}' for verb in VERBS for name in objects for article in ('', 'the ', 'my ')}
+    finds = {f'{verb} {article}{name}' for verb in VERBS for name in (*objects, *GENERIC_OBJECTS)
+             for article in ('', 'the ', 'my ', 'this ', 'that ', 'a ')}
     commands = finds | set(DESCRIBE) | set(QUIET) | set(STOP_TRACKING) | set(SLEEP_PHRASES)
     return sorted(commands | {WAKE_PHRASE} | {f'{WAKE_PHRASE} {p}' for p in commands})
 
@@ -76,9 +79,13 @@ def interpret(text):
     objects = object_phrases()
     for verb in sorted(VERBS, key=len, reverse=True):
         if text.startswith(verb + ' '):
-            rest = re.sub(r'^(the|my) ', '', text[len(verb) + 1:])
+            rest = re.sub(r'^(the|my|this|that|a|an) ', '', text[len(verb) + 1:])
             if rest in objects:
                 return 'find', objects[rest]
+            if rest in GENERIC_OBJECTS:
+                # A category is a query, never an assumed brand or selected target.
+                # Existing visual selection must resolve duplicates/ambiguity.
+                return 'find_query', f'Find the {rest}'
     return None, None
 
 
@@ -312,6 +319,8 @@ class VoiceCommands:
             # Preserve the whole utterance for intent routing, including named-object
             # requests and follow-ups; only local wake/stop/sleep bypass the agent.
             command, argument = 'request', re.sub(r'^hey\s+vision\b[\s,!.:;-]*', '', text, flags=re.I) or text
+        elif command is None and wakes:
+            command = 'unsupported'
         if not self.speaking() and now >= self.quiet_until and confidence >= self.transcript_confidence and text:
             # Skip VisionOS playback echoes; retain the bounded laptop transcript.
             self.transcript.append(dict(text=text, command=command if confidence >= self.min_confidence
