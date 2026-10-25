@@ -26,6 +26,7 @@ import type * as lib_friendPagination from "../lib/friendPagination.js";
 import type * as lib_leases from "../lib/leases.js";
 import type * as lib_livekitProvider from "../lib/livekitProvider.js";
 import type * as lib_mediaLifecycle from "../lib/mediaLifecycle.js";
+import type * as lib_objectVision from "../lib/objectVision.js";
 import type * as lib_visionService from "../lib/visionService.js";
 import type * as livekit from "../livekit.js";
 import type * as media from "../media.js";
@@ -60,6 +61,7 @@ declare const fullApi: ApiFromModules<{
   "lib/leases": typeof lib_leases;
   "lib/livekitProvider": typeof lib_livekitProvider;
   "lib/mediaLifecycle": typeof lib_mediaLifecycle;
+  "lib/objectVision": typeof lib_objectVision;
   "lib/visionService": typeof lib_visionService;
   livekit: typeof livekit;
   media: typeof media;
