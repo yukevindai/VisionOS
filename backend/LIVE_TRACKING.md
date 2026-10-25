@@ -48,6 +48,57 @@ Third round (12:00-12:20), from session logs and saved Gemini results:
   in object mode only (the shared selector keeps Swift parity), and AMBIGUOUS lists the candidates and waits for a more
   specific request instead of re-calling Gemini.
 
+Fourth round (13:00-13:10 logs): every box drop with a strong lock (score 0.91-0.94) followed a 300-700 ms PathOn stream
+pause. During a pause the worker blanked the whole preview to "TARGET LOST" text and reset the tracker, whose ~200 ms SIFT
+search then caused further pauses. Now a pause under 1.5 s keeps the tracker and shows the last frame without a box; the
+search runs at 480 px every 0.25 s (at most ~43 ms here). If SIFT finds nothing within 2 s of Gemini's answer, ViTTrack is
+run from Gemini's box on its own frame to the current frame (score, colour, size and position checked, then confirmed on
+the next frame), for objects with few features. Two identical objects are detected from two separate consistent groups
+of tied feature matches, so neither path chooses between them.
+
+## HYBRID detection and audio guidance (optional, 2026-10-24)
+
+`python -m r3_vision.detector_bench` (DeskGuide venv, Ultralytics) on 12 saved PathOn frames, Gemini boxes as reference:
+YOLOE-26n-seg-pf 668 ms/frame, boxes on every object but misleading names (cans "tequila"/"root beer", bagel "banana
+bread", 21 false "banana"); YOLO-World v2-s 357 ms/frame, every object boxed, bagel/cup named correctly, cans called
+cup/bottle; YOLO11s COCO 329 ms, tumbler boxed in 5/12. Saved Gemini-only identification: 6.2-13.6 s. Local detectors
+locate objects but are not identity evidence. `--hybrid` reports decisions: "Find the laptop" locked locally and correctly
+in 7/7 frames in ~1.7-2.1 s; local relation ranking chose a can for "cup beside the laptop" in 5/5 frames, so relations,
+brands, colours and duplicates wait for Gemini.
+
+`--detection hybrid` (launcher `-Detection hybrid`, uses the DeskGuide venv): the usual Gemini search starts at once and
+YOLO-World runs alongside on the same frame. A plain object word with exactly one plainly named candidate locks
+immediately; Gemini's answer then confirms it or removes the box as UNCERTAIN. Otherwise Gemini's selection is used,
+with an overlapping local box as its region. One Gemini call per request, as in GEMINI_ONLY (the default). Weights live in
+ignored `.runtime/models`; Ultralytics auto-install is disabled (`YOLO_AUTOINSTALL=false`).
+
+Speed (from the 14:30 HYBRID logs: Gemini 5.0-9.3 s per request, verified lock 6.8-15 s): live requests now send a JPEG
+straight away and write the diagnostic PNGs afterwards (~0.6 s less before each Gemini call); Gemini 3 image detail
+defaults to `medium` (560 instead of 1120 image tokens; `-MediaResolution low` = 280, per the Gemini media-resolution
+docs); the object prompt lists matching objects first and at most 8 objects; YOLO-World encodes each phrase once and
+keeps its predictor (identical names and boxes to `set_classes` on 20/20 checks, ~132 ms instead of ~600 ms). "cup of
+coffee" / "deck of cards" now keep their object word. Live Gemini gains still need to be measured on PathOn.
+
+Audio and latency investigation (14:45-14:52 logs):
+- Audio was enabled and cues were computed on hundreds of frames, but MediaPipe lost the hand on about half the frames
+  and every lost frame stopped the clip ~70 ms after it started. Now a dropout under 0.3 s neither cuts nor repeats a cue
+  (no new cue is issued from invalid evidence), and playback runs on its own thread through one persistent sounddevice
+  stream (device selectable; winsound fallback). Events: AUDIO_ENABLED, AUDIO_INITIALIZED, CUE_COMPUTED,
+  CUE_SUPPRESSED, PLAYBACK_STARTED/COMPLETED/INTERRUPTED/FAILED (console and recordings/r3-tracking/audio-*.jsonl).
+  `--audio-test` speaks Left/Right/Up/Down/Tracking lost with no camera or models.
+- Recognition did not degrade with audio: every request after it was enabled was SELECTED correctly. Slow requests came
+  from the 20 s API cooldown blocking the user's next Find (27 s case), one 17.8 s Gemini reply, and a PathOn stream
+  slowdown (~1 s frame gaps) with no audio playing. A user's own Find now skips the cooldown (automatic retries keep it).
+- The 8-object inventory cap truncated scene lists (second bagel, coffee cup omitted), which could hide ambiguity; it
+  was removed. `--gemini-reply target` asks only FOUND/NOT_FOUND/AMBIGUOUS for the request (target_query.py).
+- `python -m r3_vision.gemini_bench` compares models, thinking, image detail and reply format on saved captures with
+  real API calls; it needs GEMINI_API_KEY in the shell or backend/.env and never prints it.
+
+`--audio` (launcher `-Audio`): `audio_guidance.py` speaks LEFT/RIGHT/UP/DOWN from 2D, and FORWARD/BACK/CLOSER/READY TO
+GRASP only with measured LiDAR, after checking a LOCKED box and fingertip from the same frame <=300 ms old. Offline
+Windows voice clips, non-blocking, never overlapping, repeated at most every 2.5 s, direction changes confirmed over two
+frames, silenced at once on invalid evidence, "Tracking lost" once after 0.6 s. Proximity cue only; sighted tester.
+
 `object_lock.py` uses ViTTrack frame to frame, a colour histogram and object-only SIFT features (never background) for
 identity, rejects jumps and sudden size changes, and searches the current frame with SIFT after loss. It refuses to lock
 when two similar objects match. States: SEARCHING, IDENTIFYING, LOCKED (green), UNCERTAIN (amber, at most 0.5 s), TARGET LOST
