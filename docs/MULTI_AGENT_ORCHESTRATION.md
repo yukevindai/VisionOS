@@ -114,14 +114,17 @@ The current implementation session has no provider credentials or attached devic
 ### Implementation validation — October 25, 2026
 
 - Windows, Python 3.12 x64, Pillow 11.1.0, NumPy 2.5.4, OpenCV 4.14.0.94:
-  47 new agent/provider/voice/audio/bridge tests passed; 7 dashboard JavaScript
+  48 new agent/provider/voice/audio/bridge tests passed; 7 dashboard JavaScript
   tests passed. All providers, transcripts, playback and frames are simulated.
-- Full Python run: 354 tests, 26 skipped, one error in the existing
+- Before integrating the concurrent demo update, a full Python run had 354 tests,
+  26 skipped, and one error in the existing
   `HTTPBoundaryTests.test_authentication_precedes_provider_work` (Windows
   `ConnectionAbortedError`, localhost socket). That eight-test HTTP group passed
-  on targeted rerun. An earlier full run also encountered a timing-sensitive
-  existing replay overlay assertion; all 20 live-tracking tests passed on rerun.
-  These failures are disclosed, not hidden or converted into skips.
+  on targeted rerun. After integrating that update, 363 tests ran with 26 skipped
+  and one timing-sensitive replay overlay assertion error. The test now waits for
+  a genuinely rendered current overlay before checking its coordinates: a tracked
+  frame processed after 300 ms correctly has no overlay. All 20 live-tracking tests
+  passed after that correction; no freshness guard or audit was suppressed.
 - Generated Xcode project matches committed source membership; Python compilation
   and whitespace checks passed. Xcode/Swift/device tests require macOS CI/hardware.
 - Model verification command correctly failed with `ANTHROPIC_API_KEY is required`.
@@ -129,3 +132,5 @@ The current implementation session has no provider credentials or attached devic
   was unavailable because no connected browser was present.
 - GitHub required checks and full iOS workflow results are recorded in the PR;
   required-check success alone is not full iOS or live-device validation.
+- The first Linux agent CI run lacked Tkinter. The workflow now installs the
+  existing desktop modules' Tkinter dependency before running the full suite.

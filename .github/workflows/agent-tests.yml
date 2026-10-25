@@ -19,6 +19,8 @@ jobs:
           persist-credentials: false
       - name: Install test dependencies
         run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-tk
           python3 -m venv backend/.venv
           backend/.venv/bin/python -m pip install -r backend/requirements.txt 'numpy>=1.26,<3' 'opencv-python>=4.10,<5'
       - name: Mocked providers and replayed pipeline tests (not hardware)

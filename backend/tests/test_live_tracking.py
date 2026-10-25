@@ -308,7 +308,16 @@ class WorkerIntegrationTests(unittest.TestCase):
                 second = wait_for(worker, lambda item: item[0] == 1 and item[2] > first[2])
                 self.assertEqual(second[3], 'IDENTIFYING')
                 release.set()
-                tracked = wait_for(worker, lambda item: item[3] == 'TRACKING')
+                def has_current_overlay(item):
+                    if item[3] != 'TRACKING' or item[1] is None:
+                        return False
+                    pixels = np.array(item[1])
+                    return np.any((pixels[:, :, 0] == 255) & (pixels[:, :, 1] == 0) & (pixels[:, :, 2] == 0))
+                # A locally tracked result may finish after the 300 ms rendering
+                # deadline on a busy runner. That frame must have NO overlay.
+                # Require an actual current overlay within the same bounded wait;
+                # never relax freshness or accept a box that is never rendered.
+                tracked = wait_for(worker, has_current_overlay)
                 self.assertEqual(tracked[5], 'SIMULATED')
                 self.assertEqual(tracked[6], 1)
                 # New location is x~355..427, y~230..294; old x~280..352 is never reused.
