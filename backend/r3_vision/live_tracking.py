@@ -116,14 +116,20 @@ class TrackingWorker:
                         receivedMonotonic=job.received, snapshotMonotonic=time.monotonic(),
                         desktopROI=list(self.args.roi) if self.args.roi else None,
                         sourceKind='REC3D' if self.args.host else 'video')
-        if getattr(self, 'all_objects', None) is not None and self._identify_allobjects(job, raw, metadata, directory):
+        # Local (HYBRID/DEMO/ALL OBJECTS) results are completed by LockSession only; the older orb/vit
+        # TrackingSession expects provider frame IDs, so those trackers keep the plain Gemini selection.
+        local_ok = getattr(self.args, 'tracker', 'orb') == 'lock'
+        if (local_ok and getattr(self, 'all_objects', None) is not None
+                and self._identify_allobjects(job, raw, metadata, directory)):
             return
-        if getattr(self, 'demo', None) is not None and self._identify_demo(job):
+        if local_ok and getattr(self, 'demo', None) is not None and self._identify_demo(job):
             return
-        if self.detector is not None and self.detector.model is not None:
+        if local_ok and self.detector is not None and self.detector.model is not None:
             self._identify_hybrid(job, raw, metadata, directory)
             return
-        if self.detector is not None:
+        if self.detector is not None and not local_ok:
+            self.hybrid_note = f'{self.args.tracker} tracker: local detection results need --tracker lock; Gemini only'
+        elif self.detector is not None:
             self.hybrid_note = f'local detector {self.detector.status}; Gemini only for this request'
         prepared = None
         try:

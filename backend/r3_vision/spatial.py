@@ -96,7 +96,12 @@ def nearest_surface(frame, depth, box, front_z, finger):
     points = np.stack([(u - K[0, 2]) * z / K[0, 0], (v - K[1, 2]) * z / K[1, 1], z], axis=1)
     share = None
     if frame.confidence is not None:
-        share = float(np.mean(frame.confidence[v, u] >= 2))
+        high = frame.confidence[v, u] >= 2
+        share = float(np.mean(high))
+        if high.any():
+            # The chosen point itself must be high-confidence depth, never a low-confidence sample that merely
+            # sits among confident neighbours.
+            points = points[high]
     if finger is None:
         return points.mean(axis=0), share
     return points[np.argmin(np.linalg.norm(points - np.asarray(finger, float), axis=1))], share

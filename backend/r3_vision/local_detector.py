@@ -113,9 +113,12 @@ class LocalDetector:
                 self.vocabulary = vocabulary
             result = self.model.predict(rgb[..., ::-1], imgsz=self.imgsz, conf=self.conf, verbose=False, device='cpu')[0]
             ms = (time.perf_counter() - started) * 1000
-        found = []
-        if result.boxes is not None:
-            for xyxy, score, cls in zip(result.boxes.xyxy.cpu().numpy(), result.boxes.conf.cpu().numpy(),
-                                        result.boxes.cls.cpu().numpy()):
-                found.append(dict(name=self.model.names[int(cls)], score=float(score), box=tuple(map(float, xyxy))))
+            # Decode with this prediction's own vocabulary before another thread can switch it.
+            names = list(vocabulary)
+            found = []
+            if result.boxes is not None:
+                for xyxy, score, cls in zip(result.boxes.xyxy.cpu().numpy(), result.boxes.conf.cpu().numpy(),
+                                            result.boxes.cls.cpu().numpy()):
+                    if 0 <= int(cls) < len(names):
+                        found.append(dict(name=names[int(cls)], score=float(score), box=tuple(map(float, xyxy))))
         return merge(found), ms
