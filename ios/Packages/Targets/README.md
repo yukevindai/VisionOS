@@ -31,6 +31,10 @@ The fixtures are hand-written, not captured. Move them to the shared `fixtures/`
 
 ## Tests
 
+R3 Step 3 adds `Tasks.TargetHandoffAdapter` and `Tasks.TargetEvidenceGate`, reusing the existing Tasks
+types. The adapter lives in Tasks to preserve the one-way Tasks → Targets dependency. See [R3_R1_INTEGRATION.md](R3_R1_INTEGRATION.md) for ownership blockers, clock and
+geometry rules, STOP routing, and the Mac/iPhone test procedure. This proposed adapter is not selected by native app composition; its tests use simulated measurements.
+
 ```sh
 swift test --package-path ios/Packages/Targets
 ```

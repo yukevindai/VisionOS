@@ -95,7 +95,11 @@ class RecordedRgbdTests(unittest.TestCase):
                 self.assertIsNotNone(primary)
                 offset = spatial.measure(spatial.aligned(frame, packet.image.size, 0),
                                          box(x * w, y * h, (x + bw) * w, (y + bh) * h), primary.landmarks_px, frame.received)
-                self.assertEqual(offset.status, 'LIDAR', offset.detail)
+                # Palm LiDAR + hand geometry is reported as ESTIMATED unless a direct fingertip depth agrees;
+                # an estimate must never count as a measurement.
+                self.assertIn(offset.status, ('LIDAR', 'ESTIMATED'), offset.detail)
+                if offset.status == 'ESTIMATED':
+                    self.assertFalse(offset.measured)
                 distances.append(offset.distance_m)
                 self.assertTrue(.3 < offset.target_m[2] < 1. and .2 < offset.fingertip_m[2] < offset.target_m[2])
         finally:
