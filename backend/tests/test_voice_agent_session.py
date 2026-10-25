@@ -52,7 +52,7 @@ class VoiceAgentSessionTests(unittest.TestCase):
                 elif command == 'request':
                     coordinator.submit(argument)
 
-        self.assertEqual(voice.handle('Hey Vision, describe surroundings', .9, 10), 'describe')
+        self.assertEqual(voice.handle('Hey Vision, describe surroundings', .9, 10), 'request')
         dispatch()
         self.assertTrue(started.wait(1))
         self.assertTrue(calls[0].is_current())
@@ -67,7 +67,7 @@ class VoiceAgentSessionTests(unittest.TestCase):
         self.assertTrue(finished.wait(1))
         self.assertEqual(spoken, [])
         self.assertEqual(len(calls), 1)
-        self.assertEqual(voice.handle('Hey Vision, describe surroundings', .9, 13), 'describe')
+        self.assertEqual(voice.handle('Hey Vision, describe surroundings', .9, 13), 'request')
         dispatch()
         deadline = time.monotonic() + 1
         while time.monotonic() < deadline and not spoken:

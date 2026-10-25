@@ -1190,6 +1190,8 @@ def main(argv=None):
     voice = None
     if getattr(args, 'voice', False):
         from .voice_commands import VoiceCommands
+        print('VOICE ROUTING: ' + ('speech-to-text -> agent coordinator' if args.agents
+                                  else 'basic commands only; use --agents for conversational requests'), flush=True)
         player = worker.audio.player if worker.audio is not None else None
         voice = VoiceCommands(Path(__file__).resolve().parents[1] / '.runtime/voice',
                               input_device=args.voice_input_device,
@@ -1210,6 +1212,7 @@ def main(argv=None):
             if command in ('quiet', 'stop_tracking'):
                 stop()
             elif command == 'request':
+                print('VOICE_AGENT_SUBMIT', flush=True)
                 query.set(argument)
                 if find():
                     voice.last_agent_prompt = argument
@@ -1278,7 +1281,7 @@ def main(argv=None):
             voice_command(command, argument)
         from .voice_display import transcript_label
         heard.set(transcript_label(voice) + ('\nMicrophone off — start with -Voice to speak.' if voice is None
-                  else f'\nMIC INPUT: {voice.input_device_name} | {voice.status}'))
+                  else f'\nMIC INPUT: {voice.input_device_name} | {voice.status} | {voice.input_status}'))
         item = worker.output
         if item and item[0] == ticket:
             _, image, received, state, detail, source_mode, requests = item[:7]
