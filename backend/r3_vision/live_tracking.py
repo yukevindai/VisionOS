@@ -154,7 +154,13 @@ class TrackingWorker:
                 answer['result'] = self._failed(exc)
         thread = threading.Thread(target=ask, daemon=True, name='r3-gemini')
         thread.start()
-        candidates, local_ms = self.detector.detect(job.image, hybrid.phrases(job.query))
+        try:
+            candidates, local_ms = self.detector.detect(job.image, hybrid.phrases(job.query))
+        except Exception:
+            # Detection failure does not cancel provider work already in progress.
+            thread.join()
+            self.responses.put((job, answer.get('result') or self._failed(TimeoutError()), None))
+            return
         chosen, reason = hybrid.local_choice(job.query, candidates)
         timing = {'local': round(local_ms, 1), 'provider': 0}
         local_dir = self.args.output / (job.frame_id + '-local')
@@ -168,7 +174,9 @@ class TrackingWorker:
             self.hybrid_note = f'local: {reason} ({local_ms:.0f} ms); waiting for Gemini'
             (local_dir / 'candidates.json').write_text(json.dumps(
                 dict(reason=reason, localMs=local_ms, candidates=candidates), indent=2), encoding='utf-8')
-        thread.join(timeout=self.args.timeout + 10)
+        # The provider enforces its own timeout. Keep this background job occupied
+        # until it actually exits; a join timeout must not permit overlapping calls.
+        thread.join()
         answer = answer.get('result') or self._failed(TimeoutError())
         if chosen is not None:
             verdict = hybrid.verify(answer, chosen, job.image.size)

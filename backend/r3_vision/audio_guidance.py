@@ -133,7 +133,14 @@ class AudioGuidance:
         self.mode, self.reason = mode, reason
         if cue is None:
             self._suppress(reason)
-            self._invalid(now)
+            if mode == '2D':
+                self.last_valid, self.invalid_since = now, None
+                if self.current is not None:
+                    self.player.stop()
+                self.current = self.pending = None
+                self.pending_count = 0
+            else:
+                self._invalid(now)
             return None
         self.suppressed = None
         self.last_valid, self.invalid_since = now, None

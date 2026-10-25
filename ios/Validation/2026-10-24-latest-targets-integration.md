@@ -23,3 +23,14 @@ Local logs: `/tmp/reflex-latest-targets-python.log`, `/tmp/reflex-latest-targets
 The remaining old non-ancestor branches contain previously delivered fixes on older app layouts. Reverse-patch checks confirm current copies of the required-checks workflow, CameraIsland opacity support, simulated UI clock, settings changes and lifecycle-start retry fixes. The current call view uses opaque message/caption surfaces and newer camera-first controls; its navigation and accessibility tests have evolved. The removed mandatory SetupView must not be restored. These old branches were not blindly merged over the newer app. This is a targeted content audit, not a claim that every historical patch is byte-identical.
 
 The separate Cartesia PR #3 remains outside this change. At inspection its required-checks workflow passed, full iOS CI was in progress, and no review had been submitted. Its reported live speech deployment is independent of this simulated target integration.
+
+
+## Review follow-up
+
+Three desktop findings were fixed before merge:
+
+- Remembered hidden-object geometry now keeps its floating transformed polygon. Float bounds support the mask and reacquisition search without repeated integer rounding or axis-aligned enclosure growth. Regression tests cover 200 stationary fractional frames, accumulated subpixel translation, and rotation followed by its inverse.
+- An early HYBRID local candidate installs a tracker without releasing the outstanding Gemini slot. Terminal verification releases it even after Find/Stop changes generation; duplicate old completions cannot release newer work. The background worker waits for actual provider completion, and detector failure falls back only after that completion. Tests exercise a blocked provider, target replacement, stale completion and detector failure.
+- Valid aligned 2D observations stop directional playback and keep evidence fresh without starting a tracking-loss timer. Actual missing evidence or a later stream stall still announces loss. No depth-only cue is fabricated.
+
+Final Python run: **212 discovered, 186 passed, 26 skipped**, including nine new regression tests. `git diff --check` passed. No native source changed in this follow-up; prior Swift package results remain the integration baseline. No desktop device/audio/provider pass is claimed. Log: `/tmp/reflex-pr20-review-python.log`.

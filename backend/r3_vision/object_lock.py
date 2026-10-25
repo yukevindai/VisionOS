@@ -271,7 +271,7 @@ class ObjectLockTracker:
         self.uncertain_since = None
         self.strong_since = None
         if remember:
-            self.hidden = {'box': box, 'since': self.clock(), 'why': reason}
+            self.hidden = {'box': box, 'polygon': _box_polygon(*box), 'since': self.clock(), 'why': reason}
             self.state = HIDDEN
             self.next_search = 0.
             return LockMatch(_box_polygon(*box), f'Hidden ({reason}); remembered location, not live',
@@ -332,9 +332,17 @@ class ObjectLockTracker:
             self.hidden = None
             self.state = LOST
             return LockMatch(None, 'Object hidden and camera motion could not be followed; target lost', LOST)
-        x, y, w, h = box
-        corners = cv2.transform(_box_polygon(x, y, w, h)[None], A)[0]
-        nx, ny, nw, nh = cv2.boundingRect(corners)
+        polygon = self.hidden.get('polygon', _box_polygon(*box))
+        corners = cv2.transform(polygon[None], A)[0]
+        if not np.isfinite(corners).all():
+            self.hidden = None
+            self.state = LOST
+            return LockMatch(None, 'Invalid camera motion; target lost', LOST)
+        nx, ny = corners.min(axis=0)
+        right, bottom = corners.max(axis=0)
+        # Tracker bounds include their end pixels. Keep their floating extent and
+        # transformed polygon instead of rounding/enclosing them on every frame.
+        nw, nh = right - nx + 1., bottom - ny + 1.
         height, width = gray.shape
         inside = max(0, min(nx + nw, width) - max(nx, 0)) * max(0, min(ny + nh, height) - max(ny, 0))
         if inside < .5 * nw * nh:
@@ -347,6 +355,7 @@ class ObjectLockTracker:
             return LockMatch(None, f'Hidden for over {self.remember_s:g} s; target lost', LOST)
         box = (float(nx), float(ny), float(nw), float(nh))
         self.hidden['box'] = box
+        self.hidden['polygon'] = corners
         if now >= self.next_search:
             self.next_search = now + self.search_interval_s
             found, how = self._reacquire_near(rgb, gray, box)
@@ -357,7 +366,7 @@ class ObjectLockTracker:
                 self.next_verify = now + self.verify_interval_s
                 return LockMatch(None, f'Reappeared at remembered location ({how}); confirming on next frame',
                                  REACQUIRING, 1, self._appearance(rgb, found))
-        return LockMatch(_box_polygon(*box), f"Hidden {now - self.hidden['since']:.1f}s; remembered location, not live",
+        return LockMatch(corners, f"Hidden {now - self.hidden['since']:.1f}s; remembered location, not live",
                          HIDDEN)
 
     def _plausible(self, box):

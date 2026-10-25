@@ -43,7 +43,10 @@ class LockSession(TrackingSession):
         return job
 
     def complete(self, job, result, now, prepared_tracker=None):
+        if self.inflight is not job:
+            return
         if result.get('mode') == 'HYBRID_VERIFY':
+            self.inflight = None
             if job.generation != self.generation or job.epoch != self.epoch or not self.active:
                 return
             seconds = result.get('timingMs', {}).get('provider', 0) / 1000
@@ -60,7 +63,8 @@ class LockSession(TrackingSession):
                                ' | make the request more specific and click Find & Track')
             return
         if self.inflight is job and self.state in (LOCKED, UNCERTAIN, HIDDEN) and job.generation == self.generation:
-            self.inflight = None
+            if result.get('mode') != 'HYBRID':
+                self.inflight = None
             selection = result.get('selection', {})
             latency = result.get('timingMs', {}).get('provider', 0) / 1000
             self.last_identification = f"{selection.get('status')} ({latency:.1f}s), ignored: already locked locally"
@@ -86,7 +90,8 @@ class LockSession(TrackingSession):
                            + ' | type a more specific request (for example colour or size) and click Find & Track')
 
     def _complete_hybrid(self, job, result, now):
-        self.inflight = None
+        # The early local candidate installs a tracker, but Gemini still owns the
+        # request slot until HYBRID_VERIFY arrives, even after Find/Stop changes generation.
         if job.generation != self.generation or job.epoch != self.epoch or not self.active:
             return
         self.tracker = None
@@ -95,7 +100,7 @@ class LockSession(TrackingSession):
         timing = result.get('timingMs', {})
         gemini_s = timing.get('provider', 0) / 1000
         self.last_identification = (f"{self.source} {selection.get('status')} | local {timing.get('local', 0):.0f} ms"
-                                    + (f' | Gemini {gemini_s:.1f}s' if gemini_s else ' | no Gemini call'))
+                                    + (f' | Gemini {gemini_s:.1f}s' if gemini_s else ' | waiting for Gemini check'))
         target = selection.get('target')
         if selection.get('status') != 'SELECTED' or not target:
             self.state = 'TARGET LOST'

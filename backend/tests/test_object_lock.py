@@ -8,7 +8,7 @@ from PIL import Image
 from r3_vision import gemini, lock_replay
 from r3_vision.alignment import fingertip_alignment
 from r3_vision.lock_session import LockSession
-from r3_vision.object_lock import LOCKED, LOST, REACQUIRING, UNCERTAIN, LockMatch, ObjectLockTracker
+from r3_vision.object_lock import HIDDEN, LOCKED, LOST, REACQUIRING, UNCERTAIN, LockMatch, ObjectLockTracker
 from r3_vision.tracker_models import MODEL_PATH
 from r3_vision.tracking_session import IdentifyJob, RequestBudget
 
@@ -81,6 +81,43 @@ class LockSessionTests(unittest.TestCase):
         s.update(Image.new('RGB', (64, 96)), 1., 1.)
         self.assertIsNone(s.job(Image.new('RGB', (64, 96)), 1., 1.))
         self.assertEqual(s.budget.total, 0)
+
+
+class RememberedGeometryTests(unittest.TestCase):
+    def tracker(self, box=(100.25, 90.5, 40.5, 60.75)):
+        tracker = ObjectLockTracker.__new__(ObjectLockTracker)
+        tracker.hidden = {'box': box, 'since': 0.}
+        tracker.state, tracker.remember_s = HIDDEN, 10.
+        tracker.prev_gray = None
+        tracker.next_search = float('inf')
+        tracker._camera_motion = lambda previous, gray, area: np.float32([[1, 0, 0], [0, 1, 0]])
+        return tracker
+
+    def test_stationary_remembered_box_keeps_fractional_bounds(self):
+        tracker = self.tracker()
+        original = tracker.hidden['box']
+        for frame in range(200):
+            match = tracker._hidden(np.zeros((480, 640, 3), np.uint8), np.zeros((480, 640), np.uint8), frame / 30.)
+            self.assertEqual(match.state, HIDDEN)
+            np.testing.assert_allclose(tracker.hidden['box'], original, atol=1e-5)
+
+    def test_subpixel_motion_accumulates_without_rounding(self):
+        tracker = self.tracker()
+        tracker._camera_motion = lambda previous, gray, area: np.float32([[1, 0, .25], [0, 1, -.125]])
+        for frame in range(100):
+            tracker._hidden(np.zeros((480, 640, 3), np.uint8), np.zeros((480, 640), np.uint8), frame / 30.)
+        np.testing.assert_allclose(tracker.hidden['box'], (125.25, 78., 40.5, 60.75), atol=1e-5)
+
+    def test_rotation_then_inverse_restores_original_geometry(self):
+        import cv2
+        tracker = self.tracker()
+        original = tracker.hidden['box']
+        forward = cv2.getRotationMatrix2D((120, 120), 20, 1)
+        transforms = iter([forward, cv2.invertAffineTransform(forward)])
+        tracker._camera_motion = lambda previous, gray, area: next(transforms)
+        for now in (1., 2.):
+            tracker._hidden(np.zeros((480, 640, 3), np.uint8), np.zeros((480, 640), np.uint8), now)
+        np.testing.assert_allclose(tracker.hidden['box'], original, atol=1e-4)
 
 
 class AlignmentTests(unittest.TestCase):

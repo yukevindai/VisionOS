@@ -65,6 +65,31 @@ class DeciderTests(unittest.TestCase):
 
 
 class SchedulerTests(unittest.TestCase):
+    def test_aligned_2d_stops_correction_without_reporting_lost(self):
+        r = Recorder()
+        g = AudioGuidance(r)
+        g.update(ev(), 1.)
+        for i in range(20):
+            now = 1.1 + i * .1
+            self.assertIsNone(g.update(ev(tip=(330, 240)), now))
+            g.tick(now + .02)
+        self.assertEqual(r.played, ['RIGHT'])
+        self.assertEqual(r.stops, 1)
+        self.assertIsNone(g.invalid_since)
+        self.assertEqual(g.mode, '2D')
+        g.update(ev(tip=None), 3.1)
+        g.update(ev(tip=None), 3.8)
+        self.assertEqual(r.played, ['RIGHT', 'TRACKING_LOST'])
+
+    def test_aligned_2d_still_detects_a_later_frame_stall(self):
+        r = Recorder()
+        g = AudioGuidance(r)
+        g.update(ev(), 1.)
+        g.update(ev(tip=(330, 240)), 1.1)
+        g.tick(1.5)
+        g.tick(2.2)
+        self.assertEqual(r.played, ['RIGHT', 'TRACKING_LOST'])
+
     def test_speaks_on_change_and_repeats_sparingly(self):
         r = Recorder()
         g = AudioGuidance(r)

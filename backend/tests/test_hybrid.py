@@ -165,7 +165,7 @@ class HybridSessionTests(unittest.TestCase):
         s.complete(j, local, 2.)
         self.assertEqual((s.state, s.source), ('REACQUIRING', 'YOLO'))
         self.assertIsNotNone(s.tracker)
-        self.assertIn('no Gemini call', s.last_identification)
+        self.assertIn('waiting for Gemini check', s.last_identification)
         s.complete(j, {'mode': 'HYBRID_VERIFY', 'agrees': False, 'detail': 'Gemini chose another object',
                        'timingMs': {'provider': 6000.}}, 8.)
         self.assertEqual(s.state, 'UNCERTAIN')
@@ -180,6 +180,37 @@ class HybridSessionTests(unittest.TestCase):
         s.complete(j, {'mode': 'HYBRID_VERIFY', 'agrees': True, 'timingMs': {'provider': 6000.}}, 8.)
         self.assertIn('Gemini confirmed (6.0s)', s.last_identification)
         self.assertIsNotNone(s.tracker)
+
+    def test_early_hybrid_keeps_cloud_slot_across_new_find_and_old_verification(self):
+        s = self.session()
+        image = Image.new('RGB', SIZE)
+        first = s.job(image, 1., 1.)
+        local = hybrid.result(first, 'SELECTED', 'YOLO', 'one laptop', {'local': 1.}, [],
+                              cand(1, ['laptop'], (0, 0, 500, 400)))
+        s.complete(first, local, 2.)
+        self.assertIs(s.inflight, first)
+        s.find('Find the cup')
+        self.assertIsNone(s.job(image, 3., 3.))
+        s.complete(first, {'mode': 'HYBRID_VERIFY', 'agrees': None}, 4.)
+        second = s.job(image, 4., 4.)
+        self.assertIsNotNone(second)
+        self.assertEqual(second.query, 'Find the cup')
+        s.complete(first, {'mode': 'HYBRID_VERIFY', 'agrees': False}, 4.1)
+        self.assertIs(s.inflight, second, 'duplicate old completion cannot release new work')
+        self.assertEqual(s.state, 'IDENTIFYING')
+
+    def test_stopped_hybrid_releases_only_on_terminal_verification(self):
+        s = self.session()
+        image = Image.new('RGB', SIZE)
+        job = s.job(image, 1., 1.)
+        s.stop()
+        s.complete(job, hybrid.result(job, 'SELECTED', 'YOLO', 'one laptop', {}, [],
+                                      cand(1, ['laptop'], (0, 0, 500, 400))), 2.)
+        self.assertIs(s.inflight, job)
+        self.assertIsNone(s.tracker)
+        s.complete(job, {'mode': 'HYBRID_VERIFY', 'agrees': True}, 3.)
+        self.assertIsNone(s.inflight)
+        self.assertIsNone(s.tracker)
 
     def test_hybrid_result_for_another_frame_is_refused(self):
         s = self.session()
@@ -207,6 +238,43 @@ class WorkerFlowTests(unittest.TestCase):
         while not w.responses.empty():
             items.append(w.responses.get()[1])
         return items
+
+    def test_local_tracker_does_not_release_a_still_running_provider(self):
+        import threading
+        laptop = cand(1, ['laptop'], (500, 400, 1000, 800))
+        w = self.worker([laptop], None)
+        release = threading.Event()
+        def delayed(*_args):
+            release.wait(2.)
+            return gemini_answer(area={'x': .5, 'y': .5, 'width': .5, 'height': .5})
+        w._gemini_result = delayed
+        s = HybridSessionTests().session()
+        image = Image.new('RGB', SIZE)
+        first = s.job(image, 1., 1.)
+        worker = threading.Thread(target=w._identify_hybrid, args=(first, None, {}, w.args.output / 'f'))
+        worker.start()
+        try:
+            _, local, _ = w.responses.get(timeout=1.)
+            s.complete(first, local, 2.)
+            s.find('Find the cup')
+            self.assertIsNone(s.job(image, 3., 3.))
+            self.assertTrue(worker.is_alive())
+            release.set()
+            _, terminal, _ = w.responses.get(timeout=1.)
+            s.complete(first, terminal, 4.)
+            self.assertIsNotNone(s.job(image, 4., 4.))
+        finally:
+            release.set()
+            worker.join(timeout=2.)
+
+    def test_detector_failure_waits_for_provider_before_terminal_result(self):
+        answer = gemini_answer()
+        w = self.worker([], answer)
+        def broken(*_args):
+            raise RuntimeError('SIMULATED detector failure')
+        w.detector.detect = broken
+        w._identify_hybrid(job(), None, {}, w.args.output / 'f')
+        self.assertEqual(self.drain(w), [answer])
 
     def test_local_lock_is_sent_before_the_gemini_check(self):
         laptop = cand(1, ['laptop'], (500, 400, 1000, 800))
