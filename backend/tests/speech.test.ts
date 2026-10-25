@@ -1,0 +1,94 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { convexTest } from "convex-test";
+import { api } from "../convex/_generated/api";
+import schema from "../convex/schema";
+import { simulatedWav } from "../convex/lib/cartesia";
+
+// SIMULATED: no test reaches Cartesia or spends credits.
+const modules = import.meta.glob("../convex/**/*.ts");
+const args = { requestId: "speech-1", text: "Found Coke, 2.49. Should I guide you there?" };
+const KEY = "SIMULATED-cartesia-key-0000";
+
+afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
+async function signedIn() {
+  const t = convexTest(schema, modules);
+  const owner = t.withIdentity({ issuer: "https://simulated-auth.invalid/", subject: "owner" });
+  await owner.mutation(api.users.ensure, {});
+  return owner;
+}
+
+describe("speech:synthesize", () => {
+  it("requires an existing account before any provider work", async () => {
+    const t = convexTest(schema, modules);
+    const fetch = vi.fn(); vi.stubGlobal("fetch", fetch);
+    vi.stubEnv("CARTESIA_API_KEY", KEY);
+    await expect(t.action(api.speech.synthesize, args)).rejects.toThrow("Authentication required");
+    const unknown = t.withIdentity({ issuer: "https://simulated-auth.invalid/", subject: "new-account" });
+    await expect(unknown.action(api.speech.synthesize, args)).rejects.toThrow("Account setup required");
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("never returns silent SIMULATED audio to the app: missing credentials mean fall back", async () => {
+    const fetch = vi.fn(); vi.stubGlobal("fetch", fetch);
+    const owner = await signedIn();
+    vi.stubEnv("CARTESIA_API_KEY", "");
+    expect(await owner.action(api.speech.synthesize, args))
+      .toEqual({ ok: false, requestId: "speech-1", errorCode: "SPEECH_NOT_CONFIGURED", latencyMs: 0, cached: false });
+    vi.stubEnv("CARTESIA_API_KEY", KEY);
+    vi.stubEnv("CARTESIA_VOICE_ID", "");
+    expect(await owner.action(api.speech.synthesize, args)).toMatchObject({ ok: false, errorCode: "SPEECH_NOT_CONFIGURED" });
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("returns real-mode WAV and keeps the key server-side", async () => {
+    vi.stubEnv("CARTESIA_API_KEY", KEY);
+    vi.stubEnv("CARTESIA_VOICE_ID", "SIMULATED-voice");
+    vi.stubEnv("CARTESIA_MODEL", "SIMULATED-model");
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(new Uint8Array(simulatedWav()))));
+    const owner = await signedIn();
+    const result = await owner.action(api.speech.synthesize, args);
+    expect(result).toMatchObject({ ok: true, mode: "REAL_API", format: "wav" });
+    expect(JSON.stringify(result)).not.toContain(KEY);
+  });
+
+  it("returns a fallback error code instead of throwing when the provider fails", async () => {
+    vi.stubEnv("CARTESIA_API_KEY", KEY);
+    vi.stubEnv("CARTESIA_VOICE_ID", "SIMULATED-voice");
+    vi.stubEnv("CARTESIA_MODEL", "SIMULATED-model");
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("quota", { status: 402 })));
+    const owner = await signedIn();
+    expect(await owner.action(api.speech.synthesize, args)).toMatchObject({ ok: false, errorCode: "PROVIDER_ERROR", httpStatus: 402 });
+  });
+
+  it("serves a repeated sentence from the cache without calling Cartesia again", async () => {
+    vi.stubEnv("CARTESIA_API_KEY", KEY);
+    vi.stubEnv("CARTESIA_VOICE_ID", "SIMULATED-voice");
+    vi.stubEnv("CARTESIA_MODEL", "SIMULATED-model");
+    const fetch = vi.fn(async () => new Response(new Uint8Array(simulatedWav())));
+    vi.stubGlobal("fetch", fetch);
+    const owner = await signedIn();
+    const first = await owner.action(api.speech.synthesize, args);
+    const second = await owner.action(api.speech.synthesize, { ...args, requestId: "speech-2", text: `  ${args.text} ` });
+    expect(first).toMatchObject({ ok: true, cached: false });
+    expect(second).toMatchObject({ ok: true, cached: true, requestId: "speech-2", mode: "REAL_API" });
+    if (first.ok && second.ok) expect(second.audioBase64).toBe(first.audioBase64);
+    expect(fetch).toHaveBeenCalledTimes(1);
+
+    vi.stubEnv("CARTESIA_VOICE_ID", "SIMULATED-other-voice");
+    expect(await owner.action(api.speech.synthesize, args)).toMatchObject({ cached: false });
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("never caches failures", async () => {
+    vi.stubEnv("CARTESIA_API_KEY", KEY);
+    vi.stubEnv("CARTESIA_VOICE_ID", "SIMULATED-voice");
+    vi.stubEnv("CARTESIA_MODEL", "SIMULATED-model");
+    const fetch = vi.fn(async () => new Response("busy", { status: 503 }));
+    vi.stubGlobal("fetch", fetch);
+    const owner = await signedIn();
+    await owner.action(api.speech.synthesize, args);
+    await owner.action(api.speech.synthesize, args);
+    expect(fetch).toHaveBeenCalledTimes(2);
+
+  });
+});
