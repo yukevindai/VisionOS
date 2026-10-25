@@ -129,6 +129,37 @@ class LiveCameraTests(unittest.TestCase):
             source.close()
             run.assert_not_called()
 
+    def test_browser_preview_does_not_advance_tracking_depth_or_cache(self):
+        import numpy as np
+        from types import SimpleNamespace
+        from r3_vision.live_camera import Source
+        source = Source.__new__(Source)
+        first = SimpleNamespace(color=np.zeros((2, 3, 3), dtype=np.uint8), received=10.,
+                                id=1, timestamp=1., epoch=1)
+        second = SimpleNamespace(color=np.full((2, 3, 3), 255, dtype=np.uint8), received=11.,
+                                 id=2, timestamp=2., epoch=1)
+        source.phone = SimpleNamespace(latest=first)
+        tracking = source.snapshot()
+        cached = source._cached
+        source.phone.latest = second
+        preview = source.preview_snapshot()
+        self.assertEqual(preview[1], 11.)
+        self.assertEqual(preview[0].getpixel((0, 0)), (255, 255, 255))
+        self.assertIs(source.last_rgbd, first)
+        self.assertIs(source._cached, cached)
+        self.assertIs(source._cached[1], tracking)
+        self.assertIs(source.preview_snapshot(), preview)
+        source.phone.latest = None
+        self.assertIsNone(source.preview_snapshot())
+        self.assertIs(source.last_rgbd, first)
+        self.assertIs(source._cached, cached)
+
+    def test_recorded_source_supports_side_effect_free_preview(self):
+        from r3_vision.allobjects_replay import RecordedSource
+        source = RecordedSource.__new__(RecordedSource)
+        source.latest = (Image.new('RGB', (20, 10)), 10., {})
+        self.assertIs(source.preview_snapshot(), source.snapshot())
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -91,6 +91,11 @@ class Dashboard:
         self.commands = queue.Queue(maxsize=8)
         self.lock = threading.Lock()
         self.value, self.received, self.expiry = empty_state(), None, None
+        self.preview_frame = None
+        self.preview_received = None
+        self.preview_key = None
+        self.preview_available = False
+        self.preview_mode = 'LIVE'
         self.ticket = 0
         self.blocked_ticket = None
         self.server = ThreadingHTTPServer(('127.0.0.1', port), self.handler())
@@ -119,10 +124,46 @@ class Dashboard:
             self.ticket = ticket
             self.value, self.received, self.expiry = result
 
+    def publish_preview(self, item, *, rotation=0, mode='LIVE'):
+        """Display the existing capture buffer, never tracking overlays or evidence.
+
+        Keep the last picture at any frame rate. Its receive age and availability
+        remain explicit; retaining pixels does not extend any guidance deadline.
+        Only the UI publisher calls this method, as with publish().
+        """
+        now = self.clock()
+        if (not item or len(item) < 2 or item[0] is None or
+                not number(item[1]) or item[1] > now):
+            with self.lock:
+                self.preview_available = False
+            return
+        raw, received = item[:2]
+        info = item[2] if len(item) > 2 and isinstance(item[2], dict) else {}
+        key = (received, info.get('connectionEpoch'), info.get('sourceFrameID'), raw.size, rotation, mode)
+        with self.lock:
+            if key == self.preview_key:
+                self.preview_available = True
+                return
+        preview = raw.rotate(-rotation, expand=True) if rotation else raw.copy()
+        preview = preview.convert('RGB')
+        preview.thumbnail((960, 720))
+        buffer = io.BytesIO()
+        preview.save(buffer, format='JPEG', quality=75)
+        frame = 'data:image/jpeg;base64,' + base64.b64encode(buffer.getvalue()).decode('ascii')
+        with self.lock:
+            self.preview_frame, self.preview_received = frame, received
+            self.preview_key, self.preview_mode = key, mode
+            self.preview_available = True
+
     def state(self):
         with self.lock:
             state, received, expiry = copy.deepcopy(self.value), self.received, self.expiry
+            preview_received = self.preview_received
+            state.update(previewFrame=self.preview_frame, previewAvailable=self.preview_available,
+                         previewMode=self.preview_mode)
         now = self.clock()
+        state['previewAgeMs'] = (round(max(0, now - preview_received) * 1000, 1)
+                                 if preview_received is not None else None)
         age = now - received if received is not None else None
         fresh = state['fresh'] and age is not None and 0 <= age < FRESH_SECONDS
         state['frameAgeMs'] = round(max(0, age) * 1000, 1) if age is not None else None

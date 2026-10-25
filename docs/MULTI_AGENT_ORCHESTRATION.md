@@ -126,6 +126,15 @@ The dashboard reports actual coordinator activity, handoffs, response latency an
 errors independently of camera freshness. Its prose fields never feed physical
 guidance fields. Without `--agents`, the existing demo retains its behavior.
 
+The browser camera preview reads the existing capture buffer independently of
+tracking. It uses clean images without guidance overlays and retains the last
+decoded image between frames, at any input frame rate. Its age remains visible;
+a disconnected feed is labeled as the last camera image. New images replace the
+visible image only after decoding succeeds. Stop and target changes still clear
+guidance immediately, but do not blank the camera preview. The 300 ms guidance
+limit is unchanged. Restart the tracking process and reload the browser after
+updating to enable this preview path.
+
 ## Automated and live validation
 
 ```powershell
