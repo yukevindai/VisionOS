@@ -51,6 +51,7 @@ final class ReflexUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["--uitesting"]
         app.launch()
+        continuePastStartup(in: app)
         let blind = app.buttons["role.blind"]
         let helper = app.buttons["role.helper"]
         XCTAssertTrue(blind.waitForExistence(timeout: 5))
@@ -89,6 +90,7 @@ final class ReflexUITests: XCTestCase {
 
         app.terminate()
         app.launch()
+        continuePastStartup(in: app)
         XCTAssertTrue(blind.waitForExistence(timeout: 5))
         XCTAssertTrue(helper.exists)
         XCTAssertFalse(app.buttons["home.start"].exists)

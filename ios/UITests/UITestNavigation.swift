@@ -51,7 +51,14 @@ extension XCTestCase {
         XCTFail("Unable to reveal \(element.identifier) inside the session viewport: \(element.frame)")
     }
 
+    func continuePastStartup(in app: XCUIApplication) {
+        guard !app.launchArguments.contains("--simulate"), !app.buttons["role.blind"].exists else { return }
+        let skip = app.buttons["startup.skip"]
+        if skip.waitForExistence(timeout: 5) { skip.tap() }
+    }
+
     func selectBlindRole(in app: XCUIApplication) {
+        continuePastStartup(in: app)
         let blind = app.buttons["role.blind"]
         XCTAssertTrue(blind.waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["session.end"].exists)
