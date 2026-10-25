@@ -1314,6 +1314,8 @@ def main(argv=None):
                         if voice is not None else ''))
         if dashboard is not None and time.monotonic() - last_publish >= .1:
             last_publish = time.monotonic()
+            dashboard.publish_preview(worker.source.preview_snapshot(), rotation=args.rotation,
+                                      mode='SIMULATED' if args.replay else 'LIVE')
             dashboard.publish(worker.output, worker.panel, ticket,
                               mode='SIMULATED' if args.replay else 'LIVE',
                               quick=args.detection == 'demo', voice=voice,

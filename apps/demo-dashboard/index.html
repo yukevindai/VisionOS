@@ -17,9 +17,9 @@
 <section class="workspace" id="workspace" tabindex="-1" aria-label="Live assistance dashboard">
 <div class="camera-column">
 <div class="source"><span>IPHONE CAMERA</span><span>Rear camera · depth when available</span></div>
-<div class="camera-stage"><img id="camera" alt="Current iPhone camera frame with tracking overlays" hidden><div id="camera-empty"><span class="camera-symbol" aria-hidden="true">◎</span><h2>Waiting for camera</h2><p>Start the R3 tracking process with the browser dashboard enabled.</p></div><span id="camera-label" class="camera-label">NO CURRENT FRAME</span></div>
+<div class="camera-stage"><img id="camera" alt="Camera preview without guidance overlays" hidden><div id="camera-empty"><span class="camera-symbol" aria-hidden="true">◎</span><h2>Waiting for camera</h2><p>Start the R3 tracking process with the browser dashboard enabled.</p></div><span id="camera-label" class="camera-label">NO CURRENT FRAME</span></div>
 <div class="metrics"><article><h3>HAND → TARGET</h3><strong id="distance">—</strong><p id="distance-note">Awaiting valid depth</p></article><article><h3>FRAME AGE</h3><strong id="frame-age">—</strong><p id="fps">No telemetry</p></article><article><h3>DEPTH</h3><strong id="depth">Unavailable</strong><p>Camera-relative axes</p></article></div>
-<p class="fine">Camera overlays use the same frame as the displayed measurements.</p>
+<p class="fine">Camera preview stays visible between frames. Physical guidance requires fresh evidence.</p>
 </div>
 <aside class="guidance" aria-label="Guidance and outputs"><p id="phase" class="eyebrow">WAITING FOR CONNECTION</p><h1 id="instruction">Ready when you are</h1><p id="target" class="target">Choose an object to begin.</p>
 <div class="axes"><div><h3 id="x-label">LEFT / RIGHT</h3><strong id="x-value">—</strong></div><div><h3 id="y-label">UP / DOWN</h3><strong id="y-value">—</strong></div><div><h3 id="z-label">FORWARD / BACK</h3><strong id="z-value">—</strong></div></div>

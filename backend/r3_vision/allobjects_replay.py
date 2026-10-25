@@ -63,6 +63,9 @@ class RecordedSource:
     def snapshot(self):
         return self.latest
 
+    def preview_snapshot(self):
+        return self.latest
+
     def close(self):
         self.stop.set()
 

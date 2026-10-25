@@ -1,9 +1,12 @@
 """Synthetic display bridge tests, not a hardware validation."""
 import json
+import base64
+import io
 from pathlib import Path
 from types import SimpleNamespace as NS
 import tempfile
 import unittest
+from unittest.mock import patch
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError
 from PIL import Image
@@ -101,6 +104,56 @@ class HTTPTests(unittest.TestCase):
         self.assertFalse(state['fresh'])
         self.assertIsNone(state['frame'])
         self.assertIsNone(state['target'])
+    def test_preview_survives_arbitrarily_slow_frames_without_guidance(self):
+        raw = Image.new('RGB', (20, 10), 'blue')
+        self.server.publish_preview((raw, 10., {}), mode='SIMULATED')
+        self.server.publish(*evidence(), 1)
+        first = self.server.state()['previewFrame']
+        for now in (10.21, 10.31, 12., 70., 3610.):
+            self.now = now
+            state = json.loads(self.request('/api/state')[1])
+            self.assertEqual(state['previewFrame'], first)
+            self.assertEqual(state['previewAgeMs'], round((now - 10.) * 1000, 1))
+            self.assertEqual(state['previewMode'], 'SIMULATED')
+            self.assertIsNone(state['axes'])
+            self.assertIsNone(state['guidance'])
+        self.server.publish_preview((Image.new('RGB', (20, 10), 'red'), self.now, {}))
+        self.assertNotEqual(self.server.state()['previewFrame'], first)
+        self.assertEqual(self.server.state()['previewAgeMs'], 0)
+    def test_preview_is_clean_rotated_and_cached(self):
+        raw = Image.new('RGB', (20, 10), 'blue')
+        item = (raw, 10., {'sourceFrameID': 1, 'connectionEpoch': 1})
+        self.server.publish_preview(item, rotation=90)
+        state = self.server.state()
+        with Image.open(io.BytesIO(base64.b64decode(state['previewFrame'].split(',')[1]))) as image:
+            self.assertEqual(image.size, (10, 20))
+            self.assertGreater(image.getpixel((0, 0))[2], 240)
+        self.assertEqual(raw.size, (20, 10))
+        with patch.object(Image.Image, 'save', side_effect=AssertionError('duplicate encoding')):
+            self.server.publish_preview(item, rotation=90)
+        self.assertFalse(state['fresh'])
+        self.assertIsNone(state['frame'])
+    def test_preview_survives_stop_and_task_replacement(self):
+        self.server.publish_preview((Image.new('RGB', (20, 10)), 10., {}))
+        self.server.publish(*evidence(), 1)
+        first = self.server.state()['previewFrame']
+        for action in ('stop', 'find'):
+            self.server.enqueue({'action': action, 'query': 'new target'})
+            self.server.publish(*evidence(), 1)
+            state = self.server.state()
+            self.assertEqual(state['previewFrame'], first)
+            self.assertIsNone(state['frame'])
+            self.assertIsNone(state['guidance'])
+    def test_unavailable_preview_retains_last_picture_with_honest_status(self):
+        self.server.publish_preview((Image.new('RGB', (20, 10)), 10., {}))
+        first = self.server.state()['previewFrame']
+        for item in (None, (None, 10.), (Image.new('RGB', (20, 10)), 11.),
+                     (Image.new('RGB', (20, 10)), float('nan'))):
+            self.server.publish_preview(item)
+            state = self.server.state()
+            self.assertFalse(state['previewAvailable'])
+            self.assertEqual(state['previewFrame'], first)
+            self.assertEqual(state['previewAgeMs'], 100)
     def test_replacement_blocks_old_ticket(self):
         self.server.publish(*evidence(), 1)
         self.server.enqueue({'action':'find','query':'new target'})

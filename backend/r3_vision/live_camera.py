@@ -141,6 +141,28 @@ class Source:
         with self.lock:
             return self.latest
 
+    def preview_snapshot(self):
+        """Read capture pixels without changing the worker's registered depth frame.
+
+        The browser publisher has its own conversion cache: advancing last_rgbd
+        here could mismatch depth with the image currently processed by tracking.
+        """
+        if self.phone:
+            frame = self.phone.latest
+            if frame is None:
+                return None
+            cached = getattr(self, '_preview_cached', None)
+            if cached is not None and cached[0] is frame:
+                return cached[1]
+            import cv2
+            item = (Image.fromarray(cv2.cvtColor(frame.color, cv2.COLOR_BGR2RGB)), frame.received,
+                    {'sourceFrameID': frame.id, 'sensorTimestamp': frame.timestamp,
+                     'connectionEpoch': frame.epoch})
+            self._preview_cached = (frame, item)
+            return item
+        with self.lock:
+            return self.latest
+
     def close(self):
         self.stop.set()
         if self.phone:
