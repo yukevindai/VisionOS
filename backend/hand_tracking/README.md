@@ -1,4 +1,4 @@
-# Reflex hand tracking (desktop, CPU)
+# VisionOS hand tracking (desktop, CPU)
 
 Isolated 21-landmark hand tracker for the Windows R3 preview. It reuses the existing MediaPipe Hand Landmarker adapter (`deskguide.hand_observations.HandDetector` in the DeskGuide-Laptop prototype: CPU delegate, VIDEO mode, up to two hands, 160 px replicated border for edge hands) and its downloaded `hand_landmarker.task`. No new model, receiver, window or dashboard. No sound, haptics or guidance.
 

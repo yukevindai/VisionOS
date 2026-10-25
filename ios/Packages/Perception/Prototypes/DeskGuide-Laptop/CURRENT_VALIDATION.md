@@ -74,7 +74,7 @@ Changes:
 - `deskguide/audio.py`: retain the persistent callback and stereo/directional tones, but select one dominant correction with hysteresis rather than waiting through a900ms axis cycle. Resume starts a pulse immediately; stop/expiry produces silence in the next callback, with within-block evidence expiry also enforced. No inferred grasp or near-target claim.
 - `deskguide/app.py`: medium-confidence depth is correctly described as usable; it no longer displays the contradictory high-confidence-only warning.
 
-Reference inspection: Proprio publishes its newest paired frame and uses a single ordered hand worker. Its main perception loop also waits for neural results; no claim is made that the reference itself meets Reflex's300ms constraint. The background object job is a targeted scheduling change to remove that wait in this prototype, not copied upstream source or a new geometry algorithm. The upstream evaluation was only read.
+Reference inspection: Proprio publishes its newest paired frame and uses a single ordered hand worker. Its main perception loop also waits for neural results; no claim is made that the reference itself meets VisionOS's300ms constraint. The background object job is a targeted scheduling change to remove that wait in this prototype, not copied upstream source or a new geometry algorithm. The upstream evaluation was only read.
 
 Quick offline checks: Python compilation;4 live-pipeline regression checks;1 existing metric-reference test;14 tracking checks;7 protocol/audio checks; and a silent simulated engine startup/shutdown smoke. All passed. The localhost protocol check needed socket permission in this sandbox. These establish no hardware performance or accuracy result.
 

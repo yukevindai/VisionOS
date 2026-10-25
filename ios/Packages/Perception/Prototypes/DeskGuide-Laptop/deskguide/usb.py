@@ -14,8 +14,8 @@ def read_exact(sock,size):
 
 
 def request(sock,message,tag=1):
-    payload=plistlib.dumps(dict(ClientVersionString='Reflex/1.0',
-                                ProgName='Reflex',kLibUSBMuxVersion=3,**message))
+    payload=plistlib.dumps(dict(ClientVersionString='VisionOS/1.0',
+                                ProgName='VisionOS',kLibUSBMuxVersion=3,**message))
     sock.sendall(struct.pack('<IIII',len(payload)+16,1,8,tag)+payload)
     length,version,kind,response_tag=struct.unpack('<IIII',read_exact(sock,16))
     if not 16<length<=1024*1024 or version!=1 or kind!=8 or response_tag!=tag:

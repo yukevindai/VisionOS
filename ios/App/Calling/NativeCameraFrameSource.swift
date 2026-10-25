@@ -67,7 +67,7 @@ final class NativeCameraFrameSource: NSObject, ObservableObject, NativeMediaCapt
             })
             let session = ARSession()
             session.delegate = delegate
-            session.delegateQueue = DispatchQueue(label: "Reflex.VideoDemo.Camera", qos: .userInitiated)
+            session.delegateQueue = DispatchQueue(label: "VisionOS.VideoDemo.Camera", qos: .userInitiated)
             self.localSessionID = localSessionID
             self.mailbox = mailbox
             self.frameDelegate = delegate
@@ -149,13 +149,13 @@ final class NativeCameraFrameSource: NSObject, ObservableObject, NativeMediaCapt
 
     @objc private func backgrounded() {
         guard let attempt else { return }
-        unexpectedStop(attempt: attempt, message: "Camera stopped because Reflex entered the background. Start again to share video.")
+        unexpectedStop(attempt: attempt, message: "Camera stopped because VisionOS entered the background. Start again to share video.")
     }
 
     @objc private func resignedActive() {
         // A first-time permission sheet also resigns active; no camera exists yet then.
         guard session != nil, let attempt else { return }
-        unexpectedStop(attempt: attempt, message: "Camera stopped because Reflex is no longer active. Start again to share video.")
+        unexpectedStop(attempt: attempt, message: "Camera stopped because VisionOS is no longer active. Start again to share video.")
     }
 
     private func unexpectedStop(attempt id: UUID, message: String) {
@@ -170,8 +170,8 @@ final class NativeCameraFrameSource: NSObject, ObservableObject, NativeMediaCapt
         var errorDescription: String? {
             switch self {
             case .unsupported: return "Live camera requires an ARKit-capable iPhone. The simulator cannot provide this camera feed."
-            case .permissionDenied: return "Camera access is required to share video. Enable it for Reflex in Settings."
-            case .inactive: return "Return to Reflex and start again to share video."
+            case .permissionDenied: return "Camera access is required to share video. Enable it for VisionOS in Settings."
+            case .inactive: return "Return to VisionOS and start again to share video."
             case .invalidSession: return "A new video session is required before starting the camera."
             }
         }

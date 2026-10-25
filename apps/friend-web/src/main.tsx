@@ -11,7 +11,7 @@ const convexUrl = import.meta.env.VITE_CONVEX_URL?.trim();
 const root = createRoot(document.getElementById("root")!);
 
 if (!domain || !clientId || !convexUrl) {
-  root.render(<main className="shell" role="main"><h1>Reflex Friend needs configuration</h1>
+  root.render(<main className="shell" role="main"><h1>VisionOS Friend needs configuration</h1>
     <p>Set <code>VITE_AUTH0_DOMAIN</code>, <code>VITE_AUTH0_CLIENT_ID</code>, and <code>VITE_CONVEX_URL</code> in <code>.env.local</code>, then restart the browser server.</p>
     <p>See <a href="https://github.com/yukevindai/VisionOS">the project setup</a> or the local README.</p></main>);
 } else {

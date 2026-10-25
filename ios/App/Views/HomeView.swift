@@ -190,7 +190,7 @@ struct HomeView: View {
     }
 
     private var brand: some View {
-        Text("REFLEX").font(.subheadline.weight(.semibold))
+        Text("VisionOS").font(.subheadline.weight(.semibold))
             .foregroundStyle(AssistanceColors.accent)
             .accessibilityHidden(true)
     }

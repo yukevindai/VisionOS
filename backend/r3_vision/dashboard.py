@@ -95,7 +95,7 @@ class Dashboard:
         self.server = ThreadingHTTPServer(('127.0.0.1', port), self.handler())
         self.server.daemon_threads = True
         self.port = self.server.server_port
-        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True, name='reflex-dashboard')
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True, name='visionos-dashboard')
 
     @property
     def url(self):

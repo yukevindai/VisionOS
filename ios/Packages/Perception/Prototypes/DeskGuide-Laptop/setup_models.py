@@ -19,7 +19,7 @@ def main():
             print(name,'verified')
             continue
         print('Downloading',name,flush=True)
-        request=urllib.request.Request(asset['url'],headers={'User-Agent':'Reflex/1.0'})
+        request=urllib.request.Request(asset['url'],headers={'User-Agent':'VisionOS/1.0'})
         with urllib.request.urlopen(request,timeout=90) as response:
             data=response.read()
         if digest(data)!=asset['sha256']:

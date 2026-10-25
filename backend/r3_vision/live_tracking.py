@@ -872,7 +872,7 @@ def main(argv=None):
         raise SystemExit('Set GEMINI_API_KEY and GEMINI_MODEL in environment or backend/.env; no request sent')
     import tkinter as tk
     root = tk.Tk()
-    root.title('Reflex R3 live tracking')
+    root.title('VisionOS R3 live tracking')
     window_width = max(320, min(1700, root.winfo_screenwidth()-40))
     window_height = max(300, min(1000, root.winfo_screenheight()-80))
     root.geometry(f'{window_width}x{window_height}')
@@ -979,7 +979,7 @@ def main(argv=None):
         try:
             dashboard = Dashboard(args.web_port)
             dashboard.start()
-            print(f'Reflex browser dashboard: {dashboard.url}', flush=True)
+            print(f'VisionOS browser dashboard: {dashboard.url}', flush=True)
         except OSError as error:
             print(f'Browser dashboard unavailable: {error}. Desktop tracking remains available.', flush=True)
 

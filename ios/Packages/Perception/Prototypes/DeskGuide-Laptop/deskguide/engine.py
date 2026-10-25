@@ -22,7 +22,7 @@ class Engine:
         self.preview=preview
         self.phone=source if source is not None else Phone(config['host'],config['port'],usb=config.get('usb',False))
         self.stop=threading.Event()
-        self.thread=threading.Thread(target=self.run,daemon=True,name='reflex-inference')
+        self.thread=threading.Thread(target=self.run,daemon=True,name='visionos-inference')
         self.result=None
         self.error=''
         self.ready=False

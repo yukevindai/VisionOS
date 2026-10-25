@@ -24,8 +24,8 @@ project_configs = configs('project', 'CLANG_ENABLE_MODULES = YES;')
 proxy = obj('proxy', f'isa = PBXContainerItemProxy; containerPortal = {uid("project")}; proxyType = 1; remoteGlobalIDString = {uid("app")}; remoteInfo = Repro;')
 dep = obj('dep', f'isa = PBXTargetDependency; target = {uid("app")}; targetProxy = {proxy};')
 for key, name, file, product, product_type, settings, deps in [
-    ('app', 'Repro', files[0], app_product, 'application', 'PRODUCT_BUNDLE_IDENTIFIER = org.reflex.AccessibilityRepro; INFOPLIST_KEY_UILaunchScreen_Generation = YES; INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;', []),
-    ('test', 'ReproUITests', files[1], test_product, 'bundle.ui-testing', 'PRODUCT_BUNDLE_IDENTIFIER = org.reflex.AccessibilityReproUITests; TEST_TARGET_NAME = Repro;', [dep]),
+    ('app', 'Repro', files[0], app_product, 'application', 'PRODUCT_BUNDLE_IDENTIFIER = org.visionos.AccessibilityRepro; INFOPLIST_KEY_UILaunchScreen_Generation = YES; INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;', []),
+    ('test', 'ReproUITests', files[1], test_product, 'bundle.ui-testing', 'PRODUCT_BUNDLE_IDENTIFIER = org.visionos.AccessibilityReproUITests; TEST_TARGET_NAME = Repro;', [dep]),
 ]:
     build = obj(key+'-build', f'isa = PBXBuildFile; fileRef = {file};')
     sources = obj(key+'-sources', f'isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = {refs([build])}; runOnlyForDeploymentPostprocessing = 0;')

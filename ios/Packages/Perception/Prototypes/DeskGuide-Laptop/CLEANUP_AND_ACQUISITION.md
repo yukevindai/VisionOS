@@ -40,7 +40,7 @@ Two actual implementation bottlenecks were established:
 | Proprio speech clips, artwork, UI source, protected geometry source | Not copied into DeskGuide | None included |
 | Historical numeric fixture and evaluation results | Observations/data from earlier authorized comparisons, accurately identified | Test data only, no runtime source dependency |
 
-The independently authored MIT license does not relicense third-party packages/models. Ultralytics AGPL requirements remain applicable; independence from Proprio is not a claim that the whole dependency stack is permissively licensed. Retired local import use is not erased or misrepresented. No upstream copyright notice was removed. The native iOS Reflex source was not modified by this Windows prototype cleanup.
+The independently authored MIT license does not relicense third-party packages/models. Ultralytics AGPL requirements remain applicable; independence from Proprio is not a claim that the whole dependency stack is permissively licensed. Retired local import use is not erased or misrepresented. No upstream copyright notice was removed. The native iOS VisionOS source was not modified by this Windows prototype cleanup.
 
 ## Checks and current limits
 

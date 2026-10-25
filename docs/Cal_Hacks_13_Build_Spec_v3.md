@@ -1,4 +1,4 @@
-# Reflex — Build Spec v3.0 (Cal Hacks 13)
+# VisionOS — Build Spec v3.0 (Cal Hacks 13)
 
 v3.1 — October 23 2026. Supersedes v2.0 and v3.0. Written for teammates and their coding agents.
 

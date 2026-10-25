@@ -1,7 +1,7 @@
 // Independently authored integration proposal. Not linked to the app or BLE transport.
 import Foundation
 
-public enum ReflexDevelopment {
+public enum VisionOSDevelopment {
     public enum TrackingState: String, Codable, Sendable {
         case observed, predicted, lost
     }

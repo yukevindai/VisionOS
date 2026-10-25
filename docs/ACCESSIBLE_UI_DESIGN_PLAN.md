@@ -1,4 +1,4 @@
-# Reflex role-based accessible UI plan
+# VisionOS role-based accessible UI plan
 
 October 24, 2026 — revised after the camera-first screenshot review. This version supersedes the earlier shared Home/task-controls concept. The approved interface is now implemented in the native iOS shell; service and physical-device acceptance remain separate.
 
@@ -8,7 +8,7 @@ October 24, 2026 — revised after the camera-first screenshot review. This vers
 
 The user explicitly requested two choices on opening: **Blind** and **Not blind**. Blind opens a screen with one large **Call** button. Call starts AI immediately, while trusted friends can join. The assisted user then sees a clean rear-camera stream, similar in purpose to Record3D Stream, and receives spoken guidance. Not blind opens authorized sessions and then a detailed helper view.
 
-The role choice selects an interface, not a diagnosis, trust grant or sharing consent. Either person may use accessibility features. Do not infer disability from VoiceOver settings. Do not introduce public session discovery or copy Record3D's laptop streaming architecture; Reflex remains native iPhone.
+The role choice selects an interface, not a diagnosis, trust grant or sharing consent. Either person may use accessibility features. Do not infer disability from VoiceOver settings. Do not introduce public session discovery or copy Record3D's laptop streaming architecture; VisionOS remains native iPhone.
 
 | Step | Blind user | Sighted helper |
 | --- | --- | --- |
@@ -100,7 +100,7 @@ References: repository R2/R3 live friend assistance and build specifications; [A
 
 ## Screenshot refresh — October 24, 2026
 
-The current Figma role (11:42), Call (11:57), and calling (11:76) frames were read before this revision and edited in place. The supplied Be My Eyes screenshots define the dominant blue call target, black canvas, camera focus and bottom controls. Reflex retains its own Call/Stop/End meanings and existing role/tools/settings navigation; unrelated tabs, Siri prompts, photo capture and history are not introduced. The Figma scene is illustrative, not camera validation.
+The current Figma role (11:42), Call (11:57), and calling (11:76) frames were read before this revision and edited in place. The supplied Be My Eyes screenshots define the dominant blue call target, black canvas, camera focus and bottom controls. VisionOS retains its own Call/Stop/End meanings and existing role/tools/settings navigation; unrelated tabs, Siri prompts, photo capture and history are not introduced. The Figma scene is illustrative, not camera validation.
 
 The native role buttons use minimum heights of 56% and 17% of usable view height to approximate the requested 50%/15% screen areas after margins and system safe areas. Dynamic Type can increase heights, with scrolling preserving both choices.
 

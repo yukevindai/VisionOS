@@ -27,7 +27,7 @@ def main():
     asset = json.loads((SOURCE / 'models.lock.json').read_text())['yolo11s.pt']
     weights = CACHE / 'yolo11s.pt'
     if not weights.exists():
-        request = urllib.request.Request(asset['url'], headers={'User-Agent': 'Reflex-native-model/1.0'})
+        request = urllib.request.Request(asset['url'], headers={'User-Agent': 'VisionOS-native-model/1.0'})
         with urllib.request.urlopen(request, timeout=60) as response:
             data = response.read()
         if hashlib.sha256(data).hexdigest() != asset['sha256']:

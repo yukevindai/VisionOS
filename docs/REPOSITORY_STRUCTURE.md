@@ -5,7 +5,7 @@ The root README contains the canonical directory tree. This layout was recorded 
 | Path | Owner | Contents |
 |---|---|---|
 | `docs/` | Team | Build specifications and repository documentation |
-| `ios/Reflex.xcodeproj/` | R2 | iPhone targets, dependencies, build settings, shared scheme |
+| `ios/VisionOS.xcodeproj/` | R2 | iPhone targets, dependencies, build settings, shared scheme |
 | `ios/App/` | R2 integration | SwiftUI shell, accessibility, session coordination and native adapters |
 | `ios/App/Perception/` | R1 implementation through R2 integration | Single ARKit camera, Vision hand/target observations, registered depth and native guidance adapter |
 | `ios/App/Audio/` | R1 implementation through R2 integration | Shared native audio, local speech commands and output scheduling |

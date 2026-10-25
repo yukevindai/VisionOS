@@ -2,13 +2,13 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="color-scheme" content="dark"><title>Reflex · Live assistance</title>
+<meta name="color-scheme" content="dark"><title>VisionOS · Live assistance</title>
 <link rel="stylesheet" href="styles.css"><script type="module" src="app.js"></script>
 </head>
 <body>
 <a class="skip" href="#workspace">Skip to live workspace</a>
 <main class="shell">
-<header><a class="wordmark" href="./" aria-label="Reflex home">reflex</a><span class="subtitle">Live assistance</span><span id="connection" class="status-badge">CONNECTING</span><div class="header-actions"><button id="setup-open">Operator setup</button><button id="presentation" aria-pressed="false">Presentation view</button></div></header>
+<header><a class="wordmark" href="./" aria-label="VisionOS home">VisionOS</a><span class="subtitle">Live assistance</span><span id="connection" class="status-badge">CONNECTING</span><div class="header-actions"><button id="setup-open">Operator setup</button><button id="presentation" aria-pressed="false">Presentation view</button></div></header>
 <form id="controls" class="controls" aria-label="Tracking controls">
 <label class="query-field"><span class="sr-only">Object to find</span><input id="query" maxlength="500" value="Find the Pepsi can" autocomplete="off" required></label>
 <button class="primary" id="find" type="submit" data-command>Find &amp; Track</button><button type="button" id="describe" data-command>Describe surroundings</button><button type="button" id="quick" data-command>Quick: 6 objects</button><button type="button" id="stop" class="stop" data-command>Stop tracking</button>

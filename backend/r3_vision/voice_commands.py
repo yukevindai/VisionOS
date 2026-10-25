@@ -4,7 +4,7 @@ A PowerShell child process hosts System.Speech's recognizer with a small grammar
 aliases behind a verb, "what's around me", "stop", "stop tracking") and prints each recognition with its confidence.
 A fixed grammar is far faster and more accurate than open dictation in a noisy room, and needs no network.
 
-Echo guard: while Reflex is speaking (and briefly after), only "stop"/"be quiet" are accepted, so its own voice
+Echo guard: while VisionOS is speaking (and briefly after), only "stop"/"be quiet" are accepted, so its own voice
 ("Pepsi can, right") never triggers a command, yet the user can always interrupt it. Low-confidence results are
 ignored silently.
 """

@@ -12,7 +12,7 @@ VisionOS/
 │   ├── R2_IOS_IMPLEMENTATION_SPEC.md
 │   └── REPOSITORY_STRUCTURE.md
 ├── ios/
-│   ├── Reflex.xcodeproj/         # R2 owns project wiring
+│   ├── VisionOS.xcodeproj/         # R2 owns project wiring
 │   ├── App/                     # R2
 │   ├── Packages/
 │   │   ├── Perception/          # R1
@@ -39,7 +39,7 @@ The [DeskGuide laptop prototype](ios/Packages/Perception/Prototypes/DeskGuide-La
 
 ## Run and contribute
 
-Open `ios/Reflex.xcodeproj` in Xcode and select the shared `Reflex` scheme. Live teammate integrations must be supplied; explicit simulation is available for local development.
+Open `ios/VisionOS.xcodeproj` in Xcode and select the shared `VisionOS` scheme. Live teammate integrations must be supplied; explicit simulation is available for local development.
 
 - [iOS setup and test commands](ios/README.md)
 - [Validation results](ios/Validation/2026-10-23.md)

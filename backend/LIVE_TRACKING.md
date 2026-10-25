@@ -31,7 +31,7 @@ Second live run (11:17): Gemini found the can in 6.5 and 11.8 s, but the box sti
   longer turns the box amber.
 - Each run writes `recordings/r3-tracking/session-*.jsonl` with per-frame state, reason, tracker score, colour match,
   feature-check failures, frame age and FPS.
-- Keep the Reflex preview window out of the camera's view: the camera then sees a second can on the laptop screen.
+- Keep the VisionOS preview window out of the camera's view: the camera then sees a second can on the laptop screen.
 
 Third round (12:00-12:20), from session logs and saved Gemini results:
 

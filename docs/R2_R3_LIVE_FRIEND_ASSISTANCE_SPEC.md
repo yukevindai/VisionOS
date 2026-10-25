@@ -1,14 +1,14 @@
-# Reflex Combined R2 and R3 Implementation Spec
+# VisionOS Combined R2 and R3 Implementation Spec
 
 Version 1.0 — October 24, 2026
 
-Owner: Kevin, taking responsibility for both R2 and R3. Repository: `yukevindai/VisionOS`. Product: Reflex, a native iPhone app. Suggested repository destination: `docs/R2_R3_LIVE_FRIEND_ASSISTANCE_SPEC.md`.
+Owner: Kevin, taking responsibility for both R2 and R3. Repository: `yukevindai/VisionOS`. Product: VisionOS, a native iPhone app. Suggested repository destination: `docs/R2_R3_LIVE_FRIEND_ASSISTANCE_SPEC.md`.
 
 ## 1. Assignment and confirmed decisions
 
-Complete the existing R2 and R3 responsibilities and add live friend assistance. A blind or low-vision user starts an ordinary Reflex assistance session. Previously authorized friends receive a notification and can choose to join immediately. They see the user's live rear-camera video, speak with the user, and tap or click an object or control to propose a guidance target. Reflex interprets the selection, asks the user for spoken confirmation, reacquires the target in the current scene, and executes the existing task and guidance flow.
+Complete the existing R2 and R3 responsibilities and add live friend assistance. A blind or low-vision user starts an ordinary VisionOS assistance session. Previously authorized friends receive a notification and can choose to join immediately. They see the user's live rear-camera video, speak with the user, and tap or click an object or control to propose a guidance target. VisionOS interprets the selection, asks the user for spoken confirmation, reacquires the target in the current scene, and executes the existing task and guidance flow.
 
-This is a real live audio/video call inside Reflex, similar in interaction to a FaceTime call. It is not Apple FaceTime integration, screen scraping, a sequence of uploaded photos, or a request-for-help ticket. A selection may carry a captured frame internally for accurate interpretation; the call continues live.
+This is a real live audio/video call inside VisionOS, similar in interaction to a FaceTime call. It is not Apple FaceTime integration, screen scraping, a sequence of uploaded photos, or a request-for-help ticket. A selection may carry a captured frame internally for accurate interpretation; the call continues live.
 
 The following choices are confirmed by the user:
 
@@ -34,7 +34,7 @@ Read `AGENTS.md`, `docs/REPOSITORY_STRUCTURE.md`, `docs/Cal_Hacks_13_Build_Spec_
 
 Existing assets to extend:
 
-- Native SwiftUI app and committed `ios/Reflex.xcodeproj`, with a shared Reflex scheme and project-generation script.
+- Native SwiftUI app and committed `ios/VisionOS.xcodeproj`, with a shared VisionOS scheme and project-generation script.
 - `Tasks` deterministic task engine and `HapticLink` Bluetooth package, with tests.
 - `SessionCoordinator`, adapter protocols, permission and preference handling, explicit simulation, and bounded asynchronous work.
 - `LiveIntegrationBundle` with perception, speech, conversation, evidence and frame policy. Its optional `LiveBandIntegrationBundle` allows operation without inventing wristband configuration.
@@ -515,7 +515,7 @@ External values still requiring real setup: Apple team/provisioning/APNs entitle
 
 ## 21. Demo and completion definition
 
-Demo: owner starts Reflex; trusted friend receives a notification on another device; friend joins without a per-session approval; both speak naturally; friend clicks the cup in live video; Reflex announces the selection and waits for the owner's Yes; current tracking guides the hand; grasp is explicitly confirmed or observed. Then show a Stop/occlusion failure and a clean recovery. Repeat using the second helper client. End the session and demonstrate that the old notification/link cannot reopen it.
+Demo: owner starts VisionOS; trusted friend receives a notification on another device; friend joins without a per-session approval; both speak naturally; friend clicks the cup in live video; VisionOS announces the selection and waits for the owner's Yes; current tracking guides the hand; grasp is explicitly confirmed or observed. Then show a Stop/occlusion failure and a clean recovery. Repeat using the second helper client. End the session and demonstrate that the old notification/link cannot reopen it.
 
 Completion requires the combined R2/R3 implementation and both helper clients, with real media/notifications demonstrated and original task requirements accounted for. If native R1 or H1 work is missing, report precise boundaries: friend calling may work while physical guidance remains blocked. Use distinct statuses: implemented, fixture-tested, simulator-tested, service-tested, real-device-tested, blocked. Do not count test totals from historical reports as newly run.
 

@@ -29,8 +29,8 @@ function Status({ children }: { children: React.ReactNode }) {
 export function App() {
   const { isLoading, isAuthenticated } = useConvexAuth();
   const { loginWithRedirect, logout, user, error: authError } = useAuth0();
-  if (isLoading) return <main className="shell"><h1>Reflex Friend</h1><Status>Checking sign in…</Status></main>;
-  if (!isAuthenticated) return <main className="shell"><h1>Reflex Friend</h1>
+  if (isLoading) return <main className="shell"><h1>VisionOS Friend</h1><Status>Checking sign in…</Status></main>;
+  if (!isAuthenticated) return <main className="shell"><h1>VisionOS Friend</h1>
     <p>Sign in to accept a trusted friend invitation and watch an assistance session.</p>
     {authError && <p role="alert">Sign in failed: {authError.message}</p>}
     <button onClick={() => void loginWithRedirect({ appState: { returnTo: window.location.pathname + window.location.search } })}>Sign in</button>
@@ -274,7 +274,7 @@ function SignedIn({ name, accountId, logout }: {
   };
 
   return <main className="shell">
-    <header><div><p className="eyebrow">Reflex</p><h1>Friend assistance</h1></div>
+    <header><div><p className="eyebrow">VisionOS</p><h1>Friend assistance</h1></div>
       <button className="secondary" onClick={signOut}>Sign out</button></header>
     <p className="account">Signed in as {name}</p>
     {error && <p className="error" role="alert">{error}</p>}
