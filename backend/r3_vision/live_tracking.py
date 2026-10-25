@@ -63,7 +63,15 @@ class TrackingWorker:
             self._audio_log('AUDIO_ENABLED', device=getattr(args, 'audio_device', None))
             # Centimetre clips only when a physical calibration record allows validated 3D guidance.
             numeric = getattr(args, 'distance_calibration', None) is not None
-            player = ClipPlayer(device=getattr(args, 'audio_device', None), log=self._audio_log, numeric=numeric)
+            from .cartesia_speech import CartesiaSpeech
+            speech_provider = None
+            try:
+                speech_provider = CartesiaSpeech.from_env()
+            except ValueError:
+                self._audio_log('SPEECH_FALLBACK', error='incomplete Cartesia configuration', provider='windows')
+            self._audio_log('SPEECH_CONFIGURED', provider='cartesia' if speech_provider else 'windows')
+            player = ClipPlayer(device=getattr(args, 'audio_device', None), log=self._audio_log,
+                                numeric=numeric, speech_provider=speech_provider)
             if getattr(args, 'agents', False):
                 from .agent_audio import PriorityAudio
                 player = PriorityAudio(player)
@@ -739,6 +747,14 @@ class TrackingWorker:
                 state['playback'] = f"FAILED: {fields.get('error')}"
             elif event == 'AUDIO_INITIALIZED':
                 state['playback'] = f"ready on {fields.get('device')}"
+            elif event == 'SPEECH_CONFIGURED':
+                state['speech_provider'] = fields.get('provider')
+            elif event == 'SPEECH_SYNTHESIS_STARTED':
+                state['playback'] = f"synthesizing with {fields.get('provider')}"
+            elif event == 'SPEECH_SYNTHESIS_COMPLETED':
+                state['playback'] = f"{fields.get('provider')} speech ready ({fields.get('latency_ms')} ms)"
+            elif event == 'SPEECH_FALLBACK':
+                state['playback'] = f"Windows speech fallback: {fields.get('error')}"
             elif event == 'CUE_SUPPRESSED':
                 state['suppressed'] = fields.get('reason')
             elif event == 'CUE_COMPUTED':
