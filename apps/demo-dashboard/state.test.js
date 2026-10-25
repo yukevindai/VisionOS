@@ -18,6 +18,6 @@ test('agent telemetry remains descriptive and uses reported handoffs', async () 
     events:[{source:'coordinator',destination:'scene',kind:'handoff'}]});
   assert.match(view.status, /scene: complete/);
   assert.equal(view.response, 'A chair');
-  assert.deepEqual(view.events, ['coordinator ? scene']);
+  assert.deepEqual(view.events, ['coordinator -> scene']);
   assert.equal(agentView(null).status, 'Orchestration unavailable');
 });
