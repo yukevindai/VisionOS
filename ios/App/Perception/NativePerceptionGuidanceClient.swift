@@ -33,6 +33,7 @@ final class NativePerceptionGuidanceClient: NSObject, PerceptionGuidanceClient, 
     private let onCue: (String, SessionContext, Int64) -> Void
     private let stopOutput: (SessionContext) -> Void
     private var session: ARSession?
+    private var selectedCameraType: AVCaptureDevice.DeviceType?
     private var processor: NativePerceptionProcessor?
     private var context: SessionContext?
     private var startID = UUID()
@@ -116,6 +117,12 @@ final class NativePerceptionGuidanceClient: NSObject, PerceptionGuidanceClient, 
             configuration.environmentTexturing = .none
             configuration.providesAudioData = false
             configuration.isAutoFocusEnabled = true
+            let formats = ARWorldTrackingConfiguration.supportedVideoFormats
+            guard let formatIndex = NativeRearCameraFormatPolicy.preferredIndex(in: formats.map {
+                .init(position: $0.captureDevicePosition, deviceType: $0.captureDeviceType)
+            }) else { throw NativePerceptionError.unsupportedDevice }
+            configuration.videoFormat = formats[formatIndex]
+            selectedCameraType = configuration.videoFormat.captureDeviceType
             self.processor = processor
             self.session = session
             session.run(configuration)
@@ -200,6 +207,7 @@ final class NativePerceptionGuidanceClient: NSObject, PerceptionGuidanceClient, 
         watchdog?.cancel(); watchdog = nil
         processor?.close(); processor = nil
         session?.pause(); session?.delegate = nil; session = nil
+        selectedCameraType = nil
         detach()
         self.context = nil
         lastObservation = nil; lastGeometryID = nil; wasTracking = false
@@ -309,8 +317,12 @@ final class NativePerceptionGuidanceClient: NSObject, PerceptionGuidanceClient, 
         }
     }
     private func cameraCapabilities(geometryID: String, depth: Bool) -> CameraCapabilities {
-        CameraCapabilities(selectedLens: "ARKit rear camera", depthSupported: depth,
-                           fallbackReason: depth ? nil : "LiDAR depth is unavailable; metric hand guidance is disabled.",
+        let camera = NativeRearCameraFormatPolicy.description(for: selectedCameraType)
+        let reasons = [camera.fallbackReason,
+                       depth ? nil : "LiDAR depth is unavailable; metric hand guidance is disabled."]
+            .compactMap { $0 }
+        return CameraCapabilities(selectedLens: camera.lens, depthSupported: depth,
+                           fallbackReason: reasons.isEmpty ? nil : reasons.joined(separator: " "),
                            geometryID: geometryID)
     }
     @objc private func backgrounded() {
@@ -338,6 +350,37 @@ final class NativePerceptionGuidanceClient: NSObject, PerceptionGuidanceClient, 
         case .forward: return "Move your hand closer to the target."
         case .backward: return "Move your hand back."
         case .stop: return "Stop."
+        }
+    }
+}
+
+enum NativeRearCameraFormatPolicy {
+    struct Format {
+        let position: AVCaptureDevice.Position
+        let deviceType: AVCaptureDevice.DeviceType
+    }
+
+    // Only pass the active AR configuration's supported formats, in ARKit quality order.
+    // Selecting once before run keeps the same RGB/depth geometry throughout guidance.
+    static func preferredIndex(in formats: [Format]) -> Int? {
+        let rear = formats.indices.filter { formats[$0].position == .back }
+        for lens in [AVCaptureDevice.DeviceType.builtInUltraWideCamera, .builtInWideAngleCamera] {
+            if let index = rear.first(where: { formats[$0].deviceType == lens }) { return index }
+        }
+        return rear.first
+    }
+
+    static func description(for deviceType: AVCaptureDevice.DeviceType?) -> (lens: String, fallbackReason: String?) {
+        switch deviceType {
+        case .builtInUltraWideCamera:
+            return ("Ultra-wide rear camera", nil)
+        case .builtInWideAngleCamera:
+            return ("Wide rear camera", "Ultra-wide is unavailable in this ARKit configuration; using the wide rear camera.")
+        case .some(let type):
+            return ("ARKit rear camera (\(type.rawValue))",
+                    "Ultra-wide and wide formats are unavailable; using ARKit's preferred rear format.")
+        case .none:
+            return ("Rear camera unavailable", "No supported rear-camera format is selected.")
         }
     }
 }
