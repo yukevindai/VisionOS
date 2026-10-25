@@ -138,9 +138,10 @@ class TrackingWorker:
             # Family Notes (docs/FAMILY_NOTES.md): off unless CONVEX_URL and FAMILY_NOTES_DEVICE_KEY are set.
             # Any problem here turns the feature off; it never stops the pipeline from starting.
             try:
-                say, self.family_say_now = speech_adapters(self.audio.player)
+                say, self.family_say_now, prepare = speech_adapters(self.audio.player)
                 self.family_notes = FamilyNotesListener.from_env(say=say, speaking=self.audio.player.speaking,
-                                                                 is_idle=self._family_idle, log=self._audio_log)
+                                                                 is_idle=self._family_idle, log=self._audio_log,
+                                                                 prepare_audio=prepare)
                 self.family_notes.start()
             except Exception as exc:  # missing `convex` package, bad key, ...
                 self.family_notes = None

@@ -2,6 +2,7 @@
 
 import { Buffer } from "node:buffer";
 import { ConvexError } from "convex/values";
+import { SPEED_RANGE, VOLUME_RANGE } from "./speechLimits";
 
 // R3 Cartesia text-to-speech adapter. It only turns text into audio bytes.
 // It never plays audio, schedules output, or decides guidance: R1 owns playback
@@ -14,7 +15,12 @@ export const MAX_AUDIO_BYTES = 4 * 1024 * 1024;
 export const TIMEOUT_MS = 5_000; // spec §5: cloud timeout 5 s
 export const SAMPLE_RATE = 24_000;
 
-export type SpeechRequest = { requestId: string; text: string };
+/**
+ * voiceId replaces the configured voice (a helper's own cloned voice, Family Notes only).
+ * speed and volume map to Cartesia generation_config; omitted means the provider default.
+ */
+export type SpeechRequest = { requestId: string; text: string; voiceId?: string; speed?: number; volume?: number };
+export { SPEED_RANGE, VOLUME_RANGE };
 export type SpeechErrorCode = "SPEECH_NOT_CONFIGURED" | "PROVIDER_TIMEOUT" | "PROVIDER_ERROR" | "INVALID_PROVIDER_AUDIO";
 export type SpeechResult =
   | { ok: true; requestId: string; mode: "REAL_API" | "SIMULATED"; format: "wav"; sampleRate: number;
@@ -32,6 +38,12 @@ function identifier(value: string): boolean {
 /** Throws INVALID_SPEECH_REQUEST for caller mistakes; these are not provider failures. */
 export function validateSpeechRequest(req: SpeechRequest): string {
   const text = req.text.trim();
+  const inRange = (value: number | undefined, [lo, hi]: readonly [number, number]) =>
+    value === undefined || (Number.isFinite(value) && value >= lo && value <= hi);
+  if ((req.voiceId !== undefined && !identifier(req.voiceId)) || !inRange(req.speed, SPEED_RANGE) ||
+      !inRange(req.volume, VOLUME_RANGE)) {
+    throw new ConvexError({ code: "INVALID_SPEECH_REQUEST" });
+  }
   if (!identifier(req.requestId) || text.length === 0 || text.length > MAX_TEXT_CHARS || /[\u0000-\u0008\u000b-\u001f\u007f]/.test(text)) {
     throw new ConvexError({ code: "INVALID_SPEECH_REQUEST" });
   }
@@ -97,8 +109,12 @@ export async function synthesizeSpeech(req: SpeechRequest, deps: Deps = {}): Pro
       body: JSON.stringify({
         model_id: config.model,
         transcript: text,
-        voice: { mode: "id", id: config.voiceId },
+        voice: { mode: "id", id: req.voiceId ?? config.voiceId },
         language: "en",
+        ...(req.speed !== undefined || req.volume !== undefined
+          ? { generation_config: { ...(req.speed !== undefined ? { speed: req.speed } : {}),
+              ...(req.volume !== undefined ? { volume: req.volume } : {}) } }
+          : {}),
         // WAV, not raw PCM: the iOS app plays provider audio with AVAudioPlayer(data:).
         output_format: { container: "wav", encoding: "pcm_s16le", sample_rate: SAMPLE_RATE },
       }),
@@ -117,6 +133,85 @@ export async function synthesizeSpeech(req: SpeechRequest, deps: Deps = {}): Pro
   } catch {
     // Timeout and network failure both mean "speak this on-device instead".
     return { ok: false, requestId: req.requestId, errorCode: "PROVIDER_TIMEOUT", latencyMs: latency() };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// ---------- voice cloning (Family Notes: a helper's own voice, with consent) ----------
+
+export const CLONE_URL = "https://api.cartesia.ai/voices/clone";
+export const VOICES_URL = "https://api.cartesia.ai/voices";
+export const CLONE_TIMEOUT_MS = 30_000;
+export const MIN_CLONE_SECONDS = 10;   // Cartesia: about 10 s is enough to start
+export const MAX_CLONE_SECONDS = 60;   // Cartesia: up to 60 s retains the accent (Sonic 3.6+)
+export const MAX_CLONE_BYTES = 6 * 1024 * 1024;
+
+export type CloneResult = { ok: true; voiceId: string } | { ok: false; errorCode: string; httpStatus?: number };
+
+/** Duration of a PCM WAV (any rate, mono or stereo, 16-bit), or null when it is not one. */
+export function wavSeconds(bytes: Uint8Array): number | null {
+  if (!isWav(bytes)) return null;
+  const view = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  let offset = 12, byteRate = 0, dataBytes = 0;
+  while (offset + 8 <= view.length) {
+    const id = view.toString("ascii", offset, offset + 4);
+    const size = view.readUInt32LE(offset + 4);
+    if (id === "fmt " && offset + 16 <= view.length) {
+      if (view.readUInt16LE(offset + 8) !== 1 || view.readUInt16LE(offset + 22) !== 16) return null; // PCM s16 only
+      byteRate = view.readUInt32LE(offset + 16);
+    } else if (id === "data") {
+      dataBytes = Math.min(size, view.length - offset - 8);
+      break;
+    }
+    offset += 8 + size + (size % 2);
+  }
+  return byteRate > 0 && dataBytes > 0 ? dataBytes / byteRate : null;
+}
+
+/** Instant Voice Clone from one consented recording. The voice is private to our Cartesia account. */
+export async function cloneVoice(clip: Uint8Array, name: string, description: string,
+  deps: Deps = {}): Promise<CloneResult> {
+  const config = readCartesiaConfig(deps.env ?? process.env);
+  if (config === null || config === "INCOMPLETE") return { ok: false, errorCode: "SPEECH_NOT_CONFIGURED" };
+  const form = new FormData();
+  form.append("clip", new Blob([clip.slice()], { type: "audio/wav" }), "consented-recording.wav");
+  form.append("name", name.slice(0, 100));
+  form.append("description", description.slice(0, 500));
+  form.append("language", "en");
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), CLONE_TIMEOUT_MS);
+  try {
+    const res = await (deps.fetch ?? fetch)(CLONE_URL, {
+      method: "POST", redirect: "error", signal: controller.signal, body: form,
+      headers: { Authorization: `Bearer ${config.apiKey}`, "Cartesia-Version": CARTESIA_VERSION },
+    });
+    if (!res.ok) return { ok: false, errorCode: "PROVIDER_ERROR", httpStatus: res.status };
+    const body = await res.json() as { id?: unknown };
+    return typeof body.id === "string" && identifier(body.id)
+      ? { ok: true, voiceId: body.id } : { ok: false, errorCode: "INVALID_PROVIDER_RESPONSE" };
+  } catch {
+    return { ok: false, errorCode: "PROVIDER_TIMEOUT" };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Deletes a cloned voice at Cartesia. An already-missing voice counts as deleted. */
+export async function deleteVoice(voiceId: string, deps: Deps = {}): Promise<{ ok: boolean; httpStatus?: number }> {
+  const config = readCartesiaConfig(deps.env ?? process.env);
+  if (config === null || config === "INCOMPLETE") return { ok: false };
+  if (!identifier(voiceId)) return { ok: false };
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  try {
+    const res = await (deps.fetch ?? fetch)(`${VOICES_URL}/${encodeURIComponent(voiceId)}`, {
+      method: "DELETE", redirect: "error", signal: controller.signal,
+      headers: { Authorization: `Bearer ${config.apiKey}`, "Cartesia-Version": CARTESIA_VERSION },
+    });
+    return { ok: res.ok || res.status === 404, httpStatus: res.status };
+  } catch {
+    return { ok: false };
   } finally {
     clearTimeout(timer);
   }

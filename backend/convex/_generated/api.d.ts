@@ -33,6 +33,7 @@ import type * as lib_leases from "../lib/leases.js";
 import type * as lib_livekitProvider from "../lib/livekitProvider.js";
 import type * as lib_mediaLifecycle from "../lib/mediaLifecycle.js";
 import type * as lib_objectVision from "../lib/objectVision.js";
+import type * as lib_speechLimits from "../lib/speechLimits.js";
 import type * as lib_visionService from "../lib/visionService.js";
 import type * as livekit from "../livekit.js";
 import type * as media from "../media.js";
@@ -50,6 +51,8 @@ import type * as speechCache from "../speechCache.js";
 import type * as speechTables from "../speechTables.js";
 import type * as users from "../users.js";
 import type * as vision from "../vision.js";
+import type * as voices from "../voices.js";
+import type * as voicesNode from "../voicesNode.js";
 
 /**
  * A utility for referencing Convex functions in your app's API.
@@ -80,6 +83,7 @@ declare const fullApi: ApiFromModules<{
   "lib/livekitProvider": typeof lib_livekitProvider;
   "lib/mediaLifecycle": typeof lib_mediaLifecycle;
   "lib/objectVision": typeof lib_objectVision;
+  "lib/speechLimits": typeof lib_speechLimits;
   "lib/visionService": typeof lib_visionService;
   livekit: typeof livekit;
   media: typeof media;
@@ -97,6 +101,8 @@ declare const fullApi: ApiFromModules<{
   speechTables: typeof speechTables;
   users: typeof users;
   vision: typeof vision;
+  voices: typeof voices;
+  voicesNode: typeof voicesNode;
 }>;
 export declare const api: FilterApi<
   typeof fullApi,

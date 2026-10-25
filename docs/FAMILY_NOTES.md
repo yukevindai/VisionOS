@@ -7,6 +7,9 @@ need them, between tasks, and the helper sees live when each note was heard.
 > blood pressure medicine." His VisionOS laptop says it between tasks, and her phone shows
 > "Heard at 2:41".
 
+Notes can be read in the helper's own voice (Family Voice, Cartesia voice clone with spoken
+consent): see [FAMILY_VOICE.md](FAMILY_VOICE.md).
+
 ## Pieces
 
 | Piece | Where | Owner |
@@ -14,6 +17,7 @@ need them, between tasks, and the helper sees live when each note was heard.
 | Notes, search, review dates, receipts | `backend/convex/notes.ts`, `noteTables.ts` | R3 |
 | Device pairing (laptop key, hash only) | `backend/convex/devices.ts`, `devicesNode.ts` | R3 |
 | Cartesia note audio (rendered once) | `backend/convex/notesAudio.ts` | R3 |
+| Family Voice: consented clone, delete, listener settings | `backend/convex/voices.ts`, `voicesNode.ts`, `apps/family-notes/src/voice.tsx` | R3 |
 | Asymmetric object matching | `backend/convex/lib/familyMatch.ts` | R3 |
 | Web page for helpers and the user | `apps/family-notes/` | R3 |
 | Laptop listener (Convex Python subscription) | `backend/r3_vision/family_notes.py` | R3 |

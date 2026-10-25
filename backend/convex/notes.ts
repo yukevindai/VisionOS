@@ -5,7 +5,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
 import { requireUser } from "./lib/auth";
 import { requireAcceptedFriendship } from "./friends";
-import { audioStatus, noteKind } from "./noteTables";
+import { audioStatus, audioVoice, noteKind } from "./noteTables";
 import { runIdValidator, runResultValidator } from "@convex-dev/action-retrier";
 import { noteLimiter, noteRetrier } from "./lib/familyComponents";
 import { resolveDevice } from "./lib/deviceKeys";
@@ -71,6 +71,26 @@ function spokenFor(note: Doc<"helperNotes">, name: string, now: number, match?: 
   return spokenText(note.kind, name, note.text, { stale, ageDays: Math.floor((now - note.createdAt) / DAY_MS), match });
 }
 
+/**
+ * The rendered WAV says exactly spokenText(kind, author, text). A device may play it only when
+ * that is what it would say now: not for a stale note ("may be out of date") or a reassurance
+ * match ("According to …"), which are spoken from text instead.
+ */
+async function deviceAudioUrl(ctx: QueryCtx, note: Doc<"helperNotes">, name: string, spoken: string) {
+  if (note.audioStatus !== "ready" || !note.audioStorageId) return null;
+  if (spoken !== spokenText(note.kind, name, note.text)) return null;
+  return ctx.storage.getUrl(note.audioStorageId);
+}
+
+/** Starts (or restarts) the durable Cartesia render of one note. Old audio is deleted first. */
+export async function startRender(ctx: MutationCtx, note: Doc<"helperNotes">) {
+  if (note.audioStorageId) await ctx.storage.delete(note.audioStorageId);
+  const runId = await noteRetrier.run(ctx, internal.notesAudio.render, { noteId: note._id },
+    { onComplete: internal.notes.renderFinished });
+  await ctx.db.patch(note._id, { audioStatus: "pending", audioStorageId: undefined, audioVoice: undefined,
+    audioError: undefined, renderRunId: runId });
+}
+
 async function ownerView(ctx: QueryCtx, note: Doc<"helperNotes">, now: number) {
   const name = await authorName(ctx, note);
   return {
@@ -84,6 +104,7 @@ async function ownerView(ctx: QueryCtx, note: Doc<"helperNotes">, now: number) {
     createdAt: note.createdAt,
     heardAt: note.heardAt ?? null,
     audioStatus: note.audioStatus,
+    audioVoice: note.audioVoice ?? null,
     audioUrl: note.audioStorageId ? await ctx.storage.getUrl(note.audioStorageId) : null,
   };
 }
@@ -112,10 +133,12 @@ async function notesForObject(ctx: QueryCtx, ownerId: Id<"users">, label: string
   }
   matched.sort((a, b) => (a.match !== b.match ? (a.match === "warning" ? -1 : 1)
     : b.note.createdAt - a.note.createdAt || b.note._creationTime - a.note._creationTime));
-  return Promise.all(matched.slice(0, SEARCH_LIMIT).map(async ({ note, match }) => ({
-    noteId: note._id, kind: note.kind, match, heard: note.heardAt !== undefined,
-    spoken: spokenFor(note, await authorName(ctx, note), now, match),
-  })));
+  return Promise.all(matched.slice(0, SEARCH_LIMIT).map(async ({ note, match }) => {
+    const name = await authorName(ctx, note);
+    const spoken = spokenFor(note, name, now, match);
+    return { noteId: note._id, kind: note.kind, match, heard: note.heardAt !== undefined, spoken,
+      audioUrl: await deviceAudioUrl(ctx, note, name, spoken) };
+  }));
 }
 
 // ---------- helper (writer) ----------
@@ -140,8 +163,7 @@ export const create = mutation({
       audioStatus: "pending", reviewAt,
     });
     // Durable, retried render (action-retrier component). onComplete runs exactly once.
-    const runId = await noteRetrier.run(ctx, internal.notesAudio.render, { noteId }, { onComplete: internal.notes.renderFinished });
-    await ctx.db.patch(noteId, { renderRunId: runId });
+    await startRender(ctx, (await ctx.db.get(noteId))!);
     await ctx.scheduler.runAt(reviewAt, internal.notes.flagForReview, { noteId });
     return noteId;
   },
@@ -159,7 +181,8 @@ export const byAuthor = query({
       .collect();
     return notes.sort((a, b) => b.createdAt - a.createdAt || b._creationTime - a._creationTime).map((n) => ({
       noteId: n._id, kind: n.kind, text: n.text, place: n.place ?? null, createdAt: n.createdAt,
-      heardAt: n.heardAt ?? null, audioStatus: n.audioStatus, needsReview: isStale(n, now), reviewAt: n.reviewAt ?? null,
+      heardAt: n.heardAt ?? null, audioStatus: n.audioStatus, audioVoice: n.audioVoice ?? null,
+      needsReview: isStale(n, now), reviewAt: n.reviewAt ?? null,
     }));
   },
 });
@@ -261,9 +284,13 @@ export const forDevice = query({
       .reverse().slice(0, DEVICE_QUEUE_LIMIT);
     return {
       deviceLabel: device.label,
-      notes: await Promise.all(unheard.map(async (n) => ({
-        noteId: n._id, kind: n.kind, createdAt: n.createdAt, spoken: spokenFor(n, await authorName(ctx, n), now),
-      }))),
+      notes: await Promise.all(unheard.map(async (n) => {
+        const name = await authorName(ctx, n);
+        const spoken = spokenFor(n, name, now);
+        // audioUrl: the note in the helper's own voice when it has one, so the laptop plays the same audio.
+        return { noteId: n._id, kind: n.kind, createdAt: n.createdAt, spoken,
+          audioUrl: await deviceAudioUrl(ctx, n, name, spoken) };
+      })),
     };
   },
 });
@@ -304,20 +331,32 @@ export const getForRender = internalQuery({
     const note = await ctx.db.get(noteId);
     if (!note) return null;
     const author = await ctx.db.get(note.authorId);
-    return { spoken: spokenText(note.kind, author?.displayName ?? "", note.text), audioStatus: note.audioStatus };
+    const prefs = await ctx.db.query("familyPrefs").withIndex("by_owner", (q) => q.eq("ownerId", note.ownerId)).unique();
+    // The helper's own voice only while it exists (consent not withdrawn) and the owner allows helper voices.
+    const voice = prefs?.helperVoices === false ? null
+      : await ctx.db.query("helperVoices").withIndex("by_user", (q) => q.eq("userId", note.authorId)).unique();
+    return { spoken: spokenText(note.kind, author?.displayName ?? "", note.text), audioStatus: note.audioStatus,
+      voiceId: voice?.cartesiaVoiceId ?? null, speed: prefs?.speed ?? null, volume: prefs?.volume ?? null };
   },
 });
 
 export const setAudio = internalMutation({
   args: { noteId: v.id("helperNotes"), status: audioStatus, storageId: v.optional(v.id("_storage")),
-    error: v.optional(v.string()) },
-  handler: async (ctx, { noteId, status, storageId, error }) => {
+    error: v.optional(v.string()), voice: v.optional(audioVoice), voiceId: v.optional(v.string()) },
+  handler: async (ctx, { noteId, status, storageId, error, voice, voiceId }) => {
     const note = await ctx.db.get(noteId);
-    if (!note) { // deleted while rendering: do not leave an orphaned blob behind
+    const drop = async () => { // never leave an orphaned blob behind
       if (storageId) await ctx.storage.delete(storageId);
       return false;
+    };
+    if (!note) return drop(); // deleted while rendering
+    if (voice === "helper") {
+      // The helper withdrew (or replaced) their voice while this rendered: a re-render is already running.
+      const row = await ctx.db.query("helperVoices").withIndex("by_user", (q) => q.eq("userId", note.authorId)).unique();
+      if (!row || row.cartesiaVoiceId !== voiceId) return drop();
     }
-    await ctx.db.patch(noteId, { audioStatus: status, audioStorageId: storageId, audioError: error });
+    if (note.audioStorageId && note.audioStorageId !== storageId) await ctx.storage.delete(note.audioStorageId);
+    await ctx.db.patch(noteId, { audioStatus: status, audioStorageId: storageId, audioError: error, audioVoice: voice });
     return true;
   },
 });

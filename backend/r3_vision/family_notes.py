@@ -40,11 +40,14 @@ START_TIMEOUT_S = 8.0     # say() accepted but audio never started (synthesis fa
 RECONNECT_S = (1, 2, 5, 10, 30)
 MAX_TEXT = 400
 TARGET_LOOKUP_WAIT_S = 1.5   # guidance waits at most this long for the object-note lookup
-TARGET_NOTES = 2             # at most this many object notes before guidance (warnings come first)
+TARGET_NOTES = 1             # object notes spoken before guidance: the most important one (warnings first)
+AUDIO_TIMEOUT_S = 4.0        # fetching a note's rendered WAV (the helper's own voice) from Convex storage
+MAX_AUDIO_BYTES = 4 * 1024 * 1024
 
 
 class FamilyNotesListener:
-    def __init__(self, client, device_key, *, say, speaking, is_idle, log=None, clock=time.monotonic, autostart=False):
+    def __init__(self, client, device_key, *, say, speaking, is_idle, log=None, clock=time.monotonic, autostart=False,
+                 prepare_audio=None, fetch_audio=None):
         if not DEVICE_KEY.match(device_key or ''):
             raise ValueError('FAMILY_NOTES_DEVICE_KEY is not a VisionOS device key')
         self.client = client
@@ -54,12 +57,18 @@ class FamilyNotesListener:
         self.is_idle = is_idle
         self.log = log or (lambda *_a, **_k: None)
         self.clock = clock
-        self.lock = threading.Lock()
+        self.lock = threading.RLock()   # re-entrant: helpers like _remember_url run with and without it held
         self.queue: OrderedDict[str, str] = OrderedDict()   # noteId -> spoken text (unheard, oldest first)
         self.extra: list[str] = []                            # object-related reminders (not tracked as unheard)
         self.current = None                                    # (kind, id_or_none, text, started_at, began_playing)
         self.paired = None
         self.target = None     # object notes spoken at lock time (see on_target_locked)
+        # Family Voice: a note's WAV rendered by Convex (often in the helper's own voice). prepare_audio hands
+        # it to the player for that exact text; without it (or if the download fails) the text is synthesized.
+        self.prepare_audio = prepare_audio
+        self.fetch_audio = fetch_audio or fetch_wav
+        self.urls: dict[str, str] = {}      # spoken text -> audio URL from Convex
+        self.audio_cache: OrderedDict[str, bytes] = OrderedDict()
         self.receipt_thread = None
         self.stopped = threading.Event()
         self.threads = []
@@ -73,7 +82,7 @@ class FamilyNotesListener:
         return bool(url and (env.get('FAMILY_NOTES_DEVICE_KEY') or '').strip())
 
     @classmethod
-    def from_env(cls, *, say, speaking, is_idle, log=None, env=os.environ, client_factory=None):
+    def from_env(cls, *, say, speaking, is_idle, log=None, env=os.environ, client_factory=None, prepare_audio=None):
         """Returns None (feature off) unless both CONVEX_URL and FAMILY_NOTES_DEVICE_KEY are set."""
         url = (env.get('FAMILY_NOTES_CONVEX_URL') or env.get('CONVEX_URL') or '').strip()
         key = (env.get('FAMILY_NOTES_DEVICE_KEY') or '').strip()
@@ -82,7 +91,8 @@ class FamilyNotesListener:
         if client_factory is None:
             from convex import ConvexClient  # pip install convex (see requirements-family-notes.txt)
             client_factory = ConvexClient
-        return cls(client_factory(url), key, say=say, speaking=speaking, is_idle=is_idle, log=log)
+        return cls(client_factory(url), key, say=say, speaking=speaking, is_idle=is_idle, log=log,
+                   prepare_audio=prepare_audio)
 
     # ----- lifecycle -----
 
@@ -116,6 +126,7 @@ class FamilyNotesListener:
                 note_id, text = str(note.get('noteId', '')), clean(note.get('spoken', ''))
                 if note_id and text:
                     fresh[note_id] = text
+                    self._remember_url(text, note.get('audioUrl'))
             added = [i for i in fresh if i not in self.queue]
             self.queue = fresh  # server is the source of truth: heard or deleted notes drop out
             if added:
@@ -143,6 +154,7 @@ class FamilyNotesListener:
                 if not text or note_id in self.queue:  # unheard notes are already queued
                     continue
                 self.extra.append(text)
+                self._remember_url(text, hit.get('audioUrl'))
         self.log('FAMILY_NOTES_FOR_TARGET', count=len(hits))
         return len(hits)
 
@@ -160,6 +172,9 @@ class FamilyNotesListener:
             hits = self._lookup(label, place)[:TARGET_NOTES]
             texts = [clean(h.get('spoken', '')) for h in hits]
             text = clean(' '.join(t for t in texts if t))
+            if len(hits) == 1:
+                self._remember_url(text, hits[0].get('audioUrl'))
+                self._prepare(text)
             with self.lock:
                 if self.target is None or self.target['token'] is not token:
                     return
@@ -221,6 +236,38 @@ class FamilyNotesListener:
             except Exception as exc:
                 self.log('FAMILY_NOTE_RECEIPT_FAILED', error=type(exc).__name__)
 
+    # ----- Family Voice audio -----
+
+    def _remember_url(self, text, url):
+        if url and isinstance(url, str) and url.startswith('https://') and text:
+            with self.lock:
+                self.urls[text] = url
+                while len(self.urls) > 50:
+                    self.urls.pop(next(iter(self.urls)))
+
+    def _prepare(self, text):
+        """Before saying `text`: download its rendered WAV (cached) and hand it to the player. Never raises."""
+        if self.prepare_audio is None:
+            return False
+        with self.lock:
+            url = self.urls.get(text)
+            audio = self.audio_cache.get(url) if url else None
+        if not url:
+            return False
+        if audio is None:
+            try:
+                audio = self.fetch_audio(url)
+            except Exception as exc:  # offline or expired URL: the text is synthesized instead
+                self.log('FAMILY_NOTE_AUDIO_FAILED', error=type(exc).__name__)
+                return False
+            with self.lock:
+                self.audio_cache[url] = audio
+                while len(self.audio_cache) > 10:
+                    self.audio_cache.popitem(last=False)
+        self.prepare_audio(text, audio)
+        self.log('FAMILY_NOTE_AUDIO_READY', bytes=len(audio))
+        return True
+
     # ----- speaking -----
 
     def tick(self):
@@ -239,6 +286,7 @@ class FamilyNotesListener:
                     item = ('note', note_id, text)
                 else:
                     return
+            self._prepare(item[2])
             if self.say(item[2], name='FAMILY_NOTE', is_current=self.is_idle):
                 with self.lock:
                     self.current = (*item, now, False)
@@ -304,11 +352,49 @@ class FamilyNotesListener:
                 return
 
 
+def fetch_wav(url, timeout=AUDIO_TIMEOUT_S):
+    """Download a note's WAV from Convex storage (a signed https URL). Raises on anything unexpected."""
+    import urllib.request
+    with urllib.request.urlopen(urllib.request.Request(url, headers={'Accept': 'audio/wav'}), timeout=timeout) as res:
+        data = res.read(MAX_AUDIO_BYTES + 1)
+    if len(data) > MAX_AUDIO_BYTES or data[:4] != b'RIFF' or data[8:12] != b'WAVE':
+        raise ValueError('not a WAV note')
+    return data
+
+
+class NoteAudio:
+    """Speech provider for the player: returns a prepared note WAV for exactly that text, else defers.
+
+    Installed in front of the player's own provider (Cartesia, or none for the Windows voice), so the
+    player keeps one audio path, Stop and priorities, and plays the helper's own voice when it has one."""
+
+    def __init__(self, inner=None):
+        self.inner = inner
+        self.lock = threading.Lock()
+        self.prepared: OrderedDict[str, bytes] = OrderedDict()
+
+    def prepare(self, text, audio):
+        with self.lock:
+            self.prepared[clean(text)] = audio
+            while len(self.prepared) > 8:
+                self.prepared.popitem(last=False)
+
+    def synthesize(self, text):
+        with self.lock:
+            audio = self.prepared.pop(clean(text), None)
+        if audio is not None:
+            return audio
+        if self.inner is None:
+            raise RuntimeError('no speech provider')  # the player falls back to the Windows voice
+        return self.inner.synthesize(text)
+
+
 def speech_adapters(player):
-    """(say, say_now) for the pipeline's player: a ClipPlayer, or PriorityAudio in --agents mode.
+    """(say, say_now, prepare_audio) for the pipeline's player: a ClipPlayer, or PriorityAudio (--agents).
 
     say follows the player's priorities (used for idle notes). say_now stops guidance cues and
-    speaks at once (used only for object notes at lock time). Both take is_current like ClipPlayer."""
+    speaks at once (used only for object notes at lock time). Both take is_current like ClipPlayer.
+    prepare_audio(text, wav) makes the next say(text) play that WAV (Family Voice)."""
     raw = player
     try:
         from .agent_audio import PriorityAudio
@@ -326,7 +412,11 @@ def speech_adapters(player):
         raw.stop()
         return raw.say(text, name=name, is_current=is_current)
 
-    return say, say_now
+    provider = getattr(raw, 'speech_provider', None)
+    if not isinstance(provider, NoteAudio):
+        provider = NoteAudio(provider)
+        raw.speech_provider = provider
+    return say, say_now, provider.prepare
 
 
 def clean(text):
