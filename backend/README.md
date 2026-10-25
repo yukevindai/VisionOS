@@ -1,5 +1,9 @@
 # VisionOS backend
 
+For the integrated iPhone-camera/laptop-audio multi-agent demo, see
+[multi-agent orchestration setup and validation](../docs/MULTI_AGENT_ORCHESTRATION.md).
+It uses direct Anthropic and Gemini APIs and the existing local tracking pipeline.
+
 This directory contains the Gemini vision service and the Convex live friend assistance backend. Each component has its own setup and validation status below.
 
 ## R3 backend: photo → Gemini Vision → ScreenModel → TargetSelection

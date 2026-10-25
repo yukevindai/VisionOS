@@ -1,4 +1,4 @@
-import {projectSnapshot, axisValue, stageStates} from './state.js';
+import {projectSnapshot, axisValue, stageStates, agentView} from './state.js';
 const $ = id => document.getElementById(id);
 const preview = new URLSearchParams(location.search).get('preview');
 const previewMode = ['active','scan','lost'].includes(preview);
@@ -14,7 +14,7 @@ function render() {
  const simulated=previewMode||s.mode==='SIMULATED';
  put('connection',previewMode?'SIMULATED DESIGN PREVIEW':online?(simulated?'SIMULATED PIPELINE':'LOCAL PIPELINE CONNECTED'):'DISCONNECTED');
  document.body.classList.toggle('is-stale',!s.fresh);
- buttons.forEach(b=>b.disabled=previewMode||!token||!online||(busy&&b.id!=='stop')||(b.id==='quick'&&!s.quickAvailable));
+ buttons.forEach(b=>b.disabled=previewMode||!token||(b.id!=='stop'&&(!online||busy))||(b.id==='quick'&&!s.quickAvailable)||(b.id==='recall'&&!s.orchestration));
  const phase=!online?'WAITING FOR CONNECTION':s.axes?'GUIDANCE AVAILABLE':s.fresh&&s.tracking==='SEARCHING'?'SCANNING SCENE':'GUIDANCE PAUSED';
  put('phase',phase);
  const instruction=s.guidance ? String(s.guidance).replaceAll('_',' ') : !online?'Ready when you are':s.tracking==='SEARCHING'?'Finding your object':!s.fresh?'Tracking paused':s.tracking==='LOCKED'?'Waiting for valid depth':'Target lost';
@@ -34,6 +34,10 @@ function render() {
  put('audio-status',`Laptop audio: ${s.audio?.enabled?'enabled':'off / unavailable'}${s.audio?.playback?` · ${s.audio.playback}`:''}`);
  put('voice-status',`Laptop microphone: ${s.voice?.status||'awaiting status'}`);
  put('reason',!s.fresh?'Current evidence unavailable. Physical directions are cleared.':s.audio?.suppressed||s.detail||'Fresh tracking and calibrated depth are required for physical guidance.');
+ const agents=agentView(s.orchestration,online);
+ put('agent-status',agents.status);put('agent-goal',agents.goal);put('agent-response',agents.response);
+ const eventText=agents.events.join('\n');
+ if($('agent-events').dataset.value!==eventText){$('agent-events').replaceChildren(...agents.events.map(text=>{const li=document.createElement('li');li.textContent=text;return li;}));$('agent-events').dataset.value=eventText;}
  const steps=stageStates(s);['scene','object','hand','depth','guidance'].forEach((key,i)=>put(`step-${key}`,steps[i]));
  put('mode-note',simulated?'SIMULATED · not a live hardware session':online?'Live pipeline · hardware telemetry unavailable':'Waiting for local tracking process');
  if(!$('diagnostics').hidden){const diagnostic={...s,frame:s.frame?'[current image omitted]':null};const formatted=JSON.stringify(diagnostic,null,2);if(formatted!==lastDiagnostics){put('diagnostic-data',formatted);lastDiagnostics=formatted;}}
@@ -57,9 +61,10 @@ async function command(action) {
  catch(e){notify(`${e.message}. Use the existing desktop controls if the bridge is unavailable.`);}
  finally{busy=false;render();}
 }
-$('controls').addEventListener('submit',e=>{e.preventDefault();if($('query').value.trim())void command('find');});
+$('controls').addEventListener('submit',e=>{e.preventDefault();if($('query').value.trim())void command('request');});
 $('stop').addEventListener('click',()=>void command('stop'));
 $('describe').addEventListener('click',()=>void command('describe'));
+$('recall').addEventListener('click',()=>void command('recall'));
 $('quick').addEventListener('click',()=>void command('quick'));
 $('setup-open').addEventListener('click',()=>$('setup').showModal());
 $('setup-close').addEventListener('click',()=>$('setup').close());

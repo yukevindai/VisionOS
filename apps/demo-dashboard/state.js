@@ -17,3 +17,18 @@ export function stageStates(s) {
   return [s.fresh ? 'Current frame' : 'Waiting', s.fresh && s.tracking === 'LOCKED' ? 'Selected' : 'Waiting',
     s.axes ? 'Tracked' : 'Not verified', s.axes ? 'Validated' : 'Unavailable', s.guidance ? 'Reported by pipeline' : 'Paused'];
 }
+
+/** Text only; model prose cannot become guidance or markup. */
+export function agentView(value, connected = true) {
+  if (!connected || !value) return {status: 'Orchestration unavailable', goal: '', response: '', events: []};
+  const clean = text => String(text ?? '').slice(0, 1000);
+  const current = value.active_agent || value.agent || 'Coordinator';
+  const state = value.status || value.state || 'idle';
+  const latency = Number.isFinite(value.latency_ms) ? ` | ${Math.round(value.latency_ms)} ms` : '';
+  return {status: `${clean(current)}: ${clean(state)}${latency}${value.error ? ` | ${clean(value.error)}` : ''}`,
+    goal: clean(value.current_goal || value.goal), response: clean(value.response || value.last_response || value.clarification),
+    events: (Array.isArray(value.events) ? value.events : []).slice(-6).map(event => {
+      const elapsed = Number.isFinite(event.latency_ms) ? ` (${Math.round(event.latency_ms)} ms)` : '';
+      return `${clean(event.agent || event.source || event.from || 'Coordinator')} -> ${clean(event.destination || event.to || event.event || event.status || event.kind)}${elapsed}${event.error ? `: ${clean(event.error)}` : ''}`;
+    })};
+}

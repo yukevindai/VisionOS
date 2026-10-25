@@ -66,6 +66,8 @@ def run(image_bytes, request, client, frame_id=None, captured_at_ms=None):
         import copy
         asker = copy.copy(client)
         asker.prompt, asker.schema = prompt(request), TARGET_SCHEMA
+        if getattr(client, 'specialist_instructions', ''):
+            asker.prompt += '\n' + client.specialist_instructions
         asker.reply_validator = valid_reply
         provider = asker.describe(image.jpeg)
     described = time.perf_counter()

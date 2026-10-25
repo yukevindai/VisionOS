@@ -490,7 +490,7 @@ class ClipPlayer:
             return 'preparing voice clips'
         return f'{self.backend} -> {self.device_name}' if not self.error else f'unavailable ({self.error})'
 
-    def say(self, text, name='SPEECH'):
+    def say(self, text, name='SPEECH', is_current=lambda: True):
         """Speak any short sentence: offline Windows voice synthesised on a background thread, then played like a clip.
 
         The camera loop never waits. A newer say() or cue replaces it, as with every other cue."""
@@ -501,8 +501,10 @@ class ClipPlayer:
         token = hashlib.sha1(text.encode('utf-8')).hexdigest()[:16]
         request = object()
         with self.wake:
-            if self.closed or getattr(self, 'muted', False) or not self.ready.is_set() or self.error:
+            if (self.closed or getattr(self, 'muted', False) or not self.ready.is_set() or self.error
+                    or getattr(self, 'synthesis_inflight', False) or not is_current()):
                 return False
+            self.synthesis_inflight = True
             self.speech_token = request
 
         def work():
@@ -521,7 +523,7 @@ class ClipPlayer:
                     times = np.arange(int(len(mono) * target / rate)) / target
                     samples, rate = np.interp(times, np.arange(len(mono)) / rate, mono).astype('float32'), target
                 with self.wake:
-                    if self.closed or getattr(self, 'muted', False) or self.speech_token is not request:
+                    if self.closed or getattr(self, 'muted', False) or self.speech_token is not request or not is_current():
                         return
                     self.clips[name] = (samples, rate)
                     if self.backend != 'sounddevice':
@@ -531,6 +533,9 @@ class ClipPlayer:
                     self.wake.notify()
             except Exception as exc:
                 self.log('PLAYBACK_FAILED', cue=name, error=f'speech synthesis {type(exc).__name__}: {exc}'[:200])
+            finally:
+                with self.wake:
+                    self.synthesis_inflight = False
         threading.Thread(target=work, daemon=True, name='r3-speech').start()
         return True
 
