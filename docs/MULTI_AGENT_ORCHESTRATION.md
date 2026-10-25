@@ -49,6 +49,22 @@ ends. Recognition accuracy and recognition-to-stop latency require hardware test
 
 ## Runtime and safety boundaries
 
+### Voice listening sessions
+
+With `--voice`, say “Thanks Vision” (or “Thank you Vision”) to stop the current
+task and speech and pause ordinary voice requests. Say “Hey Vision” to resume,
+or combine it with a request: “Hey Vision, describe surroundings.” Stop remains
+available even while paused or while VisionOS is speaking. These controls are
+local and do not call an LLM.
+
+Request listening starts active and pauses after 30 seconds without an accepted
+request. The UI reports the paused state. Pausing request handling does not turn
+off the microphone: Windows recognition continues locally to detect wake/stop
+phrases; ordinary paused transcripts are discarded rather than routed or logged.
+Close the demo or run without `--voice` to turn off its microphone recognition.
+The idle timeout only pauses new voice requests; it does not cancel active
+tracking. “Thanks Vision” explicitly cancels the current task as well.
+
 `Coordinator` owns a session ID, task ID/generation, current goal, bounded dialogue,
 target state, observation times and 64 diagnostic events. It delegates typed tools
 through the direct Anthropic Messages API. Obvious find/describe/recall commands
