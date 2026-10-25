@@ -14,13 +14,21 @@ npm run build
 npm run preview
 ```
 
-Open http://localhost:3000. Semantic HTML, native disclosure controls, and responsive CSS work without client JavaScript. The system font stack avoids third-party font requests. Appearance follows the device's light/dark preference; reduced motion and forced-colors preferences are supported.
+Open http://localhost:3000. Semantic HTML, native disclosure controls, and responsive CSS work without JavaScript. A small deferred `components.js` module progressively enhances navigation highlights and a keyboard-accessible hardware photo viewer. The system font stack avoids third-party font requests. Appearance follows the device's light/dark preference; reduced motion and forced-colors preferences are supported.
 
 ## Design direction
 
 A calm, spacious product site with a consistent blue accent, large readable typography, and real hardware photography. Inspired by the focused navigation and clear hierarchy of [DeepSeek](https://www.deepseek.com/en/), the people-first presentation of [Be My Eyes](https://www.bemyeyes.com/), and the application-focused storytelling of [Microsoft AI for Good](https://www.microsoft.com/en-us/corporate-responsibility/topics/ai-for-good-lab/). These are design references, not affiliations or endorsements.
 
 The UI/UX Pro Max minimal/Swiss direction and design-taste audit informed the redesign. Native CSS preserves the existing dependency-free stack. Controls use a 12px radius and media/panels use 24px. Motion is limited to interaction feedback; there are no automatic effects or scroll hijacking.
+
+## 21st.dev component enhancements
+
+- Magic UI Interactive Hover Button: layered fill and label transitions on the two primary CTAs.
+- Motion Primitives Animated Background: a shared highlight follows navigation hover and keyboard focus.
+- Motion Primitives Morphing Dialog pattern: all four hardware photos open in a native modal viewer with previous/next controls, arrow keys, Escape, and focus restoration.
+
+These are lightweight native adaptations of the reviewed components, not React library installations. Reduced motion disables transitions; native photo links and all original content work without JavaScript. [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) records sources, adaptation details, and the MIT licenses.
 
 ## Photos and logo
 

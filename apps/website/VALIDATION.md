@@ -19,3 +19,18 @@ Browser tooling was installed outside the repository. No runtime dependencies we
 ## Limits
 
 Automated accessibility checks do not constitute a formal audit or screen-reader usability testing. This website change does not validate the hardware, native iPhone app, cloud services, or Family Notes/Voice on live devices. Deployment and repository-wide CI results must be checked on the PR separately.
+
+## 21st.dev component enhancement (2026-10-25)
+
+Based on main `1f30dc9`; all existing photo assets and the logo remain byte-for-byte unchanged. The original copy, sections, links, and native disclosures are retained.
+
+- Build, JavaScript syntax, and diff checks passed.
+- Chromium browser assertions passed at 320, 375, 768, 1024, and 1440px in light and dark appearance; no page or modal horizontal overflow.
+- All four photo links: Enter opens the correct image, arrow keys cycle images, Escape closes, and focus returns to the opener. Close and backdrop dismissal also work; modal controls keep keyboard navigation contained.
+- Navigation highlight responds to keyboard focus; CTA hover transitions render correctly.
+- Reduced-motion preference suppresses modal entrance and navigation animation; no-JavaScript photo links open the full original image.
+- Axe found no violations on home in both themes, the open photo viewer, or the accessibility page. No JavaScript page errors were observed.
+- Desktop and mobile viewer screenshots were visually reviewed.
+- Lighthouse mobile: accessibility 100, best practices 100, SEO 100; FCP 0.8s, LCP 3.3s, CLS 0, total blocking time 0ms. Aggregate performance remains unavailable because this browser did not provide filmstrip screenshots. Lighthouse also recommends CSS minification. These are local lab results, not production guarantees.
+
+The native component adapters add approximately 5.3KB of uncompressed, deferred JavaScript and no package dependencies or runtime CDN calls. Source links and MIT notices are included in `THIRD_PARTY_NOTICES.md` and copied into the built site.

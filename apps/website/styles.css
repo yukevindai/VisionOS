@@ -178,3 +178,49 @@ summary:hover { color: var(--accent); }
   .button, .capability { border: 1px solid ButtonText; }
   a:focus-visible, summary:focus-visible { outline-color: Highlight; }
 }
+
+/* 21st.dev adaptations: Magic UI Interactive Hover Button and Motion Primitives.
+   See THIRD_PARTY_NOTICES.md. Decorative effects never carry essential content. */
+[data-animated-nav] { position: relative; isolation: isolate; }
+.site-header [data-animated-nav] > a:not(.button) { padding-inline: 10px; margin-inline: -10px; position: relative; z-index: 1; }
+.nav-highlight { position: absolute; top: 0; left: 0; pointer-events: none; background: var(--tint); border-radius: 10px; opacity: 0; transform-origin: top left; }
+.interactive-button { position: relative; isolation: isolate; overflow: hidden; }
+.interactive-button::before { content: ''; position: absolute; inset: 0; background: var(--accent-hover); border-radius: inherit; transform: translateX(105%); transition: transform .3s cubic-bezier(.22,1,.36,1); z-index: -1; }
+.button-rest, .button-hover { display: inline-flex; align-items: center; justify-content: center; gap: 24px; transition: transform .3s cubic-bezier(.22,1,.36,1), opacity .2s ease; }
+.button-hover { position: absolute; inset: 0; opacity: 0; transform: translateX(24px); }
+.interactive-button:is(:hover,:focus-visible)::before { transform: translateX(0); }
+.interactive-button:is(:hover,:focus-visible) .button-rest { transform: translateX(-24px); opacity: 0; }
+.interactive-button:is(:hover,:focus-visible) .button-hover { transform: translateX(0); opacity: 1; }
+.interactive-button:hover { background: var(--accent); }
+.photo-trigger { display: block; border-radius: var(--radius); cursor: zoom-in; overflow: hidden; }
+.photo-trigger img { transition: transform .3s ease; }
+.photo-trigger:is(:hover,:focus-visible) img { transform: scale(1.025); }
+.photo-hint { display: block; margin-top: 4px; color: var(--muted); font-size: 13px; }
+.photo-dialog { width: min(960px, calc(100% - 48px)); max-height: calc(100dvh - 48px); padding: 0; border: 1px solid var(--line); border-radius: var(--radius); background: var(--page); color: var(--ink); }
+.photo-dialog::backdrop { background: rgb(10 16 29 / .78); }
+.photo-dialog-header, .photo-dialog-footer { padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.photo-dialog-header h2 { font-size: 22px; letter-spacing: -.025em; }
+.photo-dialog button { cursor: pointer; font: inherit; font-size: 15px; line-height: 1.4; min-height: 44px; padding: 10px 16px; border: 1px solid var(--line); border-radius: var(--control-radius); background: var(--panel); color: var(--ink); }
+.photo-dialog button:is(:hover,:focus-visible) { background: var(--tint); }
+button:focus-visible { outline: 3px solid var(--accent); outline-offset: 4px; }
+.photo-dialog figure { padding-inline: 24px; }
+.photo-dialog .expanded-photo { height: min(58dvh, 620px); width: 100%; object-fit: contain; border-radius: 12px; }
+.photo-dialog figcaption { line-height: 1.5; font-size: 15px; }
+.photo-counter { font-size: 14px; color: var(--muted); }
+@media (max-width: 767px) {
+  .photo-dialog { width: calc(100% - 24px); max-height: calc(100dvh - 24px); border-radius: 16px; }
+  .photo-dialog-header, .photo-dialog-footer { padding: 12px 16px; gap: 8px; }
+  .photo-dialog figure { padding-inline: 16px; }
+  .photo-dialog .expanded-photo { height: 48dvh; }
+  .photo-dialog button { padding-inline: 12px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .photo-trigger:is(:hover,:focus-visible) img { transform: none; }
+  .interactive-button:is(:hover,:focus-visible) .button-rest { transform: none; opacity: 1; }
+  .interactive-button .button-hover { display: none; }
+}
+@media (forced-colors: active) {
+  .nav-highlight, .interactive-button::before, .button-hover { display: none; }
+  .interactive-button:is(:hover,:focus-visible) .button-rest { opacity: 1; transform: none; }
+  .photo-dialog { border: 2px solid CanvasText; }
+}
