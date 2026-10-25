@@ -2,10 +2,12 @@
 from __future__ import annotations
 
 import argparse
+import collections
 import json
 import math
 from pathlib import Path
 import queue
+import random
 import re
 import sys
 import threading
@@ -197,41 +199,68 @@ class TrackingWorker:
 
     def describe_surroundings(self):
         """User press: queue one AI scene description (budget checked on the tracking thread)."""
-        self.scene_requests.put(time.monotonic())
+        self.scene_requests.put((time.monotonic(), None))
 
-    def _start_scene(self, now):
+    def ask_question(self, question):
+        """"Hey Vision, <question>": queue one Gemini answer about the current frame (same budget as Describe)."""
+        if question and question.strip():
+            self.scene_requests.put((time.monotonic(), question.strip()))
+
+    def recent_turns(self, now=None, max_age_s=120.):
+        """Last few (question, answer) pairs of the current conversation, newest last."""
+        now = time.monotonic() if now is None else now
+        turns = getattr(self, 'conversation', None)
+        return [(q, a) for t, q, a in (turns or []) if now - t <= max_age_s]
+
+    def end_conversation(self):
+        if getattr(self, 'conversation', None) is not None:
+            self.conversation.clear()
+
+    def _start_scene(self, item):
+        now, question = item if isinstance(item, tuple) else (item, None)
+        label = 'ANSWER' if question else 'DESCRIBE'
         budget = self.session.budget
         last = budget.last
         budget.last = None  # the user's own press is answered at once; caps still apply
         allowed, reason = budget.take(now)
         if not allowed:
             budget.last = last
-            self.scene_note = f'DESCRIBE: not sent ({reason})'
+            self.scene_note = f'{label}: not sent ({reason})'
             if self.audio is not None:
                 self.audio.player.play('DESCRIBE_FAILED')
             return
-        threading.Thread(target=self._scene, daemon=True, name='r3-scene').start()
+        threading.Thread(target=self._scene, args=(question,), daemon=True, name='r3-scene').start()
 
-    def _scene(self):
-        from .scene_describe import describe
+    def _scene(self, question=None):
+        from .scene_describe import ask, describe
+        label = 'ANSWER' if question else 'DESCRIBE'
         item = self.source.snapshot()
         if item is None or not 0 <= time.monotonic() - item[1] <= .3:
-            self.scene_note = 'DESCRIBE: no fresh camera frame'
+            self.scene_note = f'{label}: no fresh camera frame'
             if self.audio is not None:
                 self.audio.player.play('DESCRIBE_FAILED')
             return
         raw, received, _ = item
         if self.audio is not None:
-            self.audio.player.play('LOOKING')
-        self.scene_note = 'DESCRIBE: looking (Gemini)...'
-        result = describe(upright(raw, self.args.rotation), self.client)
+            # A short, varied filler while Gemini thinks ("Let me see.", "One sec.") for questions.
+            self.audio.player.play(random.choice(('THINK_1', 'THINK_2', 'THINK_3')) if question else 'LOOKING')
+        self.scene_note = f'{label}: looking (Gemini)...'
+        image = upright(raw, self.args.rotation)
+        result = (ask(image, question, self.client, self.recent_turns()) if question
+                  else describe(image, self.client))
         age = time.monotonic() - received
+        if result['ok'] and question:
+            if getattr(self, 'conversation', None) is None:
+                self.conversation = collections.deque(maxlen=4)
+            self.conversation.append((time.monotonic(), question, result['answer']))
         if result['ok']:
-            self.scene_note = f"DESCRIBE ({result['ms'] / 1000:.1f}s; photo {age:.1f}s old): {result['summary']}"
+            spoken = result['answer'] if question else result['summary']
+            self.scene_note = (f"{label} ({result['ms'] / 1000:.1f}s; photo {age:.1f}s old): "
+                               + (f'"{question}" → ' if question else '') + spoken)
             if self.audio is not None:
-                self.audio.player.say(result['summary'])
+                self.audio.player.say(spoken)
         else:
-            self.scene_note = f"DESCRIBE failed: {result['error']}"
+            self.scene_note = f"{label} failed: {result['error']}"
             if self.audio is not None:
                 self.audio.player.play('DESCRIBE_FAILED')
         print(self.scene_note, flush=True)
@@ -781,6 +810,9 @@ def arguments(argv=None):
     p.add_argument('--depth-view', action=argparse.BooleanOptionalAction, default=False,
                    help='Small colour LiDAR depth map with the target box and fingertip in the panel')
     p.add_argument('--audio-device', help='Output device number or name for audio (see --audio-test); default device if omitted')
+    p.add_argument('--mic', default='auto',
+                   help='Voice microphone: auto (AirPods/headset mic when connected, else the Windows default), '
+                        'default, or a device number/name')
     p.add_argument('--voice', action=argparse.BooleanOptionalAction, default=False,
                    help='Always-listening voice commands (offline Windows speech): "find the Pepsi can", '
                         '"what\'s around me", "stop" / "be quiet", "stop tracking"')
@@ -849,7 +881,7 @@ def main(argv=None):
               flush=True)
     import tkinter as tk
     root = tk.Tk()
-    root.title('Reflex R3 live tracking')
+    root.title('VisionOS R3 live tracking')
     # Clean white theme for every default widget (the spatial panel sets its own matching colours).
     root.configure(bg='white')
     for pattern, value in (('*Background', 'white'), ('*Foreground', '#111827'), ('*Font', 'Segoe 10'),
@@ -870,8 +902,11 @@ def main(argv=None):
     tk.Entry(toolbar, textvariable=query).grid(row=0, column=0, sticky='ew', padx=(0, 8))
     status = tk.StringVar(value='Say or type what to find, then Find & Track')
     # One fixed line (no wrapping), so the video area never jumps in size.
-    status_label = tk.Label(root, textvariable=status, anchor='w', font=('Segoe UI', 13, 'bold'))
-    status_label.grid(row=1, column=0, sticky='ew', padx=10)
+    info = tk.Frame(root)  # status line, then (with -Voice) what was heard, both above the video
+    info.grid(row=1, column=0, sticky='ew', padx=10)
+    info.columnconfigure(0, weight=1)
+    status_label = tk.Label(info, textvariable=status, anchor='w', font=('Segoe UI', 13, 'bold'))
+    status_label.grid(row=0, column=0, sticky='ew')
     mode = tk.StringVar(value='SIMULATED' if args.replay else 'REAL_API on demand; no movement outputs')
     mode_label = tk.Label(root, textvariable=mode, anchor='w', fg='#6b7280')
     mode_label.grid(row=2, column=0, sticky='ew', padx=10)
@@ -891,8 +926,9 @@ def main(argv=None):
     if getattr(args, 'voice', False):
         # Everything the microphone hears, newest first; commands show what they triggered.
         heard.set('YOU SAID: (listening...)')
-        tk.Label(root, textvariable=heard, anchor='w', justify='left', font=('Segoe UI', 14, 'bold'),
-                 fg='#1d4ed8', wraplength=window_width - 560).grid(row=4, column=0, sticky='ew', padx=12, pady=(0, 8))
+        # One fixed line under the status, always visible and never resizing the video.
+        tk.Label(info, textvariable=heard, anchor='w', font=('Segoe UI', 13, 'bold'), fg='#1d4ed8').grid(
+            row=1, column=0, sticky='ew', pady=(2, 0))
     # Image dimensions must never enlarge the window or push controls off-screen.
     viewport.grid_propagate(False)
     viewport.pack_propagate(False)
@@ -925,6 +961,10 @@ def main(argv=None):
 
     def find():
         nonlocal ticket, last
+        typed = re.match(r"\s*(hey|hi|ok|okay)\s+vision[\s,.:!-]*(.*)", query.get(), re.I)
+        if typed and typed.group(2).strip():
+            worker.ask_question(typed.group(2))  # typed "Hey Vision, ..." works like the spoken one
+            return
         if re.search(r"\b(describe|what'?s around|what is around|around me|surroundings)\b", query.get().lower()):
             worker.describe_surroundings()
             return
@@ -954,7 +994,16 @@ def main(argv=None):
         player = worker.audio.player if worker.audio is not None else None
         voice = VoiceCommands(Path(__file__).resolve().parents[1] / '.runtime/voice',
                               speaking=(lambda: player.speaking()) if player is not None else (lambda: False),
-                              log=lambda event, **fields: print('VOICE', event, json.dumps(fields), flush=True))
+                              log=lambda event, **fields: print('VOICE', event, json.dumps(fields), flush=True),
+                              mic=getattr(args, 'mic', 'auto'))
+        if voice.mic is not None and player is not None and getattr(args, 'audio_device', None) is None:
+            # Using a headset's hands-free mic puts it in call mode: speak on that headset's hands-free output too.
+            import sounddevice as sd
+            from .audio_guidance import matching_output
+            output = matching_output(sd, voice.mic)
+            if output is not None:
+                threading.Thread(target=player.switch_output, args=(output,), daemon=True,
+                                 name='r3-audio-switch').start()
 
     def voice_command(command, argument):
         from .demo_objects import OBJECTS
@@ -973,6 +1022,19 @@ def main(argv=None):
             find()
         elif command == 'describe':
             worker.describe_surroundings()
+        elif command == 'wake':
+            if player is not None:
+                # Varied, casual acknowledgement, said only if no question follows within 0.9 s (so "Hey Vision,
+                # what's that?" in one breath isn't interrupted). The next sentence is the question.
+                woke = time.monotonic()
+                root.after(900, lambda: None if voice.last_ask_at >= woke
+                           else player.play(random.choice(('WAKE_1', 'WAKE_2', 'WAKE_3', 'WAKE_4'))))
+        elif command == 'ask':
+            worker.ask_question(argument)
+        elif command == 'end':
+            worker.end_conversation()
+            if player is not None:
+                player.play(random.choice(('BYE_1', 'BYE_2', 'BYE_3')))
         elif command == 'stop_tracking':
             stop()
 
@@ -981,11 +1043,15 @@ def main(argv=None):
         while voice is not None and not voice.commands.empty():
             command, argument, _ = voice.commands.get_nowait()
             voice_command(command, argument)
+        if (voice is not None and voice.in_conversation and worker.audio is not None
+                and worker.audio.player.speaking()):
+            voice.keep_listening(time.monotonic())  # follow-ups stay open while Vision is answering
         if voice is not None and voice.transcript:
-            names = {'find': 'FIND', 'describe': 'DESCRIBE', 'quiet': 'QUIET', 'stop_tracking': 'STOP TRACKING'}
+            names = {'find': 'FIND', 'describe': 'DESCRIBE', 'quiet': 'QUIET', 'stop_tracking': 'STOP TRACKING',
+                     'wake': 'LISTENING', 'ask': 'ASKING VISION', 'end': 'BYE'}
             lines = [f'"{item["text"]}"' + (f'  →  {names[item["command"]]}' if item['command'] else '')
                      for item in list(voice.transcript)[::-1][:3]]
-            heard.set('YOU SAID: ' + lines[0] + ('\nearlier: ' + '   |   '.join(lines[1:]) if lines[1:] else ''))
+            heard.set('YOU SAID: ' + lines[0] + ('      earlier: ' + '  |  '.join(lines[1:]) if lines[1:] else ''))
         item = worker.output
         if item and item[0] == ticket:
             _, image, received, state, detail, source_mode, requests = item[:7]

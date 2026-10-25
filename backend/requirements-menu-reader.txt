@@ -1,0 +1,4 @@
+# Isolated saved-photo prototype. No change to live tracking/model dependencies.
+Pillow>=11,<13
+# Optional resource measurements in the OCR benchmark; extraction works without it.
+psutil>=5,<8

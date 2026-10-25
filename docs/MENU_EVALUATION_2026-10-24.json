@@ -1,0 +1,312 @@
+{
+  "evaluation": "CONTROLLED_SYNTHETIC_IMAGES_WITH_REAL_WINDOWS_OCR_NOT_LIVE",
+  "cases": [
+    {
+      "name": "printed_menu",
+      "provenance": "SIMULATED_ARTWORK_REAL_OCR",
+      "characterErrorRate": 0.0,
+      "tokenPrecision": 1.0,
+      "tokenRecall": 1.0,
+      "correctNamePricePairs": 3,
+      "expectedNamePricePairs": 3,
+      "missingPairs": [],
+      "unexpectedPairs": [],
+      "correctSectionGroups": 3,
+      "firstReadableMs": 941.53,
+      "structuredMs": 942.75,
+      "engineMs": 29.8,
+      "peakChildRssMB": 108.16,
+      "childCpuSeconds": 0.844,
+      "warnings": [
+        "Only visible text was scanned; completeness of the menu/pages is unverified.",
+        "OCR confidence is not provided by this engine; recognized text/prices require review."
+      ]
+    },
+    {
+      "name": "multi_column",
+      "provenance": "SIMULATED_ARTWORK_REAL_OCR",
+      "characterErrorRate": 0.0,
+      "tokenPrecision": 1.0,
+      "tokenRecall": 1.0,
+      "correctNamePricePairs": 5,
+      "expectedNamePricePairs": 5,
+      "missingPairs": [],
+      "unexpectedPairs": [],
+      "correctSectionGroups": 5,
+      "firstReadableMs": 513.03,
+      "structuredMs": 514.24,
+      "engineMs": 27.82,
+      "peakChildRssMB": 110.05,
+      "childCpuSeconds": 0.547,
+      "warnings": [
+        "Only visible text was scanned; completeness of the menu/pages is unverified.",
+        "OCR confidence is not provided by this engine; recognized text/prices require review."
+      ]
+    },
+    {
+      "name": "kiosk",
+      "provenance": "SIMULATED_ARTWORK_REAL_OCR",
+      "characterErrorRate": 0.0,
+      "tokenPrecision": 1.0,
+      "tokenRecall": 1.0,
+      "correctNamePricePairs": 2,
+      "expectedNamePricePairs": 2,
+      "missingPairs": [],
+      "unexpectedPairs": [],
+      "correctSectionGroups": 2,
+      "firstReadableMs": 516.43,
+      "structuredMs": 517.13,
+      "engineMs": 32.65,
+      "peakChildRssMB": 107.38,
+      "childCpuSeconds": 0.516,
+      "warnings": [
+        "Only visible text was scanned; completeness of the menu/pages is unverified.",
+        "OCR confidence is not provided by this engine; recognized text/prices require review."
+      ]
+    },
+    {
+      "name": "elevator",
+      "provenance": "SIMULATED_ARTWORK_REAL_OCR",
+      "characterErrorRate": 0.0,
+      "tokenPrecision": 1.0,
+      "tokenRecall": 1.0,
+      "correctNamePricePairs": 0,
+      "expectedNamePricePairs": 0,
+      "missingPairs": [],
+      "unexpectedPairs": [],
+      "correctSectionGroups": 0,
+      "firstReadableMs": 520.26,
+      "structuredMs": 521.99,
+      "engineMs": 14.5,
+      "peakChildRssMB": 106.81,
+      "childCpuSeconds": 0.516,
+      "warnings": [
+        "Only visible text was scanned; completeness of the menu/pages is unverified.",
+        "OCR confidence is not provided by this engine; recognized text/prices require review."
+      ]
+    },
+    {
+      "name": "small_text",
+      "provenance": "SIMULATED_ARTWORK_REAL_OCR",
+      "characterErrorRate": 0.3695,
+      "tokenPrecision": 0.7273,
+      "tokenRecall": 0.5333,
+      "correctNamePricePairs": 3,
+      "expectedNamePricePairs": 3,
+      "missingPairs": [],
+      "unexpectedPairs": [],
+      "correctSectionGroups": 3,
+      "firstReadableMs": 505.32,
+      "structuredMs": 507.96,
+      "engineMs": 18.38,
+      "peakChildRssMB": 107.78,
+      "childCpuSeconds": 0.422,
+      "warnings": [
+        "Only visible text was scanned; completeness of the menu/pages is unverified.",
+        "Small text: closer/higher-resolution capture recommended.",
+        "OCR confidence is not provided by this engine; recognized text/prices require review."
+      ]
+    },
+    {
+      "name": "incomplete",
+      "provenance": "SIMULATED_ARTWORK_REAL_OCR",
+      "characterErrorRate": 0.0,
+      "tokenPrecision": 1.0,
+      "tokenRecall": 1.0,
+      "correctNamePricePairs": 2,
+      "expectedNamePricePairs": 2,
+      "missingPairs": [],
+      "unexpectedPairs": [],
+      "correctSectionGroups": 2,
+      "firstReadableMs": 492.62,
+      "structuredMs": 494.28,
+      "engineMs": 13.15,
+      "peakChildRssMB": 106.88,
+      "childCpuSeconds": 0.484,
+      "warnings": [
+        "Only visible text was scanned; completeness of the menu/pages is unverified.",
+        "Capture was explicitly marked partial.",
+        "Text touches an image edge; content may be clipped.",
+        "OCR confidence is not provided by this engine; recognized text/prices require review."
+      ]
+    },
+    {
+      "name": "similar_names",
+      "provenance": "SIMULATED_ARTWORK_REAL_OCR",
+      "characterErrorRate": 0.0,
+      "tokenPrecision": 1.0,
+      "tokenRecall": 1.0,
+      "correctNamePricePairs": 2,
+      "expectedNamePricePairs": 2,
+      "missingPairs": [],
+      "unexpectedPairs": [],
+      "correctSectionGroups": 2,
+      "firstReadableMs": 477.77,
+      "structuredMs": 479.8,
+      "engineMs": 15.35,
+      "peakChildRssMB": 105.94,
+      "childCpuSeconds": 0.406,
+      "warnings": [
+        "Only visible text was scanned; completeness of the menu/pages is unverified.",
+        "OCR confidence is not provided by this engine; recognized text/prices require review."
+      ]
+    }
+  ],
+  "qa": [
+    {
+      "question": "What sections are there?",
+      "answer": {
+        "text": "Recognized sections: MAINS, DRINKS. Would you like all captured text or a section?",
+        "status": "GROUNDED",
+        "sourceIds": []
+      },
+      "correct": true,
+      "elapsedMs": 0.029
+    },
+    {
+      "question": "What mains do they have?",
+      "answer": {
+        "text": "Garden Pasta $12.50; Peanut Noodles $11.00",
+        "status": "OCR_UNVERIFIED",
+        "sourceIds": [
+          "2ce4ffbbbc5c1149-w4",
+          "2ce4ffbbbc5c1149-w5",
+          "2ce4ffbbbc5c1149-w27",
+          "2ce4ffbbbc5c1149-w6",
+          "2ce4ffbbbc5c1149-w7",
+          "2ce4ffbbbc5c1149-w8",
+          "2ce4ffbbbc5c1149-w9",
+          "2ce4ffbbbc5c1149-w10",
+          "2ce4ffbbbc5c1149-w11",
+          "2ce4ffbbbc5c1149-w12",
+          "2ce4ffbbbc5c1149-w13",
+          "2ce4ffbbbc5c1149-w28",
+          "2ce4ffbbbc5c1149-w14",
+          "2ce4ffbbbc5c1149-w15",
+          "2ce4ffbbbc5c1149-w16",
+          "2ce4ffbbbc5c1149-w17",
+          "2ce4ffbbbc5c1149-w18",
+          "2ce4ffbbbc5c1149-w19",
+          "2ce4ffbbbc5c1149-w20"
+        ]
+      },
+      "correct": true,
+      "elapsedMs": 0.943
+    },
+    {
+      "question": "What is the cheapest one?",
+      "answer": {
+        "text": "The lowest OCR-read candidate, not a verified cheapest choice, is Peanut Noodles at $11.00. Other items/pages may be missing; verify the recognized price.",
+        "status": "PROVISIONAL",
+        "sourceIds": [
+          "2ce4ffbbbc5c1149-w12",
+          "2ce4ffbbbc5c1149-w13",
+          "2ce4ffbbbc5c1149-w28",
+          "2ce4ffbbbc5c1149-w14",
+          "2ce4ffbbbc5c1149-w15",
+          "2ce4ffbbbc5c1149-w16",
+          "2ce4ffbbbc5c1149-w17",
+          "2ce4ffbbbc5c1149-w18",
+          "2ce4ffbbbc5c1149-w19",
+          "2ce4ffbbbc5c1149-w20"
+        ]
+      },
+      "correct": true,
+      "elapsedMs": 0.123
+    },
+    {
+      "question": "Does Garden Pasta contain peanuts?",
+      "answer": {
+        "text": "The captured menu text does not confirm that information for Garden Pasta. Ask staff about ingredients, allergens and cross-contact.",
+        "status": "ABSTAIN",
+        "sourceIds": [
+          "2ce4ffbbbc5c1149-w4",
+          "2ce4ffbbbc5c1149-w5",
+          "2ce4ffbbbc5c1149-w27",
+          "2ce4ffbbbc5c1149-w6",
+          "2ce4ffbbbc5c1149-w7",
+          "2ce4ffbbbc5c1149-w8",
+          "2ce4ffbbbc5c1149-w9",
+          "2ce4ffbbbc5c1149-w10",
+          "2ce4ffbbbc5c1149-w11"
+        ]
+      },
+      "correct": true,
+      "elapsedMs": 0.216
+    },
+    {
+      "question": "Does Peanut Noodles contain peanuts?",
+      "answer": {
+        "text": "The captured text for Peanut Noodles says: Rice noodles with peanut sauce. Contains peanuts. This does not confirm current preparation or cross-contact; ask staff.",
+        "status": "PRINTED_INFORMATION_ONLY",
+        "sourceIds": [
+          "2ce4ffbbbc5c1149-w14",
+          "2ce4ffbbbc5c1149-w15",
+          "2ce4ffbbbc5c1149-w16",
+          "2ce4ffbbbc5c1149-w17",
+          "2ce4ffbbbc5c1149-w18",
+          "2ce4ffbbbc5c1149-w19",
+          "2ce4ffbbbc5c1149-w20"
+        ]
+      },
+      "correct": true,
+      "elapsedMs": 0.083
+    },
+    {
+      "question": "Help me communicate with the cashier",
+      "answer": {
+        "text": "Draft only: I would like Peanut Noodles. Confirm before speaking it to staff.",
+        "status": "DRAFT",
+        "sourceIds": [
+          "2ce4ffbbbc5c1149-w12",
+          "2ce4ffbbbc5c1149-w13",
+          "2ce4ffbbbc5c1149-w28",
+          "2ce4ffbbbc5c1149-w14",
+          "2ce4ffbbbc5c1149-w15",
+          "2ce4ffbbbc5c1149-w16",
+          "2ce4ffbbbc5c1149-w17",
+          "2ce4ffbbbc5c1149-w18",
+          "2ce4ffbbbc5c1149-w19",
+          "2ce4ffbbbc5c1149-w20"
+        ],
+        "requiresConfirmation": true,
+        "action": "NO_AUDIO_OR_ORDER_PLACED"
+      },
+      "correct": true,
+      "elapsedMs": 0.056
+    },
+    {
+      "question": "Read everything",
+      "answer": {
+        "text": "This is the visible captured text; the complete menu has not been confirmed.\nSIMULATED CAFE MENU\nMAINS\nGarden Pasta. $12.50. Tomato, basil and cheese. Contains milk.\nPeanut Noodles. $11.00. Rice noodles with peanut sauce. Contains peanuts.\nDRINKS\nIced Tea. $3.00. Unsweetened black tea.",
+        "status": "CAPTURED_TEXT_ONLY",
+        "sourceIds": []
+      },
+      "correct": true,
+      "elapsedMs": 0.078
+    }
+  ],
+  "qaCorrect": 7,
+  "qaTotal": 7,
+  "notes": [
+    "Single run per case; not a statistical p95 or real-menu field validation.",
+    "Character error normalizes case/whitespace; pairing and grouping require exact expected names/prices.",
+    "Unexpected pairs are parser/OCR mistakes, not proof of generative hallucination.",
+    "PowerShell child RSS/CPU are sampled; do not represent total system memory or battery.",
+    "First readable result is the completed OCR call; this engine does not stream individual lines."
+  ],
+  "environment": {
+    "python": "3.14.2",
+    "pillow": "12.3.0",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "processor": "Intel64 Family 6 Model 186 Stepping 3, GenuineIntel"
+  },
+  "validation": {
+    "focusedUnitTestsPassed": 19,
+    "interactiveReplaySmoke": "passed",
+    "powerShellLauncherActualOCRSmoke": "passed",
+    "swiftProof": "uncompiled/unwired",
+    "paddleBenchmark": "not installed/not run",
+    "geminiMatchedComparison": "not run: required key/model unavailable; no request made"
+  }
+}

@@ -32,5 +32,16 @@ class HeadsetOutputTests(unittest.TestCase):
         self.assertIsNone(headset_output(broken))
 
 
+class MatchingOutputTests(unittest.TestCase):
+    def test_hands_free_mic_speaks_on_the_same_headsets_hands_free_output(self):
+        from r3_vision.audio_guidance import matching_output
+        hf = '@System32\\drivers\\bthhfenum.sys,#2;%1 Hands-Free%0\r\n;(Tony’s AirPods)'
+        devices = [dev('Microphone Array (Intel)', 2, 0), dev('Headphones (Tony’s AirPods)', 0, 2),
+                   dev(f'Headset ({hf})', 1, 0, host=3), dev(f'Output 1 ({hf})', 0, 1, host=3),
+                   dev(f'Output 2 ({hf})', 0, 8, host=3), dev('Output 1 (Hands-Free (Other Buds))', 0, 1, host=3)]
+        self.assertEqual(matching_output(sd(devices, 0, 1), 2), 3)  # same owner and host, plain output
+        self.assertIsNone(matching_output(sd(devices, 0, 1), 0))  # laptop mic: keep the default output
+
+
 if __name__ == '__main__':
     unittest.main()

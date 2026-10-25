@@ -46,5 +46,25 @@ class SceneTests(unittest.TestCase):
         self.assertEqual(incomplete['error'], 'MALFORMED_RESPONSE')
 
 
+class AskTests(unittest.TestCase):
+    def test_friendly_answer_uses_recent_turns_and_current_photo(self):
+        c = client({'answer': "It's a red Coca-Cola can, just to your left.", 'quality': 'clear'})
+        out = scene_describe.ask(Image.new('RGB', (64, 48)), 'and what colour is it?', c,
+                                 [('what is on my left', 'A can, on your left.')])
+        self.assertEqual(out['answer'], "It's a red Coca-Cola can, just to your left.")
+        prompt = c.sent[0]['contents'][0]['parts'][0]['text']
+        self.assertIn('You are Vision', prompt)
+        self.assertIn('what is on my left', prompt)
+        self.assertIn('always answer from THIS photo', prompt)
+        self.assertIn('Never give hand-movement directions', prompt)
+
+    def test_dark_view_is_mentioned_and_empty_answer_is_honest(self):
+        dark = scene_describe.ask(Image.new('RGB', (64, 48)), 'what is that',
+                                  client({'answer': 'Possibly a bottle.', 'quality': 'dark'}))
+        self.assertEqual(dark['answer'], "It's a bit dark right now. Possibly a bottle.")
+        empty = scene_describe.ask(Image.new('RGB', (64, 48)), 'what is that', client({'answer': '', 'quality': 'clear'}))
+        self.assertEqual(empty['answer'], "Hmm, I can't quite tell from here.")
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -33,7 +33,11 @@ SUMMARY_NAMES = {'pepsi': 'Pepsi can', 'redbull': 'Red Bull can', 'coke': 'Coca-
 SUMMARY_PHRASES = dict({f'SEE_{k}_{p}': f'{name}, {p}.' for k, name in SUMMARY_NAMES.items()
                         for p in ('left', 'center', 'right')},
                        **{f'FINDING_{k}': f'Finding the {name.lower()}.' for k, name in SUMMARY_NAMES.items()},
-                       SEE_NOTHING='I do not recognize any demo object here.', LOOKING='Looking.',
+                       SEE_NOTHING='I do not recognize any demo object here.', LOOKING='Looking.', LISTENING='Yes?',
+                       # Conversation: varied, casual replies so "Hey Vision" sounds like talking to a friend.
+                       WAKE_1='Yeah?', WAKE_2="What's up?", WAKE_3="I'm here.", WAKE_4='Mm-hmm, what do you need?',
+                       THINK_1='Let me see.', THINK_2='One sec.', THINK_3='Hmm, let me look.',
+                       BYE_1='Anytime!', BYE_2='You got it.', BYE_3='Happy to help.',
                        DESCRIBE_FAILED='Sorry, I could not describe the view.')
 
 
@@ -276,14 +280,27 @@ def trim_silence(path, threshold=400, keep_s=.02):
         target.writeframes(trimmed.tobytes())
 
 
-def make_clips(folder=CLIPS, rate=3, phrases=None):
-    """Offline Windows SAPI voice, generated once; returns the clip folder."""
+def make_clips(folder=CLIPS, rate=3, phrases=None, voice=None, log=None):
+    """Clips generated once and cached: Cartesia voice when `voice` (cartesia_voice.config()) is given, offline Windows
+    SAPI voice otherwise and for any phrase Cartesia could not produce. Returns the clip folder."""
     if sys.platform != 'win32':
         raise RuntimeError('audio clips need Windows')
     phrases = PHRASES if phrases is None else phrases
     folder = Path(folder)
     folder.mkdir(parents=True, exist_ok=True)
     missing = [name for name in phrases if not (folder / f'{name}.wav').exists()]
+    if voice is not None and missing:
+        from . import cartesia_voice
+        fallback = []
+        for name in missing:
+            try:
+                (folder / f'{name}.wav').write_bytes(cartesia_voice.synthesize(phrases[name], voice))
+                trim_silence(folder / f'{name}.wav')
+            except Exception as exc:
+                fallback.append(name)
+                if log is not None:
+                    log('VOICE_FALLBACK', cue=name, error=f'{type(exc).__name__}: {exc}'[:120])
+        missing = fallback
     for start in range(0, len(missing), 50):  # batches keep the command line under the Windows limit
         lines = ['Add-Type -AssemblyName System.Speech',
                  '$s = New-Object System.Speech.Synthesis.SpeechSynthesizer', f'$s.Rate = {int(rate)}']
@@ -297,6 +314,27 @@ def make_clips(folder=CLIPS, rate=3, phrases=None):
         for name in missing[start:start + 50]:
             trim_silence(folder / f'{name}.wav')
     return folder
+
+
+def matching_output(sd, mic_index):
+    """Output index on the same Bluetooth headset as microphone `mic_index` when that mic is a hands-free path.
+
+    Recording from a headset's hands-free microphone puts it in call mode, where its normal stereo "Headphones"
+    output can go silent; Vision must then speak on the same headset's hands-free output (same host API and owner).
+    """
+    try:
+        devices = sd.query_devices()
+        mic = devices[mic_index]
+    except Exception:
+        return None
+    if not re.search(r'hands-free|bthhfenum', mic['name'], re.I):
+        return None
+    owner = re.findall(r'\(([^()@]+)\)', mic['name'].replace('\r', ' ').replace('\n', ' '))
+    owner = owner[-1].strip().lower() if owner else ''
+    found = [(d['max_output_channels'], i) for i, d in enumerate(devices)
+             if d['max_output_channels'] > 0 and d['hostapi'] == mic['hostapi'] and owner and owner in d['name'].lower()
+             and re.search(r'hands-free|bthhfenum', d['name'], re.I)]
+    return min(found)[1] if found else None  # the plain (fewest-channel) hands-free output
 
 
 def headset_output(sd):
@@ -335,9 +373,19 @@ class ClipPlayer:
     winsound on the Windows default device. play() only hands over the latest cue; a newer cue or stop() interrupts.
     """
 
-    def __init__(self, folder=CLIPS, device=None, backend='auto', log=None, numeric=False):
+    def __init__(self, folder=CLIPS, device=None, backend='auto', log=None, numeric=False, voice_engine='auto',
+                 extra=None):
         self.folder, self.device = Path(folder), device
-        self.phrases = dict(PHRASES, **SUMMARY_PHRASES, **(CM_PHRASES if numeric else {}))
+        # Cartesia voice when its key, voice ID and model are configured (and not forced to 'windows').
+        self.voice = None
+        if voice_engine != 'windows':
+            from . import cartesia_voice
+            self.voice = cartesia_voice.config()
+            if self.voice is not None and self.folder == CLIPS:
+                self.folder = CLIPS.parent / f'audio-clips-{cartesia_voice.cache_name(self.voice)}'
+        self.voice_name = 'Cartesia' if self.voice is not None else 'Windows'
+        # All ~350 centimetre phrases only for calibrated guidance (numeric); `extra` adds a few specific ones.
+        self.phrases = dict(PHRASES, **SUMMARY_PHRASES, **(CM_PHRASES if numeric else {}), **(extra or {}))
         self.log = log or (lambda event, **fields: None)
         self.backend = backend
         self.clips = {}
@@ -356,7 +404,7 @@ class ClipPlayer:
     def _prepare(self):
         import wave
         import numpy as np
-        make_clips(self.folder, phrases=self.phrases)
+        make_clips(self.folder, phrases=self.phrases, voice=self.voice, log=self.log)
         for name in self.phrases:
             with wave.open(str(self.folder / f'{name}.wav'), 'rb') as clip:
                 rate, channels = clip.getframerate(), clip.getnchannels()
@@ -387,10 +435,42 @@ class ClipPlayer:
         import winsound  # noqa: F401
         self.backend, self.device_name = 'winsound', 'Windows default output'
 
+    def switch_output(self, device):
+        """Move playback to another output (e.g. the headset's hands-free output while its mic is in use)."""
+        import numpy as np
+        self.ready.wait(300)
+        if self.backend != 'sounddevice' or device is None or self.error:
+            return False
+        try:
+            info = self.sd.query_devices(device, 'output')
+            rate = int(info['default_samplerate'])
+            new = self.sd.OutputStream(samplerate=rate, channels=1, dtype='float32', blocksize=int(rate * .01),
+                                       device=device, callback=self._callback)
+        except Exception as exc:
+            self.log('PLAYBACK_FAILED', stage='switch output', error=f'{type(exc).__name__}: {exc}'[:160])
+            return False
+        with self.buffer_lock:
+            self.buffer = None
+            for name, (samples, clip_rate) in list(self.clips.items()):
+                mono = samples if samples.ndim == 1 else samples.mean(axis=1)
+                times = np.arange(int(len(mono) * rate / clip_rate)) / rate
+                self.clips[name] = (np.interp(times, np.arange(len(mono)) / clip_rate, mono).astype('float32'), rate)
+        old, self.stream = self.stream, new
+        new.start()
+        try:
+            old.stop()
+            old.close()
+        except Exception:
+            pass
+        self.device_name = info['name']
+        self.log('AUDIO_OUTPUT_SWITCHED', device=self.device_name)
+        return True
+
     def _run(self):
         try:
             self._prepare()
-            self.log('AUDIO_INITIALIZED', backend=self.backend, device=self.device_name, clips=len(self.clips))
+            self.log('AUDIO_INITIALIZED', backend=self.backend, device=self.device_name, clips=len(self.clips),
+                     voice=self.voice_name)
         except Exception as exc:
             self.error = f'{type(exc).__name__}: {exc}'[:200]
             self.log('PLAYBACK_FAILED', stage='initialization', error=self.error)
@@ -499,7 +579,7 @@ class ClipPlayer:
                 import wave
                 import numpy as np
                 folder = self.folder / 'speech'
-                make_clips(folder, phrases={token: text})
+                make_clips(folder, phrases={token: text}, voice=self.voice, log=self.log)
                 with wave.open(str(folder / f'{token}.wav'), 'rb') as clip:
                     rate, channels = clip.getframerate(), clip.getnchannels()
                     samples = np.frombuffer(clip.readframes(clip.getnframes()), '<i2').astype('float32')
@@ -576,8 +656,11 @@ def audio_test(device=None, backend='auto'):
                 print(f"  output {index}: {info['name']}{'   <- default' if index == default_out else ''}")
     except Exception as exc:
         print('  sounddevice unavailable:', type(exc).__name__)
-    player = ClipPlayer(device=device, backend=backend, log=log, numeric=True)
-    player.ready.wait(300)  # the first run generates the centimetre clips once (about a minute)
+    samples = {name: CM_PHRASES[name] for name in ('LEFT_8', 'UP_3', 'FORWARD_12')}
+    # Only the clips this test plays: the full centimetre set is made only for calibrated guidance.
+    player = ClipPlayer(device=device, backend=backend, log=log, extra=samples)
+    player.ready.wait(300)
+    print('VOICE:', player.voice_name, flush=True)
     for cue, pause in (('LEFT', 1.), ('RIGHT', 1.), ('UP', 1.), ('DOWN', 1.), ('LEFT_8', 2.), ('UP_3', 2.),
                        ('FORWARD_12', 2.2), ('GRAB', 1.2), ('TRACKING_LOST', 1.2)):
         player.play(cue)
