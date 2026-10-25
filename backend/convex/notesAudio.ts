@@ -20,8 +20,9 @@ export function isRetryable(errorCode: string, httpStatus?: number): boolean {
 
 export const render = internalAction({
   args: { noteId: v.id("helperNotes") },
-  handler: async (ctx, { noteId }) => {
-    const note = await ctx.runQuery(internal.notes.getForRender, { noteId });
+  handler: async (ctx, { noteId }): Promise<string> => {
+    const note: { spoken: string; audioStatus: string; voiceId: string | null; speed: number | null;
+      volume: number | null } | null = await ctx.runQuery(internal.notes.getForRender, { noteId });
     if (!note || note.audioStatus === "ready") return "SKIPPED";
 
     const config = readCartesiaConfig(process.env);
@@ -30,11 +31,22 @@ export const render = internalAction({
       return "SPEECH_NOT_CONFIGURED";
     }
 
-    const result = await synthesizeSpeech({ requestId: `note-${noteId}`, text: note.spoken });
+    const generation = { ...(note.speed !== null ? { speed: note.speed } : {}),
+      ...(note.volume !== null ? { volume: note.volume } : {}) };
+    let voice: "helper" | "default" = note.voiceId ? "helper" : "default";
+    let result = await synthesizeSpeech({ requestId: `note-${noteId}`, text: note.spoken, ...generation,
+      ...(note.voiceId ? { voiceId: note.voiceId } : {}) });
+    if (!result.ok && note.voiceId && result.errorCode === "PROVIDER_ERROR" && result.httpStatus !== undefined &&
+        result.httpStatus >= 400 && result.httpStatus < 500 && result.httpStatus !== 429) {
+      // The helper's voice was rejected (for example deleted at Cartesia): the note still gets audio.
+      voice = "default";
+      result = await synthesizeSpeech({ requestId: `note-${noteId}`, text: note.spoken, ...generation });
+    }
     if (result.ok && result.mode === "REAL_API") {
       const storageId = await ctx.storage.store(new Blob([Buffer.from(result.audioBase64, "base64")], { type: "audio/wav" }));
-      await ctx.runMutation(internal.notes.setAudio, { noteId, status: "ready", storageId });
-      return "READY";
+      await ctx.runMutation(internal.notes.setAudio, { noteId, status: "ready", storageId, voice,
+        ...(voice === "helper" && note.voiceId ? { voiceId: note.voiceId } : {}) });
+      return voice === "helper" ? "READY_HELPER_VOICE" : "READY";
     }
     if (!result.ok && isRetryable(result.errorCode, result.httpStatus)) {
       throw new Error(`Cartesia temporary failure: ${result.errorCode}${result.httpStatus ? ` ${result.httpStatus}` : ""}`);

@@ -4,6 +4,8 @@ import { v } from "convex/values";
 /** Family notes: an accepted helper leaves a short note for the owner; the owner hears it later. */
 export const noteKind = v.union(v.literal("info"), v.literal("warning"));
 export const audioStatus = v.union(v.literal("pending"), v.literal("ready"), v.literal("failed"));
+/** Which voice a note's audio was rendered in: the helper's own (cloned, consented) or the default. */
+export const audioVoice = v.union(v.literal("helper"), v.literal("default"));
 
 export const noteTables = {
   helperNotes: defineTable({
@@ -17,6 +19,7 @@ export const noteTables = {
     audioStorageId: v.optional(v.id("_storage")),
     renderRunId: v.optional(v.string()), // action-retrier run that renders this note
     audioError: v.optional(v.string()),
+    audioVoice: v.optional(audioVoice),
     heardAt: v.optional(v.number()),
     reviewAt: v.optional(v.number()), // after this, the note is spoken as possibly out of date
     reviewFlagged: v.optional(v.boolean()), // set by a scheduled check so helper views update live
@@ -36,4 +39,24 @@ export const noteTables = {
   })
     .index("by_key_hash", ["keyHash"])
     .index("by_owner", ["ownerId"]),
+  /**
+   * A helper's own voice (Cartesia Instant Voice Clone), made from one recording in which they
+   * read the consent sentence aloud. Used only to read that helper's notes. The recording itself
+   * is deleted right after cloning; deleting this row deletes the voice at Cartesia first.
+   */
+  helperVoices: defineTable({
+    userId: v.id("users"),
+    cartesiaVoiceId: v.string(),
+    consentText: v.string(),
+    consentAt: v.number(),
+    recordingSeconds: v.number(),
+  }).index("by_user", ["userId"]),
+  /** How the owner (the VisionOS user) wants notes to sound. Defaults: 1.0, 1.0, helper voices on. */
+  familyPrefs: defineTable({
+    ownerId: v.id("users"),
+    speed: v.number(),
+    volume: v.number(),
+    helperVoices: v.boolean(),
+    updatedAt: v.number(),
+  }).index("by_owner", ["ownerId"]),
 };

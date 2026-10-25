@@ -10,7 +10,9 @@ const components = componentsGeneric() as unknown as { rateLimiter: RateLimiterA
 
 /** Per-helper note budget: a burst of 5, refilling to 20 per hour. Transactional with the insert. */
 export const NOTE_RATE = { kind: "token bucket", rate: 20, period: HOUR, capacity: 5 } as const;
-export const noteLimiter = new RateLimiter(components.rateLimiter, { familyNote: NOTE_RATE });
+/** Voice cloning costs Cartesia credits: 3 recordings per helper per hour, whatever the outcome. */
+export const VOICE_RATE = { kind: "fixed window", rate: 3, period: HOUR } as const;
+export const noteLimiter = new RateLimiter(components.rateLimiter, { familyNote: NOTE_RATE, voiceUpload: VOICE_RATE });
 
 /** Cartesia rendering: first try now, then up to 2 retries with exponential backoff (2 s base) and jitter. */
 export const NOTE_RENDER_RETRY = { initialBackoffMs: 2_000, base: 2, maxFailures: 2 } as const;

@@ -2,6 +2,7 @@ import { useAuth0 } from "@auth0/auth0-react";
 import { useAction, useConvexAuth, useMutation, useQuery } from "convex/react";
 import { useEffect, useRef, useState } from "react";
 import { api, type NoteKind, type OwnerNote } from "./api";
+import { Listening, MyVoice } from "./voice";
 
 const PAGE = { numItems: 20, cursor: null };
 const INVITE_LIFETIME_MS = 24 * 60 * 60 * 1000;
@@ -65,6 +66,7 @@ function HelperView() {
       </select>
       {ownerId && <Composer ownerId={ownerId} />}
     </section>}
+    {rows.length > 0 && <MyVoice />}
     {ownerId && rows.length > 0 && <SentNotes ownerId={ownerId} />}
     <RedeemInvite first={rows.length === 0} />
   </>;
@@ -143,7 +145,8 @@ function SentNotes({ ownerId }: { ownerId: string }) {
       <div className="meta">
         {n.place ? `${n.place} · ` : ""}{time(n.createdAt)} ·{" "}
         <strong>{n.heardAt ? `Heard at ${time(n.heardAt)}` : "Not heard yet"}</strong> ·{" "}
-        {n.audioStatus === "ready" ? "Voice ready" : n.audioStatus === "pending" ? "Preparing voice…" : "Will be read by the device voice"}
+        {n.audioStatus === "ready" ? (n.audioVoice === "helper" ? "Ready in your voice" : "Voice ready")
+          : n.audioStatus === "pending" ? "Preparing voice…" : "Will be read by the device voice"}
         {n.needsReview && <> · <span className="warning">Needs review</span>{" "}
           <button onClick={() => confirm({ noteId: n.noteId })}>Still correct</button></>}
         {" "}<button className="secondary" onClick={() => remove({ noteId: n.noteId })}>Delete</button>
@@ -219,12 +222,14 @@ function OwnerView() {
       {(search.trim() ? hits ?? [] : notes).map((n) => <div className="note" key={n.noteId}>
         <div>{n.kind === "warning" && <span className="warning">Safety · </span>}<strong>{n.authorName}:</strong> {n.text}</div>
         <div className="meta row">
-          <span>{n.place ? `${n.place} · ` : ""}{time(n.createdAt)}{n.heardAt ? ` · heard ${time(n.heardAt)}` : " · new"}{n.stale ? " · may be out of date" : ""}</span>
+          <span>{n.place ? `${n.place} · ` : ""}{time(n.createdAt)}{n.heardAt ? ` · heard ${time(n.heardAt)}` : " · new"}{n.stale ? " · may be out of date" : ""}
+            {n.audioVoice === "helper" ? ` · in ${n.authorName}'s own voice (AI copy, with consent)` : ""}</span>
           <button onClick={() => play(n)} disabled={speaking !== null}>{speaking === n.noteId ? "Playing…" : "Play"}</button>
           <button className="secondary" onClick={() => remove({ noteId: n.noteId })}>Delete</button>
         </div>
       </div>)}
     </section>
+    <Listening />
     <Devices />
     <Helpers />
   </>;

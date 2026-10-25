@@ -37,6 +37,13 @@ The [repository ownership guide](docs/REPOSITORY_STRUCTURE.md) records how these
 
 The [DeskGuide laptop prototype](ios/Packages/Perception/Prototypes/DeskGuide-Laptop/README.md) lives with R1's perception work. Its Python source, evaluation tools, fixtures, licenses, and reports stay together. It is a research reference for perception and guidance; native Perception and Guidance packages still need to be supplied and integrated.
 
+## Family Notes and Family Voice
+
+Trusted family members leave short notes that the VisionOS user hears at the right moment (between
+tasks, or when they find the object a note is about), in the family member's own consented voice
+(Cartesia). Vision, Cartesia features, responsible-use rules and limitations:
+[docs/FAMILY_VOICE.md](docs/FAMILY_VOICE.md). Implementation: [docs/FAMILY_NOTES.md](docs/FAMILY_NOTES.md).
+
 ## Run and contribute
 
 Open `ios/VisionOS.xcodeproj` in Xcode and select the shared `VisionOS` scheme. Live teammate integrations must be supplied; explicit simulation is available for local development.

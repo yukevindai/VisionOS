@@ -214,11 +214,11 @@ class FamilyNotesTests(unittest.TestCase):
         self.assertFalse(self.listener.holding())
         self.assertEqual(self.player.said, [])
 
-    def test_lock_speaks_at_most_two_notes_warnings_first_and_marks_unheard_ones_heard(self):
+    def test_lock_speaks_only_the_most_important_note_and_marks_it_heard(self):
         self.client.query_result = [self.hit(1, 'Safety note from Lan: hot', heard=False),
                                     self.hit(2, 'Note from Lan: blue lid'), self.hit(3, 'Note from Lan: third')]
         self.lock([True])
-        self.assertEqual(self.player.said, ['Safety note from Lan: hot Note from Lan: blue lid'])
+        self.assertEqual(self.player.said, ['Safety note from Lan: hot'])  # server sorts warnings first
         self.listener.holding(); self.listener.holding()
         self.player.finish()
         self.assertFalse(self.listener.holding())
@@ -275,15 +275,89 @@ class FamilyNotesTests(unittest.TestCase):
                 pass
 
         raw = Raw()
-        say, say_now = speech_adapters(PriorityAudio(raw))
+        say, say_now, _prepare = speech_adapters(PriorityAudio(raw))
         self.assertTrue(say('Note from Lan: hi', name='FAMILY_NOTE', is_current=lambda: True))
         self.assertFalse(say('Note from Lan: no', name='FAMILY_NOTE', is_current=lambda: False))
         self.assertTrue(say_now('Safety note from Lan: now', is_current=lambda: True))
         self.assertEqual(Raw.stops, 1)
         self.assertEqual(raw.said, ['Note from Lan: hi', 'Safety note from Lan: now'])
         plain = Raw()
-        say, say_now = speech_adapters(plain)
+        say, say_now, _prepare = speech_adapters(plain)
         self.assertEqual(say, plain.say)
+
+    # ----- Family Voice: the laptop plays the note audio rendered in the helper's own voice -----
+
+    def voiced(self, fetch):
+        self.prepared = []
+        self.listener = FamilyNotesListener(self.client, KEY, say=self.player.say, speaking=self.player.speaking,
+                                            is_idle=lambda: self.idle[0], clock=self.clock,
+                                            log=lambda event, **kw: self.events.append(event),
+                                            prepare_audio=lambda text, wav: self.prepared.append((text, wav)),
+                                            fetch_audio=fetch)
+
+    def test_idle_note_plays_its_rendered_audio_when_convex_has_it(self):
+        fetched = []
+        self.voiced(lambda url: fetched.append(url) or b'RIFF....WAVE-lan-voice')
+        url = 'https://amiable-stoat-963.convex.cloud/api/storage/abc'
+        self.listener.update({'deviceLabel': 'Laptop', 'notes': [dict(note(1, 'Note from Lan: hi'), audioUrl=url)]})
+        self.listener.tick()
+        self.assertEqual(self.prepared, [('Note from Lan: hi', b'RIFF....WAVE-lan-voice')])
+        self.assertEqual(self.player.said, ['Note from Lan: hi'])
+        self.listener.tick(); self.player.finish(); self.listener.tick()   # heard
+        self.listener.update({'deviceLabel': 'Laptop', 'notes': [dict(note(1, 'Note from Lan: hi'), audioUrl=url)]})
+        self.listener.tick()
+        self.assertEqual(fetched, [url])  # cached: replays never download again
+
+    def test_audio_download_failure_falls_back_to_speaking_the_text(self):
+        def offline(url):
+            raise OSError('offline')
+        self.voiced(offline)
+        self.listener.update({'deviceLabel': 'Laptop', 'notes': [dict(note(1, 'Note from Lan: hi'),
+                                                                       audioUrl='https://x.convex.cloud/s')]})
+        self.listener.tick()
+        self.assertEqual(self.prepared, [])
+        self.assertEqual(self.player.said, ['Note from Lan: hi'])
+        self.assertIn('FAMILY_NOTE_AUDIO_FAILED', self.events)
+
+    def test_only_https_audio_urls_are_used(self):
+        self.voiced(lambda url: b'RIFF....WAVE')
+        self.listener.update({'deviceLabel': 'Laptop', 'notes': [dict(note(1, 'Note from Lan: hi'),
+                                                                       audioUrl='file:///etc/passwd')]})
+        self.listener.tick()
+        self.assertEqual(self.prepared, [])
+
+    def test_object_note_at_lock_plays_its_rendered_audio(self):
+        self.voiced(lambda url: b'RIFF....WAVE-bottle')
+        self.client.query_result = [dict(self.hit(1, 'Safety note from Lan: medicine water'),
+                                         audioUrl='https://x.convex.cloud/bottle')]
+        self.lock([True])
+        self.assertEqual(self.prepared, [('Safety note from Lan: medicine water', b'RIFF....WAVE-bottle')])
+
+    def test_note_audio_provider_serves_prepared_wav_once_then_defers(self):
+        from r3_vision.family_notes import NoteAudio
+
+        class Inner:
+            def synthesize(self, text):
+                return b'cartesia:' + text.encode()
+
+        provider = NoteAudio(Inner())
+        provider.prepare('Note from Lan:  hi', b'RIFF-lan')
+        self.assertEqual(provider.synthesize('Note from Lan: hi'), b'RIFF-lan')   # same text after cleaning
+        self.assertEqual(provider.synthesize('Note from Lan: hi'), b'cartesia:Note from Lan: hi')
+        with self.assertRaises(RuntimeError):
+            NoteAudio(None).synthesize('anything')  # no provider: the player uses the Windows voice
+
+    def test_adapters_install_the_note_audio_provider_once_in_front_of_the_players_own(self):
+        from r3_vision.family_notes import NoteAudio
+        inner = object()
+        player = SimpleNamespace(say=lambda *a, **k: True, stop=lambda: None, speech_provider=inner)
+        _say, _now, prepare = speech_adapters(player)
+        self.assertIsInstance(player.speech_provider, NoteAudio)
+        self.assertIs(player.speech_provider.inner, inner)
+        speech_adapters(player)
+        self.assertIs(player.speech_provider.inner, inner)  # not wrapped twice
+        prepare('x', b'RIFF')
+        self.assertEqual(player.speech_provider.synthesize('x'), b'RIFF')
 
     def test_clean_strips_control_characters_and_bounds_length(self):
         self.assertEqual(clean('a\x07b   c'), 'ab c')
