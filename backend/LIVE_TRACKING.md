@@ -76,6 +76,30 @@ heard, inspect the terminal's `VOICE_READY`, `VOICE_HEARD`, `VOICE_COMMAND`, and
 `VOICE_IGNORED` messages, plus the actual output device in `AUDIO_INITIALIZED` and
 `PLAYBACK_STARTED`. A completed playback event does not prove audible sound.
 
+## Hand setup before finding an object
+
+Hands are processed on camera frames even when no object request is active.
+With `-Audio`, startup asks you to show a hand and hold it steady, then acknowledges
+fresh, stable hand tracking. No object needs to be in view. This is a 2D hand
+readiness check, not physical depth calibration; it does not authorize movement
+or write a calibration record. Stop cancels setup speech as well as tracking.
+
+Install hand dependencies into the **same Python environment used by the launcher**.
+From the repository root:
+
+```powershell
+& .\backend\.venv\Scripts\python.exe -m pip install -r .\backend\requirements-preview.txt
+& .\backend\.venv\Scripts\python.exe .\ios\Packages\Perception\Prototypes\DeskGuide-Laptop\setup_models.py
+```
+
+The model setup verifies downloaded assets against the repository's pinned hashes.
+Missing dependencies or models produce `HAND_SETUP_ERROR` in the terminal
+and a spoken setup error when audio is available. Restart after installing them.
+`-Detection gemini` avoids the optional Ultralytics local detector dependency.
+`-Audio` enables laptop output; `-Voice` enables laptop microphone commands.
+Neither flag supplies physical distance calibration: measured movement guidance
+still requires a valid `-DistanceCalibration` record and fresh registered depth.
+
 ## Select the actual microphone
 
 Speech input now opens a specific capture device and pipes its mono PCM audio

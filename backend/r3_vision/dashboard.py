@@ -39,9 +39,8 @@ def snapshot(item, panel, ticket, *, mode='LIVE', quick=False, voice=None, now=N
     now = time.monotonic() if now is None else now
     state = empty_state(mode, quick)
     state['orchestration'] = copy.deepcopy(orchestration) if isinstance(orchestration, dict) else None
-    state['voice'] = dict(status=str(getattr(voice, 'status', 'Off'))[:200],
-                          lastHeard=str(getattr(voice, 'last_heard', ''))[:500],
-                          inputDevice=str(getattr(voice, 'input_device_name', 'Not selected'))[:200])
+    from .voice_display import voice_view
+    state['voice'] = voice_view(voice)
     if not item or item[0] != ticket or len(item) < 7:
         return state, None, None
     _, image, received, tracking, detail, source_mode, _ = item[:7]

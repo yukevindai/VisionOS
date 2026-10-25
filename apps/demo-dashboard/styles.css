@@ -3,3 +3,5 @@
 .agent-panel {border:1px solid var(--border, #454047);border-radius:16px;padding:20px;margin-top:20px;background:var(--panel, #211f24)}
 .agent-panel h2 {font-size:18px;margin:0 0 12px}.agent-panel p {overflow-wrap:anywhere}.agent-panel ol {padding-left:24px;line-height:1.6;color:var(--muted, #c3bdc4)}
 .query-field>span {display:block;font-size:12px;margin-bottom:4px}.controls {flex-wrap:wrap}
+
+.transcript{background:var(--raised);border-radius:12px;padding:16px}.transcript h3{text-transform:none;font-size:16px}.transcript p{overflow-wrap:anywhere;white-space:pre-wrap}.transcript #voice-transcript{font-size:20px;line-height:1.5;margin:10px 0}.transcript .fine{margin:6px 0}
