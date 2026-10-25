@@ -191,3 +191,11 @@ This desktop experiment has no movement/audio/haptic outputs and does not replac
 It matches Gemini's historical reference to current camera frames before drawing a live box,
 hides lost/stale targets, and bounds automatic re-identification requests. The frozen camera
 program remains available unchanged. This is a visual test, not native R1 or movement guidance.
+
+## Native object recognition
+
+The authenticated `vision:findObject` action accepts an upright camera JPEG, the owner's object query, and the original frame/time/request identifiers. It calls the configured Gemini model directly from Convex; the separate Python vision service is not required for this action. Configure `GEMINI_API_KEY`, `GEMINI_MODEL` and optional `GEMINI_THINKING_LEVEL` on the actual Convex deployment. Existing Auth0 account setup remains required.
+
+The 4.5-second total provider deadline also bounds streamed response reads. Provider errors, blocked/truncated output, invalid boxes and rotated EXIF fail closed. Only successful real HTTP responses receive live provenance; response metadata is correlated to the original request. Labels are identification-only: the action deliberately supplies no confidence/safety authorization or movement commands. See [the native integration contract](../docs/R3_GEMINI_OBJECT_INTEGRATION.md) for client configuration and physical acceptance steps.
+
+Validation for this addition: 113 backend tests pass, including 12 object-action cases and the existing screen bridge; TypeScript checking and offline Convex code generation pass. Provider replies in that suite are simulated. Initial local live smoke attempts failed because of the Mac Node networking path (service unavailable/timeouts). With an IPv4-only workaround confined to the ignored local test harness, a real Gemini 3.8 Flash request on a synthetic two-button panel selected button 2 in 3,781 ms with the production 4.5-second deadline. An earlier diagnostic allowing 15 seconds completed in 2,537 ms. These are direct-provider synthetic-fixture checks, not deployed Convex authentication or real-camera recognition acceptance. No network workaround was added to production code.

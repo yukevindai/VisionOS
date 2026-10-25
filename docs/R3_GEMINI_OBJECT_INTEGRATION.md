@@ -1,10 +1,10 @@
-# Native Gemini object integration proposal
+# Native Gemini object integration
 
-October 24, 2026 · R2 client implemented; R3 action/deployment pending.
+October 24, 2026 · Native client and authenticated Convex action implemented; deployment and physical recognition validation remain separate gates.
 
-Normal iPhone Call now sends the owner's object description and one actual camera JPEG through `GeminiObjectEvidenceClient` → `ConvexObjectClient` → authenticated Convex `vision:findObject`. There is no cup/can/bottle/bowl vocabulary filter. This supports open-ended identification requests; it does not guarantee every object can be identified or safely reached. R3 retains backend, provider prompts, target interpretation and deployment ownership. This document proposes the additional action; it does not assert that the current backend implements it. No shared schema or R3-owned code is changed in this PR.
+Normal iPhone Call now sends the owner's object description and one actual camera JPEG through `GeminiObjectEvidenceClient` → `ConvexObjectClient` → authenticated Convex `vision:findObject`. There is no cup/can/bottle/bowl vocabulary filter. This supports open-ended identification requests; it does not guarantee every object can be identified or safely reached. The action calls Gemini directly from the Convex Node runtime using server environment settings. The existing Python desktop pipeline and `vision:readScreen` remain unchanged. Gemini returns semantic object evidence only; it never authorizes movement.
 
-## Proposed action
+## Action contract
 
 Use the existing authenticated Convex action transport and Auth0 owner identity, just as `vision:readScreen` does. Keep Gemini credentials on the server. Do not expose the old unauthenticated laptop `/v1/select` server to the phone.
 
@@ -69,10 +69,12 @@ Requests expire with the existing task deadline (five seconds); the HTTP request
 
 ## R3 handoff and phone acceptance
 
-1. Implement/review `vision:findObject` with the argument/result shape above and actual query-aware Gemini object interpretation. Reuse authenticated backend boundaries; the existing `vision:readScreen` panel-only action is insufficient.
-2. Deploy the protected Convex/private vision services and configure provider credentials server-side. Supply the real public Convex host, Auth0 domain and native client ID for ignored `ios/Config/Local.xcconfig` using `Local.example.xcconfig`; do not put a Gemini key on iPhone.
+1. Review `vision:findObject` and `convex/lib/objectVision.ts`. The action checks the existing authenticated account before image/provider work and implements the argument/result shape above.
+2. Deploy the Convex action to the intended development deployment. Set `GEMINI_API_KEY`, `GEMINI_MODEL`, and optionally `GEMINI_THINKING_LEVEL` (`low`, `medium`, or `high` on compatible Gemini 3 models) in its server environment. There is no model fallback. Object recognition does not require the separate Python service; the existing screen-reader action still does. Supply the real public Convex host, Auth0 domain and native client ID for ignored `ios/Config/Local.xcconfig` using `Local.example.xcconfig`; do not put a Gemini key on iPhone.
 3. Sign in through the existing image-reader or friend tools. The object client reuses the stored account without opening a login prompt mid-request. Signed-out and expired sessions return an actionable sign-in message.
 4. Integrate the separately reviewed launch and immediate-Call fixes ([PR10](https://github.com/yukevindai/VisionOS/pull/10), [PR15](https://github.com/yukevindai/VisionOS/pull/15)) before replacing the working phone build. This PR starts from main and does not duplicate those changes.
 5. On the real phone, request visible keys, a phone, a book and less common objects; compare spoken identification with the scene. Exercise multiple matches, missing objects, outage/sign-out, rotated camera, Stop during a slow response and task replacement. Confirm original-frame reacquisition and all physical guidance requirements separately. No real-device or Gemini accuracy pass is claimed by mocked tests.
 
-The phone retains the startup-fixed build while this client awaits R3 deployment/configuration. R2 has not deployed or modified `backend/` or `ios/Packages/Targets/` and has not messaged the teammate on the user's behalf.
+The direct action has a 4.5-second total provider deadline, including response-body reads, inside the native five-second request deadline. It accepts upright JPEGs, obtains dimensions from the JPEG rather than asking Gemini to guess them, and rejects rotated EXIF. Output is bounded to 20 matching objects and 256 KiB. The prompt and response whitelist omit confidence and safety; successful recognition therefore remains identification-only.
+
+Offline tests use explicitly simulated HTTP replies. A compiled client, passing mocked tests, and a direct provider smoke test do not establish authenticated Convex deployment or real-device recognition accuracy.
