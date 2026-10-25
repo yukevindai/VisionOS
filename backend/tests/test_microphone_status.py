@@ -77,7 +77,7 @@ class MicrophoneStatusTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory, \
                 patch('r3_vision.voice_commands.threading.Thread'), \
                 patch('r3_vision.voice_commands.subprocess.Popen') as popen:
-            voice = VoiceCommands(Path(directory), log=Mock())
+            voice = VoiceCommands(Path(directory), wave=Path(directory) / 'synthetic.wav', log=Mock())
             process = popen.return_value
             process.stdout = Mock()
             process.stdout.__iter__ = Mock(return_value=iter(['HEARD|malformed\n']))
@@ -87,6 +87,32 @@ class MicrophoneStatusTests(unittest.TestCase):
             process.wait.assert_called_once_with(timeout=3)
             process.stdout.close.assert_called_once()
             self.assertIn('voice unavailable', voice.status)
+
+
+    def test_selected_pcm_input_keeps_async_diagnostics_and_lifecycle(self):
+        with tempfile.TemporaryDirectory() as directory, \
+                patch('r3_vision.voice_commands.threading.Thread'), \
+                patch('r3_vision.voice_commands.subprocess.Popen') as popen, \
+                patch('r3_vision.microphone_input.PcmMicrophone') as microphone:
+            microphone.return_value.name = 'Selected headset'
+            microphone.return_value.sample_rate = 48000
+            voice = VoiceCommands(Path(directory), input_device='Selected headset', log=Mock())
+            process = popen.return_value
+            process.stdout = Mock()
+            process.stdout.__iter__ = Mock(return_value=iter(['READY\n', 'LEVEL|23\n']))
+            process.poll.return_value = 0
+            voice._run()
+            microphone.assert_called_once_with('Selected headset')
+            microphone.return_value.start.assert_called_once_with(process.stdin.buffer, voice._microphone_error)
+            microphone.return_value.close.assert_called_once()
+            process.stdin.close.assert_called_once()
+            self.assertEqual(voice.input_level, 23)
+            self.assertEqual(voice.input_device_name, 'Selected headset')
+            script = (Path(directory) / 'voice-recognizer.ps1').read_text()
+            self.assertIn('SetInputToAudioStream(Console.OpenStandardInput()', script)
+            self.assertIn("'', 48000)", script)
+            self.assertNotIn('SetInputToDefaultAudioDevice', script)
+            self.assertIn('AudioLevelUpdated', script)
 
 
 @unittest.skipUnless(os.name == 'nt' and os.getenv('R3_TEST_WINDOWS_SPEECH') == '1',

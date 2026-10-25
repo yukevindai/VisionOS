@@ -93,6 +93,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Speech.Recognition;
+using System.Speech.AudioFormat;
 using System.Threading;
 public static class VisionVoiceHost {
     static readonly object Gate = new object();
@@ -101,7 +102,7 @@ public static class VisionVoiceHost {
     static void Emit(string line) {
         lock (Gate) { Console.Out.WriteLine(line); Console.Out.Flush(); }
     }
-    public static void Run(string phrases, string wave) {
+    public static void Run(string phrases, string wave, int sampleRate) {
         using (var engine = new SpeechRecognitionEngine(CultureInfo.GetCultureInfo("en-US")))
         using (var done = new ManualResetEvent(false)) {
             var choices = new Choices();
@@ -141,7 +142,8 @@ public static class VisionVoiceHost {
                 if (e.Error != null) Emit("ERROR|" + e.Error.GetType().Name);
                 Emit("COMPLETED"); done.Set();
             };
-            if (String.IsNullOrEmpty(wave)) engine.SetInputToDefaultAudioDevice();
+            if (String.IsNullOrEmpty(wave)) engine.SetInputToAudioStream(Console.OpenStandardInput(),
+                new SpeechAudioFormatInfo(sampleRate, AudioBitsPerSample.Sixteen, AudioChannel.Mono));
             else engine.SetInputToWaveFile(wave);
             engine.RecognizeAsync(RecognizeMode.Multiple);
             Emit("READY");
@@ -150,14 +152,14 @@ public static class VisionVoiceHost {
     }
 }
 '@
-try { [VisionVoiceHost]::Run('{phrases}', '{wave}') }
+try { [VisionVoiceHost]::Run('{phrases}', '{wave}', {sample_rate}) }
 catch { [Console]::Out.WriteLine('ERROR|' + $_.Exception.GetType().Name); [Console]::Out.Flush(); exit 1 }
 """
 
 
 class VoiceCommands:
     """Starts the recognizer process; recognized commands arrive on self.commands as (command, argument, text)."""
-    def __init__(self, folder, speaking=lambda: False, min_confidence=.6, echo_gap_s=.5, wave=None, log=print, open_ended=False, idle_timeout_s=30.):
+    def __init__(self, folder, speaking=lambda: False, min_confidence=.6, echo_gap_s=.5, wave=None, log=print, open_ended=False, idle_timeout_s=30., input_device=None):
         self.folder, self.speaking, self.min_confidence, self.echo_gap_s = folder, speaking, min_confidence, echo_gap_s
         self.log = log
         self.open_ended = open_ended
@@ -177,13 +179,18 @@ class VoiceCommands:
         self.process = None
         self.closed = threading.Event()
         self.process_lock = threading.Lock()
+        self.microphone = None
+        self.input_device = input_device
+        self.input_device_name = 'Selecting Windows input' if not wave else 'WAV input (not a microphone)'
+        self.wave = wave
         self.input_level = None
         self.input_status = 'waiting for microphone input'
         self._last_input_log = -float('inf')
         folder.mkdir(parents=True, exist_ok=True)
         (folder / 'voice-phrases.txt').write_text('\n'.join(phrases()), encoding='utf-8')
         script = (SCRIPT.replace('{phrases}', str(folder / 'voice-phrases.txt').replace("'", "''"))
-                  .replace('{wave}', str(wave).replace("'", "''") if wave else ''))
+                  .replace('{wave}', str(wave).replace("'", "''") if wave else '')
+                  .replace('{sample_rate}', '16000'))
         (folder / 'voice-recognizer.ps1').write_text(script, encoding='utf-8')
         self.thread = threading.Thread(target=self._run, daemon=True, name='r3-voice')
         self.thread.start()
@@ -193,9 +200,18 @@ class VoiceCommands:
             with self.process_lock:
                 if self.closed.is_set():
                     return
+                if self.wave is None:
+                    from .microphone_input import PcmMicrophone
+                    self.microphone = PcmMicrophone(self.input_device)
+                    self.input_device_name = self.microphone.name
+                    script = (SCRIPT.replace('{phrases}', str(self.folder / 'voice-phrases.txt').replace("'", "''"))
+                              .replace('{wave}', '').replace('{sample_rate}', str(self.microphone.sample_rate)))
+                    (self.folder / 'voice-recognizer.ps1').write_text(script, encoding='utf-8')
+                    self.log('VOICE_INPUT_DEVICE', device=self.input_device_name)
                 self.process = subprocess.Popen(
                     ['powershell', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File',
                      str(self.folder / 'voice-recognizer.ps1')],
+                    stdin=subprocess.PIPE if self.microphone is not None else None,
                     stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8', errors='replace',
                     creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
             for line in self.process.stdout:
@@ -204,25 +220,38 @@ class VoiceCommands:
                 line = line.strip()
                 self._recognizer_line(line, time.monotonic())
             code = self.process.wait()
-            if not self.closed.is_set() and not self.status.startswith('voice error'):
+            if not self.closed.is_set() and not self.status.startswith(('voice error', 'voice unavailable')):
                 self.status = f'voice recognition stopped (exit {code})'
         except Exception as exc:
             if not self.closed.is_set():
-                self.status = f'voice unavailable ({type(exc).__name__})'
+                self.status = f'voice unavailable: {str(exc)[:160]}'
+                self.log('VOICE_INPUT_ERROR', error=self.status)
         finally:
             # Parsing/pipe failures must not leave an unseen microphone process running.
             with self.process_lock:
                 process = self.process
                 if process is not None and process.poll() is None:
                     process.kill()
+            if self.microphone is not None:
+                self.microphone.close()
             if process is not None:
                 process.wait(timeout=3)
                 if process.stdout is not None:
                     process.stdout.close()
+                if process.stdin is not None:
+                    process.stdin.close()
+
+    def _microphone_error(self, error):
+        self.status = f'voice unavailable: {error}'
+        self.log('VOICE_INPUT_ERROR', error=str(error))
+        if self.process is not None and self.process.poll() is None:
+            self.process.kill()
 
     def _recognizer_line(self, line, now):
         """Bounded input diagnostics contain levels/categories, never rejected speech."""
         if line == 'READY':
+            if self.microphone is not None:
+                self.microphone.start(self.process.stdin.buffer, self._microphone_error)
             self.status = READY_STATUS if self.listening else PAUSED_STATUS
             self.log('VOICE_READY')
         elif line.startswith('HEARD|'):
@@ -356,6 +385,8 @@ class VoiceCommands:
             process = self.process
             if process is not None and process.poll() is None:
                 process.kill()
+        if self.microphone is not None:
+            self.microphone.close()
         if process is not None:
             process.wait(timeout=3)
         if self.thread is not threading.current_thread():

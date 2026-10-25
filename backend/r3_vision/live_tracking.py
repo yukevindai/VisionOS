@@ -943,6 +943,7 @@ def arguments(argv=None):
     p.add_argument('--depth-view', action=argparse.BooleanOptionalAction, default=False,
                    help='Small colour LiDAR depth map with the target box and fingertip in the panel')
     p.add_argument('--audio-device', help='Output device number or name for audio (see --audio-test); default device if omitted')
+    p.add_argument('--voice-input-device', help='Microphone name or index, e.g. AirPods; Windows default input if omitted')
     p.add_argument('--voice', action=argparse.BooleanOptionalAction, default=False,
                    help='Always-listening voice commands (offline Windows speech): "find the Pepsi can", '
                         '"what\'s around me", "stop" / "be quiet", "stop tracking"')
@@ -1177,6 +1178,7 @@ def main(argv=None):
                                   else 'basic commands only; use --agents for conversational requests'), flush=True)
         player = worker.audio.player if worker.audio is not None else None
         voice = VoiceCommands(Path(__file__).resolve().parents[1] / '.runtime/voice',
+                              input_device=args.voice_input_device,
                               open_ended=args.agents,
                               speaking=(lambda: player.speaking()) if player is not None else (lambda: False),
                               log=lambda event, **fields: print('VOICE', event, json.dumps(fields), flush=True))
@@ -1267,8 +1269,8 @@ def main(argv=None):
                      for item in list(voice.transcript)[::-1][:3]]
             heard.set('YOU SAID: ' + lines[0] + ('\nearlier: ' + '   |   '.join(lines[1:]) if lines[1:] else ''))
         if voice is not None:
-            microphone = f'LAPTOP MIC: {voice.status} | {voice.input_status}'
-            heard.set((heard.get() + '\n' if voice.transcript else '') + microphone)
+            transcript = heard.get() if voice.transcript else 'You said: No speech recognized yet.'
+            heard.set(transcript + f'\nMIC INPUT: {voice.input_device_name} | {voice.status} | {voice.input_status}')
         item = worker.output
         if item and item[0] == ticket:
             _, image, received, state, detail, source_mode, requests = item[:7]
