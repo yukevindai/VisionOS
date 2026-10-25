@@ -1068,12 +1068,11 @@ def main(argv=None):
         row=0, column=5, padx=(8, 0))
     viewport = tk.Frame(root)
     viewport.grid(row=3, column=0, sticky='nsew', padx=8, pady=6)
-    heard = tk.StringVar(value='')
-    if getattr(args, 'voice', False):
-        # Everything the microphone hears, newest first; commands show what they triggered.
-        heard.set('YOU SAID: (listening...)')
-        tk.Label(root, textvariable=heard, anchor='w', justify='left', font=('Segoe UI', 14, 'bold'),
-                 fg='#1d4ed8', wraplength=window_width - 560).grid(row=4, column=0, sticky='ew', padx=12, pady=(0, 8))
+    heard = tk.StringVar(value='You said: No speech recognized yet.')
+    transcript_box = tk.Label(root, textvariable=heard, anchor='w', justify='left', font=('Segoe UI', 14, 'bold'),
+                              fg='#1d4ed8', wraplength=max(240, window_width - 48))
+    transcript_box.grid(row=4, column=0, columnspan=2, sticky='ew', padx=12, pady=(0, 8))
+    transcript_box.bind('<Configure>', lambda event: transcript_box.configure(wraplength=max(240, event.width - 24)))
     # Image dimensions must never enlarge the window or push controls off-screen.
     viewport.grid_propagate(False)
     viewport.pack_propagate(False)
@@ -1125,7 +1124,7 @@ def main(argv=None):
             if dashboard is not None:
                 dashboard.invalidate()
             last = None
-            return
+            return True
         if re.search(r"\b(describe|what'?s around|what is around|around me|surroundings)\b", query.get().lower()):
             worker.describe_surroundings()
             if dashboard is not None:
@@ -1193,7 +1192,8 @@ def main(argv=None):
                 stop()
             elif command == 'request':
                 query.set(argument)
-                find()
+                if find():
+                    voice.last_agent_prompt = argument
             elif command == 'find':
                 query.set(f'Find the {OBJECTS[argument].name}')
                 find()
@@ -1257,12 +1257,8 @@ def main(argv=None):
             except queue.Empty:
                 break
             voice_command(command, argument)
-        if voice is not None and voice.transcript:
-            names = {'wake': 'LISTENING', 'sleep': 'PAUSED', 'find': 'FIND', 'describe': 'DESCRIBE', 'quiet': 'QUIET', 'stop_tracking': 'STOP TRACKING',
-                     'request': 'REQUEST'}
-            lines = [f'"{item["text"]}"' + (f'  →  {names[item["command"]]}' if item['command'] else '')
-                     for item in list(voice.transcript)[::-1][:3]]
-            heard.set('YOU SAID: ' + lines[0] + ('\nearlier: ' + '   |   '.join(lines[1:]) if lines[1:] else ''))
+        from .voice_display import transcript_label
+        heard.set(transcript_label(voice) + ('\nMicrophone off — start with -Voice to speak.' if voice is None else ''))
         item = worker.output
         if item and item[0] == ticket:
             _, image, received, state, detail, source_mode, requests = item[:7]
