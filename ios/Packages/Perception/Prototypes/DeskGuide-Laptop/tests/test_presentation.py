@@ -108,7 +108,7 @@ class PresentationTests(unittest.TestCase):
                  patch('deskguide.app.Engine', return_value=engine):
                 window = Window(config, preview=True)
                 root.update_idletasks()
-                self.assertEqual(root.title(), 'Reflex | Hand guidance')
+                self.assertEqual(root.title(), 'VisionOS | Hand guidance')
                 self.assertEqual(window.distance.cget('text'), 'Unavailable')
                 self.assertEqual(window.direction.cget('text'), 'STOP')
                 window.close()

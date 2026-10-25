@@ -78,7 +78,7 @@ REFLEX_AUTH0_NATIVE_CLIENT_ID = <native client ID>
 
 Use hostnames without `https://` here; the plist supplies schemes, and xcconfig treats `//` as a comment. Confirm the registered Auth0 callback uses this exact bundle ID and domain.
 
-Open `ios/Reflex.xcodeproj`, select **Reflex**, and choose your connected iPhone. In **Signing & Capabilities**, select your development team and automatic signing. Unlock/trust the phone, enable Developer Mode if requested, and build/run. The last device inventory found an iPhone 14 Pro Max named “Kraft Dinner” but marked it unavailable.
+Open `ios/VisionOS.xcodeproj`, select **VisionOS**, and choose your connected iPhone. In **Signing & Capabilities**, select your development team and automatic signing. Unlock/trust the phone, enable Developer Mode if requested, and build/run. The last device inventory found an iPhone 14 Pro Max named “Kraft Dinner” but marked it unavailable.
 
 The iOS simulator can show the home/demo/setup UI. It cannot provide this ARKit rear-camera feed. An unsigned iPhone build also does not establish physical-device behavior.
 
@@ -107,7 +107,7 @@ Open [the local helper](http://localhost:5173). Restart Vite after changing envi
 2. Create an invitation code and share it with the intended helper.
 3. In the browser, sign in as the other account and redeem the code.
 4. On iPhone, refresh friend requests, review the displayed account, and explicitly approve it.
-5. Check the per-session sharing consent and press **Start sharing video**. Grant camera access. If the permission dialog leaves the app inactive at completion, return to Reflex and press Start again.
+5. Check the per-session sharing consent and press **Start sharing video**. Grant camera access. If the permission dialog leaves the app inactive at completion, return to VisionOS and press Start again.
 6. In the browser, refresh available sessions, select the owner's session, and join. Follow subsequent discovery pages if needed.
 7. Confirm the helper sees the actual moving phone camera image with correct orientation. Record this as the first real video result only after observing it.
 8. Press **End video now** on iPhone. Confirm video clears on the browser. Also check leaving the screen, backgrounding the phone, helper Leave, and signing out. A new explicit Start/Join is required afterward.

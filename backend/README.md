@@ -1,4 +1,4 @@
-# Reflex backend
+# VisionOS backend
 
 This directory contains the Gemini vision service and the Convex live friend assistance backend. Each component has its own setup and validation status below.
 
@@ -107,7 +107,7 @@ The native `POST /v1/read-screen` path requires `frameId`, `capturedAtMs`, and `
 
 This Python package reads interfaces. Cartesia, LiDAR and full kiosk ordering are separate components; the native path uses the authenticated Convex bridge above.
 
-## Reflex backend (R3)
+## VisionOS backend (R3)
 
 This directory contains Convex identity, friend trust, session authorization, helper reservation, and LiveKit media lifecycle code. The LiveKit provider boundary is implemented with `livekit-server-sdk` **2.19.2**. It has passed local SDK/provider tests, but has not been configured against a live LiveKit service or Convex deployment and is wired to the native video demo and browser helper, pending real service setup. Do not describe it as live-call validated.
 

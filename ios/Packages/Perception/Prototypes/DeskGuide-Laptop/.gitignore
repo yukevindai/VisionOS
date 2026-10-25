@@ -5,7 +5,7 @@ models/*.onnx
 models/*.task
 models/*.pt
 
-# Local-only borrowed reference integration; never include in Reflex submission.
+# Local-only borrowed reference integration; never include in VisionOS submission.
 /.local_reference/
 
 # Local interpreter and retired research tools; not submission sources.

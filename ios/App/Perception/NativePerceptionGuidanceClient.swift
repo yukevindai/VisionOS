@@ -142,7 +142,7 @@ final class NativePerceptionGuidanceClient: NSObject, ObjectTargetPreparing, Per
             })
             let session = ARSession()
             session.delegate = processor
-            session.delegateQueue = DispatchQueue(label: "Reflex.NativePerception.Capture", qos: .userInitiated)
+            session.delegateQueue = DispatchQueue(label: "VisionOS.NativePerception.Capture", qos: .userInitiated)
             let configuration = ARWorldTrackingConfiguration()
             configuration.frameSemantics = depthAvailable ? [.sceneDepth] : []
             configuration.planeDetection = []
@@ -505,7 +505,7 @@ private final class NativePerceptionProcessor: NSObject, ARSessionDelegate, @unc
         let capturedAtMs: Int64
     }
     private let lock = NSLock()
-    private let queue = DispatchQueue(label: "Reflex.NativePerception.Vision", qos: .userInitiated)
+    private let queue = DispatchQueue(label: "VisionOS.NativePerception.Vision", qos: .userInitiated)
     private let delivery: (NativePerceptionObservation) -> Void
     private let failure: (String) -> Void
     private let previewPipeline: NativeCameraPreviewPipeline

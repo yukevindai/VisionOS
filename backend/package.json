@@ -1,5 +1,5 @@
 {
-  "name": "reflex-backend",
+  "name": "visionos-backend",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@11.25.0",

@@ -12,7 +12,7 @@ struct ReproHost: View {
             Group {
                 if started { ReproView() }
                 else { Button("Start") { started = true }.accessibilityIdentifier("repro.start").foregroundStyle(Color(uiColor: .label)).padding() }
-            }.navigationTitle("Reflex").navigationBarTitleDisplayMode(.inline)
+            }.navigationTitle("VisionOS").navigationBarTitleDisplayMode(.inline)
         }
     }
 }

@@ -6,7 +6,7 @@ No Cosmos, Nemotron, YOLO-World, speech-recognition, TTS or LLM integration exis
 
 # Audio removal update (2026-10-24)
 
-The sound callback (audio.py), sounddevice dependency, unused speech/haptic/data provider ports (providers.py) and the PathOn sample-capture script (diagnose_live.py) were removed. Guidance is now a silent structured event (guidance.py). Comments and docstrings were removed from project-authored Python with an AST-equivalence check; executable code was unchanged. The third-party adapter notices in hand_observations.py and object_observations.py, all license files and the records below are retained. Ultralytics/YOLO11s (AGPL-3.0) is still required by the detector and remains unresolved for a closed-source Reflex submission.
+The sound callback (audio.py), sounddevice dependency, unused speech/haptic/data provider ports (providers.py) and the PathOn sample-capture script (diagnose_live.py) were removed. Guidance is now a silent structured event (guidance.py). Comments and docstrings were removed from project-authored Python with an AST-equivalence check; executable code was unchanged. The third-party adapter notices in hand_observations.py and object_observations.py, all license files and the records below are retained. Ultralytics/YOLO11s (AGPL-3.0) is still required by the detector and remains unresolved for a closed-source VisionOS submission.
 
 ---
 
@@ -50,7 +50,7 @@ Ultralytics/YOLO11s remain AGPL-3.0. Original MIT code does not relicense these 
 
 
 
-The ignored .local_reference adapter may load the original external Proprio hands.py detector in place for user-authorized local research. Upstream copying/distribution permission is unestablished; the original source is not copied, edited or included in Reflex. This explicit local mode is borrowed reference functionality and is labeled as such. The normal independent path remains available. See [REFERENCE_RUN_FINDINGS.md](REFERENCE_RUN_FINDINGS.md) for the current component boundary; older no-import descriptions below refer to that independent path.
+The ignored .local_reference adapter may load the original external Proprio hands.py detector in place for user-authorized local research. Upstream copying/distribution permission is unestablished; the original source is not copied, edited or included in VisionOS. This explicit local mode is borrowed reference functionality and is labeled as such. The normal independent path remains available. See [REFERENCE_RUN_FINDINGS.md](REFERENCE_RUN_FINDINGS.md) for the current component boundary; older no-import descriptions below refer to that independent path.
 
 
 
@@ -98,7 +98,7 @@ Direct requirements are pinned in `requirements.txt`; `requirements.lock.txt` ca
 
 
 
-The active audited configuration now installs Ultralytics 8.4.183 and YOLO11s weights (AGPL-3.0), with Torch 2.14.1+cpu and torchvision 0.29.1 (BSD-style licenses). NanoDet is an unused earlier asset. [Ultralytics' license page](https://www.ultralytics.com/license) describes AGPL-3.0 and Enterprise licensing. The MIT license covers original files only. This combined research environment is not a permissively licensed distribution. Resolve AGPL obligations or obtain an appropriate commercial license before incorporating this detector into a closed-source Reflex app.
+The active audited configuration now installs Ultralytics 8.4.183 and YOLO11s weights (AGPL-3.0), with Torch 2.14.1+cpu and torchvision 0.29.1 (BSD-style licenses). NanoDet is an unused earlier asset. [Ultralytics' license page](https://www.ultralytics.com/license) describes AGPL-3.0 and Enterprise licensing. The MIT license covers original files only. This combined research environment is not a permissively licensed distribution. Resolve AGPL obligations or obtain an appropriate commercial license before incorporating this detector into a closed-source VisionOS app.
 
 
 

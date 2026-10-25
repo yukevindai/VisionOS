@@ -1,1 +1,1 @@
-{"name":"reflex-demo-dashboard","private":true,"type":"module","scripts":{"test":"node --test state.test.js"}}
+{"name":"visionos-demo-dashboard","private":true,"type":"module","scripts":{"test":"node --test state.test.js"}}

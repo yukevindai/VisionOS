@@ -1,4 +1,4 @@
-# Reflex Friend browser viewer
+# VisionOS Friend browser viewer
 
 This is the minimal watch-only browser helper for a real iPhone → friend video demo. It uses Auth0 Universal Login (authorization code with PKCE through `@auth0/auth0-react`/`auth0-spa-js`), authenticated Convex functions, and LiveKit's browser SDK. It never requests the helper's camera or microphone and does not implement target selection, model calls, or audio. A friend can redeem an invitation, browse authorized sessions, join one, watch the owner's video, and leave.
 

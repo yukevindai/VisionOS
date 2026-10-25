@@ -11,7 +11,7 @@ from .engine import Engine
 
 
 def arguments():
-    p=argparse.ArgumentParser(description='Reflex hand guidance')
+    p=argparse.ArgumentParser(description='VisionOS hand guidance')
     p.add_argument('--config',type=Path,default=ROOT/'config.json')
     p.add_argument('--host')
     p.add_argument('--port',type=int)

@@ -329,7 +329,7 @@ final class NativeAudioCoordinator: NSObject, SpeechSchedulerClient, Conversatio
         var errorDescription: String? {
             switch self {
             case .offlineRecognitionUnavailable:
-                return "On-device English speech recognition is unavailable. Enable Speech Recognition for Reflex and install on-device speech support, then start again."
+                return "On-device English speech recognition is unavailable. Enable Speech Recognition for VisionOS and install on-device speech support, then start again."
             case .microphoneUnavailable: return "The microphone is unavailable. Check the audio route and start again."
             }
         }

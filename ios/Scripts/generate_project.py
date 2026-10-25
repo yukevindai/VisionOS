@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regenerate Reflex.xcodeproj after adding or removing Swift source files.
+"""Regenerate VisionOS.xcodeproj after adding or removing Swift source files.
 
 The generator uses only the Python standard library. It scans App, Tests, and
 UITests so the committed project and target membership stay in sync.
@@ -12,7 +12,7 @@ from pathlib import Path
 
 
 IOS = Path(__file__).resolve().parents[1]
-PROJECT = IOS / "Reflex.xcodeproj" / "project.pbxproj"
+PROJECT = IOS / "VisionOS.xcodeproj" / "project.pbxproj"
 
 
 def uid(value: str) -> str:
@@ -60,12 +60,12 @@ def build_files(files: list[Path], phase: str) -> tuple[list[str], list[str]]:
 
 def main() -> None:
     app_files = sorted((IOS / "App").rglob("*.swift"))
-    unit_files = sorted((IOS / "Tests" / "ReflexAppTests").rglob("*.swift"))
+    unit_files = sorted((IOS / "Tests" / "VisionOSAppTests").rglob("*.swift"))
     ui_files = sorted((IOS / "UITests").rglob("*.swift"))
 
     app_group, app_refs, app_file_ids = source_group("App", "App", app_files)
-    unit_group, unit_refs, unit_file_ids = source_group("ReflexAppTests", "Tests/ReflexAppTests", unit_files)
-    ui_group, ui_refs, ui_file_ids = source_group("ReflexUITests", "UITests", ui_files)
+    unit_group, unit_refs, unit_file_ids = source_group("VisionOSAppTests", "Tests/VisionOSAppTests", unit_files)
+    ui_group, ui_refs, ui_file_ids = source_group("VisionOSUITests", "UITests", ui_files)
 
     app_builds, app_build_ids = build_files(app_files, "Sources")
     unit_builds, unit_build_ids = build_files(unit_files, "Sources")
@@ -82,15 +82,15 @@ def main() -> None:
 \t\t{uid('app:Info.plist')} /* Info.plist */ = {{isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = App/Info.plist; sourceTree = SOURCE_ROOT; }};
 """
     product_refs = f"""\
-\t\t{uid('product:Reflex.app')} /* Reflex.app */ = {{isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Reflex.app; sourceTree = BUILT_PRODUCTS_DIR; }};
-\t\t{uid('product:ReflexAppTests.xctest')} /* ReflexAppTests.xctest */ = {{isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ReflexAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; }};
-\t\t{uid('product:ReflexUITests.xctest')} /* ReflexUITests.xctest */ = {{isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ReflexUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; }};
+\t\t{uid('product:VisionOS.app')} /* VisionOS.app */ = {{isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = VisionOS.app; sourceTree = BUILT_PRODUCTS_DIR; }};
+\t\t{uid('product:VisionOSAppTests.xctest')} /* VisionOSAppTests.xctest */ = {{isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = VisionOSAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; }};
+\t\t{uid('product:VisionOSUITests.xctest')} /* VisionOSUITests.xctest */ = {{isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = VisionOSUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; }};
 """
 
-    project_id = uid("project:Reflex")
-    app_target = uid("target:Reflex")
-    unit_target = uid("target:ReflexAppTests")
-    ui_target = uid("target:ReflexUITests")
+    project_id = uid("project:VisionOS")
+    app_target = uid("target:VisionOS")
+    unit_target = uid("target:VisionOSAppTests")
+    ui_target = uid("target:VisionOSUITests")
     app_sources = uid("phase:app-sources")
     unit_sources = uid("phase:unit-sources")
     ui_sources = uid("phase:ui-sources")
@@ -147,8 +147,8 @@ def main() -> None:
 \t\t{uid('package-build:Tasks')} /* Tasks in Frameworks */ = {{isa = PBXBuildFile; productRef = {dep_tasks}; }};
 \t\t{uid('package-build:HapticLink')} /* HapticLink in Frameworks */ = {{isa = PBXBuildFile; productRef = {dep_haptics}; }};
 """
-    source_tree_children = [uid("resource:Assets"), uid("resource:Models"), uid("group:App"), uid("group:ReflexAppTests"), uid("group:ReflexUITests"), uid("config:Debug.xcconfig"), uid("config:Release.xcconfig"), uid("config:Local.example.xcconfig"), uid("app:Info.plist"), uid("group:Products")]
-    product_children = [uid("product:Reflex.app"), uid("product:ReflexAppTests.xctest"), uid("product:ReflexUITests.xctest")]
+    source_tree_children = [uid("resource:Assets"), uid("resource:Models"), uid("group:App"), uid("group:VisionOSAppTests"), uid("group:VisionOSUITests"), uid("config:Debug.xcconfig"), uid("config:Release.xcconfig"), uid("config:Local.example.xcconfig"), uid("app:Info.plist"), uid("group:Products")]
+    product_children = [uid("product:VisionOS.app"), uid("product:VisionOSAppTests.xctest"), uid("product:VisionOSUITests.xctest")]
 
     text = f'''// !$*UTF8*$!
 {{
@@ -162,7 +162,7 @@ def main() -> None:
 {package_builds}/* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
-\t\t{target_proxy} /* PBXContainerItemProxy */ = {{isa = PBXContainerItemProxy; containerPortal = {project_id}; proxyType = 1; remoteGlobalIDString = {app_target}; remoteInfo = Reflex; }};
+\t\t{target_proxy} /* PBXContainerItemProxy */ = {{isa = PBXContainerItemProxy; containerPortal = {project_id}; proxyType = 1; remoteGlobalIDString = {app_target}; remoteInfo = VisionOS; }};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
@@ -184,9 +184,9 @@ def main() -> None:
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-\t\t{app_target} /* Reflex */ = {{isa = PBXNativeTarget; buildConfigurationList = {app_config_list}; buildPhases = ({app_sources}, {app_frameworks}, {app_resources}, ); buildRules = (); dependencies = (); name = Reflex; packageProductDependencies = ({dep_guidance}, {dep_interpretation}, {dep_tasks}, {dep_haptics}, {dep_livekit}, {dep_auth0}, {dep_keychain}, ); productName = Reflex; productReference = {uid('product:Reflex.app')}; productType = "com.apple.product-type.application"; }};
-\t\t{unit_target} /* ReflexAppTests */ = {{isa = PBXNativeTarget; buildConfigurationList = {unit_config_list}; buildPhases = ({unit_sources}, {unit_frameworks}, ); buildRules = (); dependencies = ({app_product_dep}, ); name = ReflexAppTests; packageProductDependencies = ({dep_guidance}, {dep_interpretation}, {dep_livekit}, {dep_auth0}, {dep_keychain}, ); productName = ReflexAppTests; productReference = {uid('product:ReflexAppTests.xctest')}; productType = "com.apple.product-type.bundle.unit-test"; }};
-\t\t{ui_target} /* ReflexUITests */ = {{isa = PBXNativeTarget; buildConfigurationList = {ui_config_list}; buildPhases = ({ui_sources}, {ui_frameworks}, ); buildRules = (); dependencies = ({target_dependency}, ); name = ReflexUITests; packageProductDependencies = (); productName = ReflexUITests; productReference = {uid('product:ReflexUITests.xctest')}; productType = "com.apple.product-type.bundle.ui-testing"; }};
+\t\t{app_target} /* VisionOS */ = {{isa = PBXNativeTarget; buildConfigurationList = {app_config_list}; buildPhases = ({app_sources}, {app_frameworks}, {app_resources}, ); buildRules = (); dependencies = (); name = VisionOS; packageProductDependencies = ({dep_guidance}, {dep_interpretation}, {dep_tasks}, {dep_haptics}, {dep_livekit}, {dep_auth0}, {dep_keychain}, ); productName = VisionOS; productReference = {uid('product:VisionOS.app')}; productType = "com.apple.product-type.application"; }};
+\t\t{unit_target} /* VisionOSAppTests */ = {{isa = PBXNativeTarget; buildConfigurationList = {unit_config_list}; buildPhases = ({unit_sources}, {unit_frameworks}, ); buildRules = (); dependencies = ({app_product_dep}, ); name = VisionOSAppTests; packageProductDependencies = ({dep_guidance}, {dep_interpretation}, {dep_livekit}, {dep_auth0}, {dep_keychain}, ); productName = VisionOSAppTests; productReference = {uid('product:VisionOSAppTests.xctest')}; productType = "com.apple.product-type.bundle.unit-test"; }};
+\t\t{ui_target} /* VisionOSUITests */ = {{isa = PBXNativeTarget; buildConfigurationList = {ui_config_list}; buildPhases = ({ui_sources}, {ui_frameworks}, ); buildRules = (); dependencies = ({target_dependency}, ); name = VisionOSUITests; packageProductDependencies = (); productName = VisionOSUITests; productReference = {uid('product:VisionOSUITests.xctest')}; productType = "com.apple.product-type.bundle.ui-testing"; }};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -209,7 +209,7 @@ def main() -> None:
 /* End PBXTargetDependency section */
 
 /* Begin PBXContainerItemProxy section */
-\t\t{uid('unit-app-host-proxy')} /* PBXContainerItemProxy */ = {{isa = PBXContainerItemProxy; containerPortal = {project_id}; proxyType = 1; remoteGlobalIDString = {app_target}; remoteInfo = Reflex; }};
+\t\t{uid('unit-app-host-proxy')} /* PBXContainerItemProxy */ = {{isa = PBXContainerItemProxy; containerPortal = {project_id}; proxyType = 1; remoteGlobalIDString = {app_target}; remoteInfo = VisionOS; }};
 /* End PBXContainerItemProxy section */
 
 /* Begin XCBuildConfiguration section */
@@ -218,17 +218,17 @@ def main() -> None:
 
 \t\t{uid('app-debug')} /* Debug */ = {{isa = XCBuildConfiguration; baseConfigurationReference = {uid('config:Debug.xcconfig')}; buildSettings = {{CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 1; ENABLE_TESTABILITY = YES; GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = App/Info.plist; LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks", ); MARKETING_VERSION = 1.0; ONLY_ACTIVE_ARCH = YES; PRODUCT_BUNDLE_IDENTIFIER = "$(REFLEX_BUNDLE_ID)"; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_EMIT_LOC_STRINGS = YES; SWIFT_OPTIMIZATION_LEVEL = "-Onone"; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1"; }}; name = Debug; }};
 \t\t{uid('app-release')} /* Release */ = {{isa = XCBuildConfiguration; baseConfigurationReference = {uid('config:Release.xcconfig')}; buildSettings = {{CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 1; GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = App/Info.plist; LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks", ); MARKETING_VERSION = 1.0; PRODUCT_BUNDLE_IDENTIFIER = "$(REFLEX_BUNDLE_ID)"; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_EMIT_LOC_STRINGS = YES; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1"; }}; name = Release; }};
-\t\t{uid('unit-debug')} /* Debug */ = {{isa = XCBuildConfiguration; baseConfigurationReference = {uid('config:Debug.xcconfig')}; buildSettings = {{BUNDLE_LOADER = "$(TEST_HOST)"; CODE_SIGN_STYLE = Automatic; ENABLE_TESTABILITY = YES; GENERATE_INFOPLIST_FILE = YES; ONLY_ACTIVE_ARCH = YES; PRODUCT_BUNDLE_IDENTIFIER = "$(REFLEX_BUNDLE_ID).tests"; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_OPTIMIZATION_LEVEL = "-Onone"; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1"; TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Reflex.app/Reflex"; }}; name = Debug; }};
-\t\t{uid('unit-release')} /* Release */ = {{isa = XCBuildConfiguration; baseConfigurationReference = {uid('config:Release.xcconfig')}; buildSettings = {{BUNDLE_LOADER = "$(TEST_HOST)"; CODE_SIGN_STYLE = Automatic; GENERATE_INFOPLIST_FILE = YES; PRODUCT_BUNDLE_IDENTIFIER = "$(REFLEX_BUNDLE_ID).tests"; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1"; TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Reflex.app/Reflex"; }}; name = Release; }};
-\t\t{uid('ui-debug')} /* Debug */ = {{isa = XCBuildConfiguration; baseConfigurationReference = {uid('config:Debug.xcconfig')}; buildSettings = {{CODE_SIGN_STYLE = Automatic; ENABLE_TESTABILITY = YES; GENERATE_INFOPLIST_FILE = YES; ONLY_ACTIVE_ARCH = YES; PRODUCT_BUNDLE_IDENTIFIER = "$(REFLEX_BUNDLE_ID).uitests"; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_OPTIMIZATION_LEVEL = "-Onone"; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1"; TEST_TARGET_NAME = Reflex; }}; name = Debug; }};
-\t\t{uid('ui-release')} /* Release */ = {{isa = XCBuildConfiguration; baseConfigurationReference = {uid('config:Release.xcconfig')}; buildSettings = {{CODE_SIGN_STYLE = Automatic; GENERATE_INFOPLIST_FILE = YES; PRODUCT_BUNDLE_IDENTIFIER = "$(REFLEX_BUNDLE_ID).uitests"; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1"; TEST_TARGET_NAME = Reflex; }}; name = Release; }};
+\t\t{uid('unit-debug')} /* Debug */ = {{isa = XCBuildConfiguration; baseConfigurationReference = {uid('config:Debug.xcconfig')}; buildSettings = {{BUNDLE_LOADER = "$(TEST_HOST)"; CODE_SIGN_STYLE = Automatic; ENABLE_TESTABILITY = YES; GENERATE_INFOPLIST_FILE = YES; ONLY_ACTIVE_ARCH = YES; PRODUCT_BUNDLE_IDENTIFIER = "$(REFLEX_BUNDLE_ID).tests"; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_OPTIMIZATION_LEVEL = "-Onone"; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1"; TEST_HOST = "$(BUILT_PRODUCTS_DIR)/VisionOS.app/VisionOS"; }}; name = Debug; }};
+\t\t{uid('unit-release')} /* Release */ = {{isa = XCBuildConfiguration; baseConfigurationReference = {uid('config:Release.xcconfig')}; buildSettings = {{BUNDLE_LOADER = "$(TEST_HOST)"; CODE_SIGN_STYLE = Automatic; GENERATE_INFOPLIST_FILE = YES; PRODUCT_BUNDLE_IDENTIFIER = "$(REFLEX_BUNDLE_ID).tests"; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1"; TEST_HOST = "$(BUILT_PRODUCTS_DIR)/VisionOS.app/VisionOS"; }}; name = Release; }};
+\t\t{uid('ui-debug')} /* Debug */ = {{isa = XCBuildConfiguration; baseConfigurationReference = {uid('config:Debug.xcconfig')}; buildSettings = {{CODE_SIGN_STYLE = Automatic; ENABLE_TESTABILITY = YES; GENERATE_INFOPLIST_FILE = YES; ONLY_ACTIVE_ARCH = YES; PRODUCT_BUNDLE_IDENTIFIER = "$(REFLEX_BUNDLE_ID).uitests"; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_OPTIMIZATION_LEVEL = "-Onone"; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1"; TEST_TARGET_NAME = VisionOS; }}; name = Debug; }};
+\t\t{uid('ui-release')} /* Release */ = {{isa = XCBuildConfiguration; baseConfigurationReference = {uid('config:Release.xcconfig')}; buildSettings = {{CODE_SIGN_STYLE = Automatic; GENERATE_INFOPLIST_FILE = YES; PRODUCT_BUNDLE_IDENTIFIER = "$(REFLEX_BUNDLE_ID).uitests"; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1"; TEST_TARGET_NAME = VisionOS; }}; name = Release; }};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
 \t\t{project_config_list} /* Build configuration list for PBXProject */ = {{isa = XCConfigurationList; buildConfigurations = ({uid('project-debug')}, {uid('project-release')}, ); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; }};
-\t\t{app_config_list} /* Build configuration list for PBXNativeTarget "Reflex" */ = {{isa = XCConfigurationList; buildConfigurations = ({uid('app-debug')}, {uid('app-release')}, ); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; }};
-\t\t{unit_config_list} /* Build configuration list for PBXNativeTarget "ReflexAppTests" */ = {{isa = XCConfigurationList; buildConfigurations = ({uid('unit-debug')}, {uid('unit-release')}, ); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; }};
-\t\t{ui_config_list} /* Build configuration list for PBXNativeTarget "ReflexUITests" */ = {{isa = XCConfigurationList; buildConfigurations = ({uid('ui-debug')}, {uid('ui-release')}, ); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; }};
+\t\t{app_config_list} /* Build configuration list for PBXNativeTarget "VisionOS" */ = {{isa = XCConfigurationList; buildConfigurations = ({uid('app-debug')}, {uid('app-release')}, ); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; }};
+\t\t{unit_config_list} /* Build configuration list for PBXNativeTarget "VisionOSAppTests" */ = {{isa = XCConfigurationList; buildConfigurations = ({uid('unit-debug')}, {uid('unit-release')}, ); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; }};
+\t\t{ui_config_list} /* Build configuration list for PBXNativeTarget "VisionOSUITests" */ = {{isa = XCConfigurationList; buildConfigurations = ({uid('ui-debug')}, {uid('ui-release')}, ); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; }};
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */

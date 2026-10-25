@@ -468,7 +468,7 @@ final class SessionCoordinator: ObservableObject {
         diagnostics.record(name, context: context, now: clock.nowMs, taskID: engine?.state.context.taskID, code: code)
         #if DEBUG
         if name == "tracking_loss" || name == "session_stop" {
-            print("Reflex diagnostic: \(name) code=\(code ?? "none")")
+            print("VisionOS diagnostic: \(name) code=\(code ?? "none")")
         }
         #endif
     }

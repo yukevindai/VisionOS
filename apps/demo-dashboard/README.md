@@ -1,4 +1,4 @@
-# Reflex live demo dashboard
+# VisionOS live demo dashboard
 
 Audience-facing browser display for the **existing Windows R3 Python tracking process**.
 Implements the approved [Figma design](https://www.figma.com/design/JnmjymGdRQGturYhNuQcwo?node-id=3-138)

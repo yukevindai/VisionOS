@@ -21,7 +21,7 @@ Reviewed read-only: `C:\Users\ngkho\OneDrive\Desktop\testing_ver_calhack\upstrea
 6. Hand inference and object neural inference overlap on separate bounded workers; object depth/anchor updates still wait for the current hand result. There are no growing detector queues.
 7. The detector threshold is now 0.30 following an actual upright cup candidate at 0.347 that the former 0.40 threshold rejected. Lower detector score alone cannot establish a metric anchor: repeated depth evidence and hand exclusion still apply. NanoDet is retained as the licensed lightweight detector; no Proprio weights are copied.
 8. Received FPS now uses a time window instead of averaging inverse packet gaps, which previously exaggerated bursty TCP delivery. Sensor timestamp FPS is reported separately. Camera darkness, lack of high-confidence depth and tip-depth rejection are visible in the panel.
-9. Hazard and task-generation rejection are available in the dependency-free guidance policy as **prototype integration parameters**, not a final team-wide Reflex API. Native task/hazard producers and ALL_STOP dispatch are not wired here because the actual shared contracts and Reflex repository are absent.
+9. Hazard and task-generation rejection are available in the dependency-free guidance policy as **prototype integration parameters**, not a final team-wide VisionOS API. Native task/hazard producers and ALL_STOP dispatch are not wired here because the actual shared contracts and VisionOS repository are absent.
 
 ## Real device evidence from this session
 
@@ -51,8 +51,8 @@ For that run, median processed FPS was **14.0**, median sensor timestamp FPS **5
 
 The final 12-second verification after the depth-cell correction timed out and received no frames. The correction has a passing regression test but has not yet been physically revalidated. Direct tip LiDAR remains a real limitation; **no precise approach audio, near-target threshold or grasp was validated** in this session.
 
-## Reflex scope and missing integration artifacts
+## VisionOS scope and missing integration artifacts
 
-Only an empty VisionOS repository is available alongside this prototype. There is no actual Reflex Build Spec v3.1 file, no `ios/Packages/Perception` or `Guidance` package and no team contracts from sections 5–8 to inspect. The pasted architecture excerpt supplies requirements but is not those complete artifacts. No final shared Swift API or new SwiftUI app was invented.
+Only an empty VisionOS repository is available alongside this prototype. There is no actual VisionOS Build Spec v3.1 file, no `ios/Packages/Perception` or `Guidance` package and no team contracts from sections 5–8 to inspect. The pasted architecture excerpt supplies requirements but is not those complete artifacts. No final shared Swift API or new SwiftUI app was invented.
 
-Production destination is the reusable Reflex feature shared by OBJ, BTN, MNU and DOR. Approved targets come from R3; task generations and app state from R2; cue delivery goes through the existing central scheduler and R2 HapticLink/H1 hardware path. No second ARSession, audio scheduler or BLE manager should be added. Native integration must wait for the actual repository/contracts; Windows audio remains a research-harness adapter only.
+Production destination is the reusable VisionOS feature shared by OBJ, BTN, MNU and DOR. Approved targets come from R3; task generations and app state from R2; cue delivery goes through the existing central scheduler and R2 HapticLink/H1 hardware path. No second ARSession, audio scheduler or BLE manager should be added. Native integration must wait for the actual repository/contracts; Windows audio remains a research-harness adapter only.

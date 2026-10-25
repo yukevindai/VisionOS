@@ -24,7 +24,7 @@ jobs:
       - name: Verify committed project matches source membership
         run: |
           python3 ios/Scripts/generate_project.py
-          git diff --exit-code -- ios/Reflex.xcodeproj
+          git diff --exit-code -- ios/VisionOS.xcodeproj
 
   swift-packages:
     name: Swift package tests

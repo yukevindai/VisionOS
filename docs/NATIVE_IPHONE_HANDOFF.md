@@ -21,7 +21,7 @@ If the branch already exists locally, switch to it and use `git pull --ff-only`.
    .runtime/coreml-export/bin/python ios/Scripts/prepare_native_model.py
    ```
 
-3. Open `ios/Reflex.xcodeproj`, select the `Reflex` scheme, configure your development team and bundle ID, and select the connected, trusted, unlocked phone with Developer Mode enabled. Signing settings can go in ignored `ios/Config/Local.xcconfig`; start from `Local.example.xcconfig`.
+3. Open `ios/VisionOS.xcodeproj`, select the `VisionOS` scheme, configure your development team and bundle ID, and select the connected, trusted, unlocked phone with Developer Mode enabled. Signing settings can go in ignored `ios/Config/Local.xcconfig`; start from `Local.example.xcconfig`.
 4. For the first physical check, add `--native-device-check` to the scheme's Debug Run arguments. Start the check and observe actual camera/depth/hand counters with a hand in view. This route produces no movement cues, audio or cloud uploads. Record actual outcomes; remove the argument before testing normal assistance.
 5. Test normal assistance with simulation off and grant camera, microphone and speech recognition access. Start with an ordinary cup or bottle in a controlled setting. Validate dominant-hand/orientation mapping, occlusion/lost tracking, stale evidence, local spoken Stop, Pause/End and interruptions before relying on guidance. The initial thresholds and physical behavior remain unvalidated.
 
