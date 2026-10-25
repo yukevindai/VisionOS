@@ -1,8 +1,10 @@
-"""Always-listening voice commands for the Windows preview: offline Windows speech recognition, fixed phrases.
+"""Always-listening voice commands for the Windows preview: offline Windows speech recognition, optional open dictation.
 
-A PowerShell child process hosts System.Speech's recognizer with a small grammar (the six demo objects with their
-aliases behind a verb, "what's around me", "stop", "stop tracking") and prints each recognition with its confidence.
-A fixed grammar is far faster and more accurate than open dictation in a noisy room, and needs no network.
+A PowerShell child process hosts System.Speech on the laptop. The normal demo
+keeps its command grammar. With open_ended=True, Windows DictationGrammar is
+loaded alongside it, so free requests and clarification answers reach the
+coordinator; Stop retains its explicit grammar and queue priority. Recognition
+quality depends on the installed Windows language pack and microphone.
 
 Echo guard: while VisionOS is speaking (and briefly after), only "stop"/"be quiet" are accepted, so its own voice
 ("Pepsi can, right") never triggers a command, yet the user can always interrupt it. Low-confidence results are
@@ -73,6 +75,7 @@ foreach ($p in [System.IO.File]::ReadAllLines('{phrases}')) { if ($p) { [void]$c
 $builder = New-Object System.Speech.Recognition.GrammarBuilder($choices)
 $builder.Culture = $culture
 $engine.LoadGrammar((New-Object System.Speech.Recognition.Grammar($builder)))
+{dictation}
 {input}
 [Console]::Out.WriteLine('READY'); [Console]::Out.Flush()
 while ($true) {
@@ -85,10 +88,11 @@ while ($true) {
 
 class VoiceCommands:
     """Starts the recognizer process; recognized commands arrive on self.commands as (command, argument, text)."""
-    def __init__(self, folder, speaking=lambda: False, min_confidence=.6, echo_gap_s=.5, wave=None, log=print):
+    def __init__(self, folder, speaking=lambda: False, min_confidence=.6, echo_gap_s=.5, wave=None, log=print, open_ended=False):
         self.folder, self.speaking, self.min_confidence, self.echo_gap_s = folder, speaking, min_confidence, echo_gap_s
         self.log = log
-        self.commands = queue.Queue()
+        self.open_ended = open_ended
+        self.commands = queue.Queue(maxsize=8)
         self.status = 'starting voice recognition'
         self.last_heard = ''
         self.quiet_until = 0.
@@ -98,6 +102,7 @@ class VoiceCommands:
         source = (f"$engine.SetInputToWaveFile('{str(wave).replace(chr(39), chr(39) * 2)}')" if wave
                   else '$engine.SetInputToDefaultAudioDevice()')
         script = (SCRIPT.replace('{phrases}', str(folder / 'voice-phrases.txt').replace("'", "''"))
+                  .replace('{dictation}', '$engine.LoadGrammar((New-Object System.Speech.Recognition.DictationGrammar))' if open_ended else '')
                   .replace('{input}', source).replace('({once})', '($true)' if wave else '($false)'))
         (folder / 'voice-recognizer.ps1').write_text(script, encoding='utf-8')
         self.thread = threading.Thread(target=self._run, daemon=True, name='r3-voice')
@@ -113,7 +118,7 @@ class VoiceCommands:
             for line in self.process.stdout:
                 line = line.strip()
                 if line == 'READY':
-                    self.status = 'LISTENING (say "find the Pepsi can", "what is around me", "stop")'
+                    self.status = ('LISTENING (open requests; say stop to cancel)' if self.open_ended else 'LISTENING (say "find the Pepsi can", "what is around me", "stop")')
                     self.log('VOICE_READY')
                 elif line.startswith('HEARD|'):
                     _, confidence, text = line.split('|', 2)
@@ -125,7 +130,10 @@ class VoiceCommands:
             self.status = f'voice unavailable ({type(exc).__name__})'
 
     def handle(self, text, confidence, now):
+        text = ' '.join(str(text).split())[:500]
         command, argument = interpret(text)
+        if command is None and text and getattr(self, 'open_ended', False):
+            command, argument = 'request', text
         if command is None or confidence < self.min_confidence:
             self.log('VOICE_IGNORED', text=text, confidence=round(confidence, 2))
             return None
@@ -137,7 +145,13 @@ class VoiceCommands:
             return None
         self.last_heard = f'"{text}" ({confidence:.2f})'
         self.log('VOICE_COMMAND', command=command, argument=argument, text=text, confidence=round(confidence, 2))
-        self.commands.put((command, argument, text))
+        with self.commands.mutex:
+            if command in ('stop_tracking', 'quiet'):
+                self.commands.queue.clear()
+            elif self.commands.maxsize and len(self.commands.queue) >= self.commands.maxsize:
+                self.commands.queue.popleft()
+            self.commands.queue.append((command, argument, text))
+            self.commands.not_empty.notify()
         return command
 
     def close(self):

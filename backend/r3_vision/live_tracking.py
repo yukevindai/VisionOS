@@ -64,6 +64,9 @@ class TrackingWorker:
             # Centimetre clips only when a physical calibration record allows validated 3D guidance.
             numeric = getattr(args, 'distance_calibration', None) is not None
             player = ClipPlayer(device=getattr(args, 'audio_device', None), log=self._audio_log, numeric=numeric)
+            if getattr(args, 'agents', False):
+                from .agent_audio import PriorityAudio
+                player = PriorityAudio(player)
             self.audio = AudioGuidance(player, log=self._audio_log, numeric=numeric)
         self.log = self.log_path = None
         self.hand_pool = None
@@ -107,6 +110,11 @@ class TrackingWorker:
         self.hand_bridge = None
         self.hand_status = 'INITIALIZING' if getattr(args, 'hands', False) else 'OFF'
         self.ticket = 0
+        self.agents = None
+        if getattr(args, 'agents', False):
+            from .agent_providers import AnthropicRouter, GeminiProvider
+            from .orchestration_bridge import OrchestrationBridge
+            self.agents = OrchestrationBridge(self, args.agent_router, args.agent_provider)
         self.thread = threading.Thread(target=self.run, daemon=True, name='r3-local-tracker')
         self.thread.start()
 
@@ -156,6 +164,10 @@ class TrackingWorker:
             import copy
             client = copy.copy(self.client)
             client.prompt = gemini.object_prompt(job.query)
+            if self.agents is not None:
+                from .visual_agents import OBJECT_INSTRUCTIONS
+                client.prompt += '\n' + OBJECT_INSTRUCTIONS
+                client.specialist_instructions = OBJECT_INSTRUCTIONS
         target_reply = (getattr(self.args, 'target_kind', 'control') == 'object'
                         and getattr(self.args, 'gemini_reply', 'inventory') == 'target')
         if target_reply:
@@ -427,6 +439,8 @@ class TrackingWorker:
             except Exception as exc:
                 self.hand_status = f'ERROR ({type(exc).__name__}); check MediaPipe/model installation'
         while not self.stopped.is_set():
+            if self.agents is not None:
+                self.agents.drain()
             try:
                 while True:
                     ticket, query = self.commands.get_nowait()
@@ -450,11 +464,18 @@ class TrackingWorker:
             try:
                 while True:
                     job, result, prepared = self.responses.get_nowait()
+                    if self.agents is not None:
+                        result = self.agents.filter_result(job, result)
+                        if result is None:
+                            continue
                     if (result.get('mode') == 'HYBRID_VERIFY' and result.get('agrees') is True
                             and job.generation == self.session.generation):
                         self.latency.confirmed(time.monotonic())
                     try:
                         self.session.complete(job, result, time.monotonic(), prepared_tracker=prepared)
+                        if self.agents is not None and (self.agents.context is None or
+                                                        not self.agents.context.is_current()):
+                            self.session.stop()
                     except Exception as exc:
                         self.session.inflight = None
                         self.session.tracker = None
@@ -479,6 +500,8 @@ class TrackingWorker:
                         packet = make_packet(raw, received, info, self.stream_id, self.args.rotation,
                                              max_edge=self.track_edge, upright_image=image)
                         self.latest_frame = packet
+                        if self.agents is not None:
+                            self.agents.observe(packet)
                         display = packet.image.copy()
                         hand_future = (self.hand_pool.submit(self.hand_bridge.process, packet)
                                        if self.hand_bridge is not None else None)
@@ -623,6 +646,8 @@ class TrackingWorker:
                     self.output = (self.ticket, None, now, 'TARGET LOST', self.source.status,
                                    self.session.mode, self.session.budget.total)
                 state = (self.session.state, self.session.detail)
+                if self.agents is not None:
+                    self.agents.tracking(time.monotonic())
                 if state != last_state and (last_state is None or state[0] != last_state[0]
                                              or time.monotonic()-last_log >= 1):
                     # State/detail are local or sanitized pipeline categories, never endpoint/key values.
@@ -748,6 +773,8 @@ class TrackingWorker:
             self.log.flush()
 
     def close(self):
+        if getattr(self, 'agents', None) is not None:
+            self.agents.close()
         self.stopped.set()
         self.cancel_scene_speech()
         self.source.close()
@@ -761,6 +788,7 @@ class TrackingWorker:
 
 def arguments(argv=None):
     p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument('--agents', action='store_true', help='Direct Anthropic/Gemini multi-agent orchestration')
     src = p.add_mutually_exclusive_group(required=True)
     src.add_argument('--host', help='Current user-supplied PathOn REC3D host')
     src.add_argument('--video', help='Explicit OpenCV camera index, URL, or test video')
@@ -850,7 +878,24 @@ def main(argv=None):
         device = argv[argv.index('--audio-device') + 1] if '--audio-device' in argv else None
         return audio_test(audio_device(device))
     args = arguments(argv)
+    if args.agents and (args.tracker != 'lock' or args.target_kind != 'object' or args.replay
+                        or args.detection not in ('gemini', 'hybrid')):
+        raise SystemExit('--agents requires --tracker lock --target-kind object --detection hybrid (or gemini); '
+                         'use injected providers for automated simulation')
     args.audio_device = audio_device(args.audio_device)
+    if args.agents:
+        from .agent_providers import AnthropicRouter, GeminiProvider
+        gemini.load_dotenv(Path(__file__).resolve().parents[1] / '.env')
+        try:
+            args.agent_router = AnthropicRouter.from_env()
+            args.agent_provider = GeminiProvider.from_env()
+            args.agent_router.verify_models()
+            args.agent_provider.verify_models()
+            # Object verification uses the existing client and its configured model.
+            import os
+            GeminiProvider(os.getenv('GEMINI_API_KEY'), os.getenv('GEMINI_MODEL')).verify_models()
+        except (ValueError, RuntimeError, TimeoutError) as exc:
+            raise SystemExit(f'Agent configuration unavailable: {exc}') from None
     if sys.platform != 'win32':
         raise SystemExit('Interactive camera tool is Windows-only')
     import cv2
@@ -861,7 +906,7 @@ def main(argv=None):
         from .tracker_models import ensure_model
         ensure_model(download=True)
     client = client_from_args(args.replay)
-    client.timeout_s = args.timeout
+    client.timeout_s = min(args.timeout, 5.) if args.agents else args.timeout
     if args.target_kind == 'object':
         from .gemini import OBJECT_PROMPT
         client.prompt = OBJECT_PROMPT
@@ -908,6 +953,16 @@ def main(argv=None):
 
     def find():
         nonlocal ticket, last
+        if worker.agents is not None:
+            try:
+                worker.agents.coordinator.submit(query.get())
+            except ValueError:
+                status.set('Enter a request containing 1–1000 characters.')
+                return
+            if dashboard is not None:
+                dashboard.invalidate()
+            last = None
+            return
         if re.search(r"\b(describe|what'?s around|what is around|around me|surroundings)\b", query.get().lower()):
             worker.describe_surroundings()
             if dashboard is not None:
@@ -927,6 +982,12 @@ def main(argv=None):
 
     def stop():
         nonlocal ticket, last
+        if worker.agents is not None:
+            worker.agents.coordinator.stop()
+            if dashboard is not None:
+                dashboard.invalidate()
+            last = None
+            return
         ticket += 1
         if dashboard is not None:
             dashboard.invalidate()
@@ -938,7 +999,13 @@ def main(argv=None):
         status.set('SEARCHING: stopped')
 
     tk.Button(toolbar, text='Stop tracking', command=stop).grid(row=0, column=2)
-    tk.Button(toolbar, text='Describe surroundings', command=worker.describe_surroundings).grid(
+    def describe():
+        if worker.agents is not None:
+            worker.agents.coordinator.submit('Describe surroundings')
+        else:
+            worker.describe_surroundings()
+
+    tk.Button(toolbar, text='Describe surroundings', command=describe).grid(
         row=0, column=3, padx=(8, 0))
     if args.detection == 'demo':
         tk.Button(toolbar, text='Quick: 6 objects', command=worker.describe).grid(row=0, column=4, padx=(8, 0))
@@ -948,12 +1015,25 @@ def main(argv=None):
         from .voice_commands import VoiceCommands
         player = worker.audio.player if worker.audio is not None else None
         voice = VoiceCommands(Path(__file__).resolve().parents[1] / '.runtime/voice',
+                              open_ended=args.agents,
                               speaking=(lambda: player.speaking()) if player is not None else (lambda: False),
                               log=lambda event, **fields: print('VOICE', event, json.dumps(fields), flush=True))
 
     def voice_command(command, argument):
         from .demo_objects import OBJECTS
         player = worker.audio.player if worker.audio is not None else None
+        if worker.agents is not None:
+            if command in ('quiet', 'stop_tracking'):
+                stop()
+            elif command == 'request':
+                query.set(argument)
+                find()
+            elif command == 'find':
+                query.set(f'Find the {OBJECTS[argument].name}')
+                find()
+            elif command == 'describe':
+                describe()
+            return
         if command == 'quiet':
             worker.cancel_scene_speech()
             if player is not None:
@@ -984,18 +1064,22 @@ def main(argv=None):
             print(f'Browser dashboard unavailable: {error}. Desktop tracking remains available.', flush=True)
 
     def tick():
-        nonlocal last, last_size, last_publish
+        nonlocal last, last_size, last_publish, ticket
+        if worker.agents is not None:
+            ticket = worker.ticket
         if dashboard is not None:
             while not dashboard.commands.empty():
                 command = dashboard.commands.get_nowait()
                 action = command['action']
-                if action == 'find':
+                if action in ('find', 'request'):
                     query.set(command['query'])
                     find()
                 elif action == 'stop':
                     stop()
                 elif action == 'describe':
-                    worker.describe_surroundings()
+                    describe()
+                elif action == 'recall' and worker.agents is not None:
+                    worker.agents.coordinator.submit('What did I miss?')
                 elif action == 'quick' and args.detection == 'demo':
                     worker.describe()
         while voice is not None and not voice.commands.empty():
@@ -1038,7 +1122,12 @@ def main(argv=None):
             last_publish = time.monotonic()
             dashboard.publish(worker.output, worker.panel, ticket,
                               mode='SIMULATED' if args.replay else 'LIVE',
-                              quick=args.detection == 'demo', voice=voice)
+                              quick=args.detection == 'demo', voice=voice,
+                              orchestration=worker.agents.coordinator.snapshot() if worker.agents else None)
+        if worker.agents is not None:
+            agent_state = worker.agents.coordinator.snapshot()
+            status.set(f"{agent_state['agent']}: {agent_state['status']} | "
+                       f"{agent_state.get('clarification') or agent_state.get('error') or agent_state['goal']}")
         root.after(30, tick)
 
     def close():
