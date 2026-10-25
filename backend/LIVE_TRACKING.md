@@ -284,3 +284,7 @@ browser does not capture microphone input or independently generate guidance.
 
 See [dashboard setup and validation](../apps/demo-dashboard/README.md).
 No wearable telemetry transport is present in this bridge; it reports unavailable.
+
+## Optional Arduino 101 BLE output
+
+Add `-ArduinoBLE` to the PowerShell launcher (Python: `--arduino-ble`) for direct laptop-to-servo commands. See [setup, firmware discrepancies and bench tests](ARDUINO_BLE.md). Disabled by default; existing video, voice and iPhone paths are preserved.

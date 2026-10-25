@@ -4,6 +4,8 @@ param(
     [switch]$DepthView,
     [switch]$WebDashboard,
     [switch]$Agents,
+    [switch]$ArduinoBLE,
+    [string]$ArduinoAddress = '',
     [ValidateRange(1,65535)][int]$WebPort = 8765,
     [string]$Python = '',
     [string]$PhoneHost = 'auto',
@@ -96,7 +98,7 @@ try {
     $env:YOLO_AUTOINSTALL = 'false'
     # -Webcam <index> uses a local camera instead of PathOn (no LiDAR: 2D only).
     $source = if ($Webcam -ne '') { @('--video', $Webcam) } else { @('--host', $PhoneHost, '--port', $Port) }
-    & $Python -m r3_vision.live_tracking @source $(if ($Agents) { '--agents' }) $(if ($WebDashboard) { @('--web-dashboard', '--web-port', $WebPort) }) --rotation $Rotation --request $Request --detection $Detection @discovery @calibration $(if ($DepthView) { '--depth-view' }) $(if ($Audio) { '--audio' } else { '--no-audio' }) $(if ($Voice) { '--voice' }) --tracker $Tracker --target-kind $TargetKind --thinking $ThinkingLevel --media-resolution $MediaResolution --gemini-reply $GeminiReply $(if ($AudioDevice) { @('--audio-device', $AudioDevice) }) --cooldown $Cooldown --per-minute $PerMinute --max-requests $MaxRequests --timeout $Timeout
+    & $Python -m r3_vision.live_tracking @source $(if ($ArduinoBLE) { '--arduino-ble' }) $(if ($ArduinoAddress) { @('--arduino-address', $ArduinoAddress) }) $(if ($Agents) { '--agents' }) $(if ($WebDashboard) { @('--web-dashboard', '--web-port', $WebPort) }) --rotation $Rotation --request $Request --detection $Detection @discovery @calibration $(if ($DepthView) { '--depth-view' }) $(if ($Audio) { '--audio' } else { '--no-audio' }) $(if ($Voice) { '--voice' }) --tracker $Tracker --target-kind $TargetKind --thinking $ThinkingLevel --media-resolution $MediaResolution --gemini-reply $GeminiReply $(if ($AudioDevice) { @('--audio-device', $AudioDevice) }) --cooldown $Cooldown --per-minute $PerMinute --max-requests $MaxRequests --timeout $Timeout
     if ($LASTEXITCODE -ne 0) { throw 'R3 tracking exited with an error. See message above.' }
 } finally {
     $env:GEMINI_MODEL = $previousModel

@@ -65,6 +65,26 @@ Close the demo or run without `--voice` to turn off its microphone recognition.
 The idle timeout only pauses new voice requests; it does not cancel active
 tracking. “Thanks Vision” explicitly cancels the current task as well.
 
+### Laptop Cartesia voice
+
+With `--audio`, the laptop reads `CARTESIA_API_KEY`, `CARTESIA_VOICE_ID` and
+`CARTESIA_MODEL` from `backend/.env`. All three must be set. Restart the running
+Python process after changing them. No Convex deployment is needed for laptop
+speech. The voice ID selects your voice; the model ID selects the synthesis model.
+The adapter uses the [Cartesia bytes API](https://docs.cartesia.ai/api-reference/tts/bytes).
+
+Conversational answers and clarifications use Cartesia through the existing sole
+audio player. Immediate movement/loss cues remain pre-generated local speech.
+Cartesia has a five-second deadline and bounded response size; failure falls back
+to Windows speech for a still-current request. Stop, target loss and higher-priority
+guidance invalidate pending speech. Interrupted answers are never resumed.
+Terminal `AUDIO` events identify the configured provider, synthesis latency and
+fallbacks; the dashboard audio status shows synthesis/fallback activity.
+
+To check the selected voice, start the normal command with `--audio`, then ask
+“Describe surroundings.” Look for `SPEECH_SYNTHESIS_COMPLETED` with provider
+`cartesia`. `--audio-test` tests local guidance clips, not the Cartesia voice.
+
 `Coordinator` owns a session ID, task ID/generation, current goal, bounded dialogue,
 target state, observation times and 64 diagnostic events. It delegates typed tools
 through the direct Anthropic Messages API. Obvious find/describe/recall commands
