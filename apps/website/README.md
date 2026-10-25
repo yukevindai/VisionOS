@@ -1,6 +1,8 @@
 # VisionOS company website
 
-Public product and mission website, implemented from the [approved desktop/mobile Figma design](https://www.figma.com/design/nsDazJM8jtWNRUM9JJT0SS?node-id=2-134). This is separate from the live demo dashboard, friend web app, backend, iPhone app and hardware runtime. It does not access cameras or microphones or operate the hardware.
+Public product and mission website. This refresh builds on the original [Figma design](https://www.figma.com/design/nsDazJM8jtWNRUM9JJT0SS?node-id=2-134), with a new visual direction and copy reviewed against main at `420245f`.
+
+The website is separate from the demo dashboard, helper apps, backend, native iPhone app, and hardware runtime. It does not access cameras or microphones or operate hardware.
 
 ## Local preview
 
@@ -12,29 +14,47 @@ npm run build
 npm run preview
 ```
 
-Open http://localhost:3000. Content is semantic HTML with responsive CSS; no client JavaScript is required. Fonts (Manrope and IBM Plex Sans) load through Google Fonts with local sans-serif fallbacks. The site works without the font service.
+Open http://localhost:3000. Semantic HTML, native disclosure controls, and responsive CSS work without client JavaScript. The system font stack avoids third-party font requests. Appearance follows the device's light/dark preference; reduced motion and forced-colors preferences are supported.
 
-## Vercel
+## Design direction
 
-Import `yukevindai/VisionOS` as a separate Vercel project, with **Root Directory `apps/website`**, **Framework Preset Other**, build command `npm run build`, and output directory `dist`. The checked-in `vercel.json` sets the build/output and response headers. Use `main` as the production branch after review/merge, and PR branches for previews. No environment variables, product credentials, or server runtime are required. This commit does not create a Vercel project or deploy the site.
+A calm, spacious product site with a consistent blue accent, large readable typography, and real hardware photography. Inspired by the focused navigation and clear hierarchy of [DeepSeek](https://www.deepseek.com/en/), the people-first presentation of [Be My Eyes](https://www.bemyeyes.com/), and the application-focused storytelling of [Microsoft AI for Good](https://www.microsoft.com/en-us/corporate-responsibility/topics/ai-for-good-lab/). These are design references, not affiliations or endorsements.
 
-## Photos and content
+The UI/UX Pro Max minimal/Swiss direction and design-taste audit informed the redesign. Native CSS preserves the existing dependency-free stack. Controls use a 12px radius and media/panels use 24px. Motion is limited to interaction feedback; there are no automatic effects or scroll hijacking.
 
-Only the four user-supplied hardware photographs are used. Optimized WebP copies preserve the originals’ content; EXIF orientation is applied and metadata omitted. The source uploads remain with the owner.
+## Photos and logo
+
+All four original hardware photographs and all eight optimized WebP assets are preserved. The photographs are hardware images, not user-testing photos.
 
 | Source | Website asset | Placement |
 | --- | --- | --- |
-| IMG_1728.jpeg | hardware-1728-{640,1280}.webp | Hero hardware overview |
-| IMG_1730.jpeg | hardware-1730-{640,1280}.webp | Actuator assembly feature |
+| IMG_1728.jpeg | hardware-1728-{640,1280}.webp | Hero overview |
+| IMG_1730.jpeg | hardware-1730-{640,1280}.webp | Step-by-step reach guidance |
 | IMG_1729.jpeg | hardware-1729-{640,1280}.webp | Enclosure gallery |
 | IMG_1731.jpeg | hardware-1731-{640,1280}.webp | Connected assembly gallery |
+| User-supplied eye logo | visionos-logo.png | Navigation, footer, contact, favicon |
 
-All are photos of the hardware, not user-testing photos. Do not substitute stock/generated images or the older laptop photos. `srcset` provides two sizes; gallery images show the full photo while hero/feature images crop as approved in Figma.
+The uploaded logo had an opaque checkerboard background. An image-generation background-removal edit prepared the transparent website version from that supplied mark. The generated result was optimized to a 256px PNG for delivery. The source upload remains with the owner. No stock or generated hardware photographs were added. Responsive `srcset`, image dimensions, and lazy loading are retained; gallery images show the full photo.
 
-## Launch notes
+## Content and implementation boundaries
 
-- Confirm final prototype wording with the team before public launch. Copy distinguishes prototype capabilities from the recent-events direction still being developed.
-- The team inbox and domain have not been supplied. The contact CTA honestly links to public GitHub issue creation (GitHub account required), not a fake email or submission form. Replace it with an approved inbox when available.
-- No testimonials, adoption numbers, member names, or certification claims have been invented.
-- `accessibility.html` describes site behavior and provides a feedback route, without claiming formal certification.
-- No existing product feature may be removed or disabled without Kevin’s explicit instruction.
+The mission focuses on access to spatial information and user agency. It does not generalize that blind people lack spatial knowledge.
+
+- Object finding, scene description, and recent visible-event recall reflect `backend/r3_vision/visual_agents.py` and `docs/MULTI_AGENT_ORCHESTRATION.md`.
+- Step-by-step hand guidance depends on camera visibility, valid observations, calibration, and available depth. The user moves their hand; the hardware provides directional cues.
+- The current Arduino integration uses four servos (`backend/r3_vision/arduino_ble.py` and `firmware/Arduino101ServoController/`). Do not describe it as confirmed vibration motors or a mechanism that physically moves a user's hand.
+- Family Notes and consented AI voice copies reflect `docs/FAMILY_NOTES.md` and `docs/FAMILY_VOICE.md`. Live integration validation is still pending; merged code is not a consumer launch.
+- Button, door, and kiosk interactions remain broader goals rather than completed real-world demonstrations.
+- No testimonials, adoption numbers, certifications, or unverified performance claims are used.
+
+## Validation
+
+See [VALIDATION.md](VALIDATION.md) for browser, responsive, accessibility, and preservation checks and their limits.
+
+## Deployment
+
+Vercel settings: **Root Directory `apps/website`**, **Framework Preset Other**, build command `npm run build`, output directory `dist`. The checked-in `vercel.json` contains the build/output settings and response headers. Production uses `main` after review/merge; PR branches may create previews if configured. No environment variables or product credentials are required.
+
+The team inbox has not been supplied. The contact CTA opens public GitHub issue creation, with the account requirement disclosed. `accessibility.html` provides site-use information and a feedback route without claiming certification.
+
+No existing product feature may be removed or disabled without Kevin's explicit instruction.
