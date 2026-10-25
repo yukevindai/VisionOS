@@ -113,6 +113,9 @@ The current implementation session has no provider credentials or attached devic
 
 ### Implementation validation — October 25, 2026
 
+- Final local full Python suite: **364 tests run, 26 skipped, no failures**.
+  This is automated simulation, not live hardware validation. Earlier failures
+  and their resolutions remain recorded below.
 - Windows, Python 3.12 x64, Pillow 11.1.0, NumPy 2.5.4, OpenCV 4.14.0.94:
   49 new agent/provider/voice/audio/bridge tests passed; 7 dashboard JavaScript
   tests passed. All providers, transcripts, playback and frames are simulated.
