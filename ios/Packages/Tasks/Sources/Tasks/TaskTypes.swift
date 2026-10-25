@@ -19,13 +19,16 @@ public enum TaskError: String, Codable, Sendable {
 public struct TaskConfiguration: Equatable, Sendable {
     public var freshnessMs: Int64
     public var requestTimeoutMs: Int64
+    public var objectRecognitionTimeoutMs: Int64
     public var confirmationTimeoutMs: Int64
     /// Retries AFTER the initial attempt.
     public var maximumRetries: Int
     public init(freshnessMs: Int64 = 300, requestTimeoutMs: Int64 = 5_000,
-                confirmationTimeoutMs: Int64 = 30_000, maximumRetries: Int = 3) {
+                confirmationTimeoutMs: Int64 = 30_000, maximumRetries: Int = 3,
+                objectRecognitionTimeoutMs: Int64 = 60_000) {
         self.freshnessMs = max(1, freshnessMs)
         self.requestTimeoutMs = max(1, requestTimeoutMs)
+        self.objectRecognitionTimeoutMs = max(1, objectRecognitionTimeoutMs)
         self.confirmationTimeoutMs = max(1, confirmationTimeoutMs)
         self.maximumRetries = max(0, maximumRetries)
     }

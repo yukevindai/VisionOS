@@ -268,7 +268,7 @@ final class ConvexNativeMediaBackendTests: XCTestCase {
         MediaURLProtocol.handler = { request in
             XCTAssertEqual(request.url?.path, "/api/action")
             XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer header.payload.signature")
-            XCTAssertEqual(request.timeoutInterval, 5)
+            XCTAssertEqual(request.timeoutInterval, 60)
             let body = try XCTUnwrap(JSONSerialization.jsonObject(with: requestBody(request)) as? [String: Any])
             XCTAssertEqual(body["path"] as? String, "vision:findObject")
             let args = try XCTUnwrap((body["args"] as? [[String: Any]])?.first)
