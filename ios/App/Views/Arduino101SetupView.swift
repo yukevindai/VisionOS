@@ -28,19 +28,21 @@ struct Arduino101SetupView: View {
                     .accessibilityIdentifier("arduino101.reset")
             }
 
-            Section("Directional hardware test") {
-                Text("Each test sends a press command such as `up0`, waits 180 ms, then sends its matching release command such as `up80`. The Arduino also auto-releases after 2 seconds or immediately on BLE disconnect. These are manual hardware tests; they are not connected to live hand-guidance cues.")
+            Section("Servo holds") {
+                Text("Turn on one or more servos to send commands such as `up0` and `left0`. Turn each one off to send its matching release command, such as `up80`. Each toggle sends release by 1.8 seconds; the Arduino independently releases by 2 seconds. These manual controls are not connected to live hand-guidance cues.")
                     .fixedSize(horizontal: false, vertical: true)
                 ForEach(["Up", "Down", "Left", "Right"], id: \.self) { direction in
-                    Button("Pulse \(direction)") { client.pulse(direction) }
-                        .frame(minHeight: 48)
-                        .disabled(!client.canSendCommand)
-                        .accessibilityIdentifier("arduino101.direction.\(direction.lowercased())")
+                    Toggle("\(direction) servo", isOn: Binding(
+                        get: { client.activeServos.contains(direction) },
+                        set: { client.setServoHeld(direction, held: $0) }
+                    ))
+                    .disabled(!client.canSendCommand)
+                    .accessibilityIdentifier("arduino101.servo.\(direction.lowercased())")
                 }
             }
 
             Section("Current limitation") {
-                Text("The repository hardware safety limit caps servo contact at 2 seconds. Your requested 6-second hold exceeds that limit. The sketch’s legacy `up80` command releases to its configured 70°, not 80°.")
+                Text("The repository hardware safety limit caps each servo hold at 2 seconds. The sketch’s legacy `up80` command releases to its configured 70°, not 80°.")
                     .fixedSize(horizontal: false, vertical: true)
                 Button("Disconnect") { client.disconnect() }
                     .frame(minHeight: 44)

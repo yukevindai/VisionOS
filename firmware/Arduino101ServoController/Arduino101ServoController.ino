@@ -16,19 +16,18 @@ const int TOUCH_ANGLE = 0;
 // Preserve that working physical position and make it explicit.
 const int RELEASE_ANGLE = 70;
 
-enum ActiveServo { NO_SERVO, UP_SERVO, DOWN_SERVO, RIGHT_SERVO, LEFT_SERVO };
+enum ServoIndex { UP_SERVO, DOWN_SERVO, RIGHT_SERVO, LEFT_SERVO, SERVO_COUNT };
 
 Servo upServo;
 Servo downServo;
 Servo rightServo;
 Servo leftServo;
 
-int upAngle = RELEASE_ANGLE;
-int downAngle = RELEASE_ANGLE;
-int rightAngle = RELEASE_ANGLE;
-int leftAngle = RELEASE_ANGLE;
-ActiveServo activeServo = NO_SERVO;
-unsigned long contactStartedAt = 0;
+int commandedAngles[SERVO_COUNT] = {
+  RELEASE_ANGLE, RELEASE_ANGLE, RELEASE_ANGLE, RELEASE_ANGLE
+};
+bool servoPressed[SERVO_COUNT] = { false, false, false, false };
+unsigned long contactStartedAt[SERVO_COUNT] = { 0, 0, 0, 0 };
 bool wasConnected = false;
 
 BLEPeripheral blePeripheral;
@@ -40,58 +39,50 @@ BLECharacteristic commandCharacteristic(
 char serialBuffer[21];
 int serialIndex = 0;
 
+Servo& servoFor(ServoIndex index) {
+  switch (index) {
+    case UP_SERVO: return upServo;
+    case DOWN_SERVO: return downServo;
+    case RIGHT_SERVO: return rightServo;
+    default: return leftServo;
+  }
+}
+
+void setAngle(ServoIndex index, int angle) {
+  servoFor(index).write(angle);
+  commandedAngles[index] = angle;
+}
+
+void releaseServo(ServoIndex selected) {
+  setAngle(selected, RELEASE_ANGLE);
+  servoPressed[selected] = false;
+}
+
 void releaseAll() {
-  upServo.write(RELEASE_ANGLE);
-  downServo.write(RELEASE_ANGLE);
-  rightServo.write(RELEASE_ANGLE);
-  leftServo.write(RELEASE_ANGLE);
-  upAngle = RELEASE_ANGLE;
-  downAngle = RELEASE_ANGLE;
-  rightAngle = RELEASE_ANGLE;
-  leftAngle = RELEASE_ANGLE;
-  activeServo = NO_SERVO;
+  for (int i = 0; i < SERVO_COUNT; i++) releaseServo((ServoIndex)i);
 }
 
-void releaseActiveServo() {
-  switch (activeServo) {
-    case UP_SERVO: upServo.write(RELEASE_ANGLE); upAngle = RELEASE_ANGLE; break;
-    case DOWN_SERVO: downServo.write(RELEASE_ANGLE); downAngle = RELEASE_ANGLE; break;
-    case RIGHT_SERVO: rightServo.write(RELEASE_ANGLE); rightAngle = RELEASE_ANGLE; break;
-    case LEFT_SERVO: leftServo.write(RELEASE_ANGLE); leftAngle = RELEASE_ANGLE; break;
-    case NO_SERVO: return;
-  }
-  activeServo = NO_SERVO;
-}
-
-void pressServo(ActiveServo selected) {
-  // Only one actuator may be at the touch angle at a time.
-  // Repeated press packets cannot refresh the current actuator's deadline.
-  if (activeServo == selected) return;
-  releaseAll();
-  switch (selected) {
-    case UP_SERVO: upServo.write(TOUCH_ANGLE); upAngle = TOUCH_ANGLE; break;
-    case DOWN_SERVO: downServo.write(TOUCH_ANGLE); downAngle = TOUCH_ANGLE; break;
-    case RIGHT_SERVO: rightServo.write(TOUCH_ANGLE); rightAngle = TOUCH_ANGLE; break;
-    case LEFT_SERVO: leftServo.write(TOUCH_ANGLE); leftAngle = TOUCH_ANGLE; break;
-    case NO_SERVO: return;
-  }
-  activeServo = selected;
-  contactStartedAt = millis();
+void pressServo(ServoIndex selected) {
+  // Repeated press packets do not refresh this servo's independent deadline.
+  if (servoPressed[selected]) return;
+  setAngle(selected, TOUCH_ANGLE);
+  servoPressed[selected] = true;
+  contactStartedAt[selected] = millis();
 }
 
 void printAngles() {
-  Serial.print("UP="); Serial.print(upAngle);
-  Serial.print(" DOWN="); Serial.print(downAngle);
-  Serial.print(" RIGHT="); Serial.print(rightAngle);
-  Serial.print(" LEFT="); Serial.println(leftAngle);
+  Serial.print("UP="); Serial.print(commandedAngles[UP_SERVO]);
+  Serial.print(" DOWN="); Serial.print(commandedAngles[DOWN_SERVO]);
+  Serial.print(" RIGHT="); Serial.print(commandedAngles[RIGHT_SERVO]);
+  Serial.print(" LEFT="); Serial.println(commandedAngles[LEFT_SERVO]);
 }
 
 void printHelp() {
   Serial.println("\n===== SERVO CONTROLLER =====");
-  Serial.println("Directional press commands: up0, down0, left0, right0");
-  Serial.println("Release commands (legacy *80 names; actual angle is 70): up80, down80, left80, right80");
+  Serial.println("Hold commands: up0, down0, left0, right0; multiple servos may be held together");
+  Serial.println("Release each servo independently: up80, down80, left80, right80");
   Serial.println("reset releases all servos; ? prints current commanded positions");
-  Serial.println("Firmware auto-releases a pressed servo after 2000 ms or on BLE disconnect.");
+  Serial.println("Each servo auto-releases after 2000 ms or all release on BLE disconnect.");
   Serial.println("============================\n");
 }
 
@@ -110,10 +101,10 @@ void handleCommand(char *cmd) {
   else if (strcmp(cmd, "down0") == 0) pressServo(DOWN_SERVO);
   else if (strcmp(cmd, "left0") == 0) pressServo(LEFT_SERVO);
   else if (strcmp(cmd, "right0") == 0) pressServo(RIGHT_SERVO);
-  else if (strcmp(cmd, "up80") == 0 && activeServo == UP_SERVO) releaseActiveServo();
-  else if (strcmp(cmd, "down80") == 0 && activeServo == DOWN_SERVO) releaseActiveServo();
-  else if (strcmp(cmd, "left80") == 0 && activeServo == LEFT_SERVO) releaseActiveServo();
-  else if (strcmp(cmd, "right80") == 0 && activeServo == RIGHT_SERVO) releaseActiveServo();
+  else if (strcmp(cmd, "up80") == 0) releaseServo(UP_SERVO);
+  else if (strcmp(cmd, "down80") == 0) releaseServo(DOWN_SERVO);
+  else if (strcmp(cmd, "left80") == 0) releaseServo(LEFT_SERVO);
+  else if (strcmp(cmd, "right80") == 0) releaseServo(RIGHT_SERVO);
   else {
     Serial.print("Unknown or inactive release command: ");
     Serial.println(cmd);
@@ -174,9 +165,13 @@ void loop() {
   }
   wasConnected = connected;
 
-  if (activeServo != NO_SERVO && millis() - contactStartedAt >= MAX_CONTACT_MS) {
-    releaseActiveServo();
-    Serial.println("Auto-release: servo contact limit reached");
+  for (int i = 0; i < SERVO_COUNT; i++) {
+    if (servoPressed[i] && millis() - contactStartedAt[i] >= MAX_CONTACT_MS) {
+      releaseServo((ServoIndex)i);
+      Serial.print("Auto-release: ");
+      Serial.print(i);
+      Serial.println(" servo contact limit reached");
+    }
   }
 
   if (commandCharacteristic.written()) {
@@ -185,7 +180,8 @@ void loop() {
       char cmd[21];
       memcpy(cmd, commandCharacteristic.value(), length);
       cmd[length] = '\0';
-      handleCommand(cmd);
+      if (connected) handleCommand(cmd);
+      else Serial.println("Ignored BLE command: no central is connected");
     }
   }
 
