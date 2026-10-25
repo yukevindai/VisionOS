@@ -39,7 +39,7 @@ function render() {
    `CAMERA PREVIEW | ${(age/1000).toFixed(1)}s old${age>=300?' | awaiting next frame':''}`);
  put('audio-cue',s.audio?.lastCue?String(s.audio.lastCue).replaceAll('_',' '):'No cue reported');
  put('audio-status',`Laptop audio: ${s.audio?.enabled?'enabled':'off / unavailable'}${s.audio?.playback?` · ${s.audio.playback}`:''}`);
- put('voice-status',`Laptop microphone: ${s.voice?.status||'awaiting status'}`);
+ put('voice-status',`Microphone: ${s.voice?.inputDevice||'not selected'} · ${s.voice?.status||'awaiting status'}`);
  put('reason',!s.fresh?'Current evidence unavailable. Physical directions are cleared.':s.audio?.suppressed||s.detail||'Fresh tracking and calibrated depth are required for physical guidance.');
  const agents=agentView(s.orchestration,online);
  put('agent-status',agents.status);put('agent-goal',agents.goal);put('agent-response',agents.response);
