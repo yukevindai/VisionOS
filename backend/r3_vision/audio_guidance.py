@@ -17,8 +17,27 @@ import sys
 import threading
 
 PHRASES = {'LEFT': 'Left', 'RIGHT': 'Right', 'UP': 'Up', 'DOWN': 'Down', 'FORWARD': 'Forward', 'BACKWARD': 'Back',
-           'CLOSER': 'Closer', 'READY_TO_GRASP': 'Ready to grasp', 'TRACKING_LOST': 'Tracking lost'}
+           'CLOSER': 'Closer', 'READY_TO_GRASP': 'Ready to grasp', 'TRACKING_LOST': 'Tracking lost',
+           'NEAR_OBJECT': 'Near the object. Check your grip.'}
 DIRECTIONS = {'x': ('RIGHT', 'LEFT'), 'y': ('DOWN', 'UP'), 'z': ('FORWARD', 'BACKWARD')}
+CM_RANGE = range(3, 61)  # spoken centimetre cues: "Left, 8 centimeters." (3D validated mode only)
+CM_PHRASES = {f'{cue}_{cm}': f'{PHRASES[cue]}, {cm} centimeters.'
+              for cue in ('LEFT', 'RIGHT', 'UP', 'DOWN', 'FORWARD', 'BACKWARD') for cm in CM_RANGE}
+
+
+CM_DIRECTIONS = ('LEFT', 'RIGHT', 'UP', 'DOWN', 'FORWARD', 'BACKWARD')
+# Instant scene summary (DEMO): "Pepsi can, left." clips joined into one sentence.
+SUMMARY_NAMES = {'pepsi': 'Pepsi can', 'redbull': 'Red Bull can', 'coke': 'Coca-Cola can', 'cards': 'Deck of cards',
+                 'white_bagel': 'White half bagel', 'brown_bagel': 'Brown bagel'}
+SUMMARY_PHRASES = dict({f'SEE_{k}_{p}': f'{name}, {p}.' for k, name in SUMMARY_NAMES.items()
+                        for p in ('left', 'center', 'right')},
+                       **{f'FINDING_{k}': f'Finding the {name.lower()}.' for k, name in SUMMARY_NAMES.items()},
+                       SEE_NOTHING='I do not recognize any demo object here.', LOOKING='Looking.',
+                       DESCRIBE_FAILED='Sorry, I could not describe the view.')
+
+
+def spoken(cue):
+    return PHRASES.get(cue) or CM_PHRASES.get(cue) or cue
 CLIPS = Path(__file__).resolve().parents[1] / '.runtime/audio-clips'
 
 
@@ -33,10 +52,12 @@ class Evidence:
 
 
 class GuidanceDecider:
-    def __init__(self, max_age_s=.3, tolerance_m=.03, ready_m=.06, near_m=.15, release=.6):
+    def __init__(self, max_age_s=.3, tolerance_m=.03, ready_m=.06, near_m=.15, release=.6, estimate_m=.06):
         self.max_age_s, self.tolerance_m, self.ready_m, self.near_m = max_age_s, tolerance_m, ready_m, near_m
+        self.estimate_m = estimate_m
         self.release = release
         self.axis = None
+        self.cm = None
 
     def reset(self):
         self.axis = None
@@ -67,13 +88,15 @@ class GuidanceDecider:
             dx, dy, dz = offset.delta_m
             if offset.distance_m <= self.ready_m:
                 self.axis = None
-                return 'READY_TO_GRASP', '3D', f'LiDAR distance {offset.distance_m * 100:.0f} cm'
+                # Proximity only; never a touch or grasp confirmation.
+                return 'NEAR_OBJECT', '3D', f'LiDAR distance {offset.distance_m * 100:.0f} cm'
             axis = self._pick({'x': dx, 'y': dy, 'z': dz}, dict.fromkeys('xyz', self.tolerance_m))
             if axis is None:
                 self.axis = None
                 return 'CLOSER', '3D', f'aligned, {offset.distance_m * 100:.0f} cm'
             self.axis = axis
             value = {'x': dx, 'y': dy, 'z': dz}[axis]
+            self.cm = abs(value) * 100
             cue = DIRECTIONS[axis][0 if value > 0 else 1]
             if cue == 'FORWARD' and offset.distance_m <= self.near_m:
                 cue = 'CLOSER'
@@ -82,10 +105,32 @@ class GuidanceDecider:
         axis = self._pick({'x': cx - tx, 'y': cy - ty}, {'x': (x1 - x0) / 2, 'y': (y1 - y0) / 2})
         if axis is None:
             self.axis = None
+            depth = self._estimated_depth(offset)
+            if depth is not None:
+                return depth
             return None, '2D', 'fingertip over the target in 2D; forward/closer need LiDAR depth'
         self.axis = axis
         value = cx - tx if axis == 'x' else cy - ty
         return DIRECTIONS[axis][0 if value > 0 else 1], '2D', f'{axis} {value:+.0f} px (2D only)'
+
+    def _estimated_depth(self, offset):
+        """Word-only FORWARD/BACKWARD from ESTIMATED fingertip depth (palm LiDAR + hand geometry, ~5 cm sigma).
+
+        Only the sign of a clearly large gap is used: |dz| >= estimate_m and >= 2x any direct-tip disagreement.
+        Never centimetres, CLOSER or a near-object cue; those need validated LiDAR.
+        """
+        if offset is None or offset.delta_m is None or getattr(offset, 'measured', False):
+            return None
+        if offset.status not in ('ESTIMATED', 'UNRELIABLE') or getattr(offset, 'target_confidence', '') == 'LOW':
+            return None
+        dz = offset.delta_m[2]
+        disagreement = getattr(offset, 'depth_disagreement_m', None) or 0.
+        if not (math.isfinite(dz) and math.isfinite(disagreement)) or disagreement > .05:
+            return None
+        if abs(dz) < max(self.estimate_m, 2 * disagreement):
+            return None
+        return ('FORWARD' if dz > 0 else 'BACKWARD', '2D+EST',
+                f'estimated depth gap {dz * 100:+.0f} cm (sign only; not measured)')
 
     def _none(self, reason):
         self.axis = None
@@ -97,8 +142,11 @@ class AudioGuidance:
     longer invalid evidence stops playback. Every new cue still needs a fresh, valid frame."""
 
     def __init__(self, player, decider=None, repeat_s=2.5, confirm_frames=2, grace_s=.3, lost_after_s=.6,
-                 lost_gap_s=4., log=None):
+                 lost_gap_s=4., log=None, numeric=False, cm_step=3., cm_gap_s=1.2):
         self.player = player
+        # numeric: in validated 3D mode say the remaining centimetres ("Left, 8 centimeters.").
+        self.numeric, self.cm_step, self.cm_gap_s = numeric, cm_step, cm_gap_s
+        self.spoken_cm = None
         self.decider = decider or GuidanceDecider()
         self.repeat_s, self.confirm_frames, self.grace_s = repeat_s, confirm_frames, grace_s
         self.lost_after_s, self.lost_gap_s = lost_after_s, lost_gap_s
@@ -114,7 +162,9 @@ class AudioGuidance:
         self.suppressed = None
 
     def reset(self):
-        self.player.stop()
+        # Stop only a guidance cue this object started; a scene description or summary keeps playing.
+        if self.current is not None or self.guided:
+            self.player.stop()
         self.decider.reset()
         self.current = self.pending = None
         self.pending_count = 0
@@ -143,10 +193,16 @@ class AudioGuidance:
             if self.pending_count < self.confirm_frames:
                 return self.current
         self.pending, self.pending_count = None, 0
-        if cue != self.current or now - self.spoken_at >= self.repeat_s:
-            self.log('CUE_COMPUTED', cue=cue, mode=mode, reason=reason, frameAgeMs=round(ev.frame_age_s * 1000))
-            self.player.play(cue)
-            self.spoken_at = now
+        cm = self.decider.cm if mode == '3D' and cue in CM_DIRECTIONS else None
+        moved = (cm is not None and self.spoken_cm is not None and abs(cm - self.spoken_cm) >= self.cm_step
+                 and now - self.spoken_at >= self.cm_gap_s)
+        if cue != self.current or now - self.spoken_at >= self.repeat_s or moved:
+            say = cue
+            if self.numeric and cm is not None and round(cm) in CM_RANGE:
+                say = f'{cue}_{round(cm)}'
+            self.log('CUE_COMPUTED', cue=say, mode=mode, reason=reason, frameAgeMs=round(ev.frame_age_s * 1000))
+            self.player.play(say)
+            self.spoken_at, self.spoken_cm = now, cm
         self.current, self.guided = cue, True
         return cue
 
@@ -174,7 +230,7 @@ class AudioGuidance:
 
     def status(self):
         if self.current is not None:
-            return f'AUDIO {PHRASES[self.current].upper()} ({self.mode}: {self.reason})'
+            return f'AUDIO {spoken(self.current).upper()} ({self.mode}: {self.reason})'
         return f'AUDIO silent ({self.reason})'
 
 
@@ -198,23 +254,25 @@ def trim_silence(path, threshold=400, keep_s=.02):
         target.writeframes(trimmed.tobytes())
 
 
-def make_clips(folder=CLIPS, rate=3):
+def make_clips(folder=CLIPS, rate=3, phrases=None):
     """Offline Windows SAPI voice, generated once; returns the clip folder."""
     if sys.platform != 'win32':
         raise RuntimeError('audio clips need Windows')
+    phrases = PHRASES if phrases is None else phrases
     folder = Path(folder)
     folder.mkdir(parents=True, exist_ok=True)
-    missing = [name for name in PHRASES if not (folder / f'{name}.wav').exists()]
-    if missing:
+    missing = [name for name in phrases if not (folder / f'{name}.wav').exists()]
+    for start in range(0, len(missing), 50):  # batches keep the command line under the Windows limit
         lines = ['Add-Type -AssemblyName System.Speech',
                  '$s = New-Object System.Speech.Synthesis.SpeechSynthesizer', f'$s.Rate = {int(rate)}']
-        for name in missing:
+        for name in missing[start:start + 50]:
             path = str(folder / f'{name}.wav').replace("'", "''")
-            lines += [f"$s.SetOutputToWaveFile('{path}')", f"$s.Speak('{PHRASES[name]}')"]
+            text = phrases[name].replace("'", "''")
+            lines += [f"$s.SetOutputToWaveFile('{path}')", f"$s.Speak('{text}')"]
         lines.append('$s.Dispose()')
         subprocess.run(['powershell', '-NoProfile', '-NonInteractive', '-Command', '; '.join(lines)],
-                       check=True, capture_output=True, timeout=60)
-        for name in missing:
+                       check=True, capture_output=True, timeout=120)
+        for name in missing[start:start + 50]:
             trim_silence(folder / f'{name}.wav')
     return folder
 
@@ -227,8 +285,9 @@ class ClipPlayer:
     winsound on the Windows default device. play() only hands over the latest cue; a newer cue or stop() interrupts.
     """
 
-    def __init__(self, folder=CLIPS, device=None, backend='auto', log=None):
+    def __init__(self, folder=CLIPS, device=None, backend='auto', log=None, numeric=False):
         self.folder, self.device = Path(folder), device
+        self.phrases = dict(PHRASES, **SUMMARY_PHRASES, **(CM_PHRASES if numeric else {}))
         self.log = log or (lambda event, **fields: None)
         self.backend = backend
         self.clips = {}
@@ -247,8 +306,8 @@ class ClipPlayer:
     def _prepare(self):
         import wave
         import numpy as np
-        make_clips(self.folder)
-        for name in PHRASES:
+        make_clips(self.folder, phrases=self.phrases)
+        for name in self.phrases:
             with wave.open(str(self.folder / f'{name}.wav'), 'rb') as clip:
                 rate, channels = clip.getframerate(), clip.getnchannels()
                 frames = clip.readframes(clip.getnframes())
@@ -316,8 +375,24 @@ class ClipPlayer:
         with self.buffer_lock:
             return self.buffer is not None
 
+    def speaking(self, gap_s=.6):
+        """True while a cue plays and for gap_s after it ends (echo guard for voice commands)."""
+        import time
+        return getattr(self, 'audio_active', False) or time.monotonic() - getattr(self, 'audio_end', -1e9) < gap_s
+
     def _play(self, cue):
         import time
+        self.audio_active = True
+        try:
+            self._play_clip(cue)
+        finally:
+            self.audio_active, self.audio_end = False, time.monotonic()
+
+    def _play_clip(self, cue):
+        import time
+        if cue not in self.clips:
+            self.log('PLAYBACK_FAILED', cue=cue, error='no clip for this cue')
+            return
         data, rate = self.clips[cue]
         duration = len(data) / rate
         started = time.monotonic()
@@ -358,7 +433,63 @@ class ClipPlayer:
             return 'preparing voice clips'
         return f'{self.backend} -> {self.device_name}' if not self.error else f'unavailable ({self.error})'
 
+    def say(self, text, name='SPEECH'):
+        """Speak any short sentence: offline Windows voice synthesised on a background thread, then played like a clip.
+
+        The camera loop never waits. A newer say() or cue replaces it, as with every other cue."""
+        import hashlib
+        text = ' '.join(''.join(ch for ch in str(text) if ch.isprintable()).split())[:400]
+        if not text:
+            return False
+        token = hashlib.sha1(text.encode('utf-8')).hexdigest()[:16]
+        self.speech_token = token
+
+        def work():
+            try:
+                import wave
+                import numpy as np
+                folder = self.folder / 'speech'
+                make_clips(folder, phrases={token: text})
+                with wave.open(str(folder / f'{token}.wav'), 'rb') as clip:
+                    rate, channels = clip.getframerate(), clip.getnchannels()
+                    samples = np.frombuffer(clip.readframes(clip.getnframes()), '<i2').astype('float32')
+                samples = samples.reshape(-1, channels) / 32768
+                if self.backend == 'sounddevice':
+                    target = int(self.stream.samplerate)
+                    mono = samples.mean(axis=1)
+                    times = np.arange(int(len(mono) * target / rate)) / target
+                    samples, rate = np.interp(times, np.arange(len(mono)) / rate, mono).astype('float32'), target
+                if getattr(self, 'speech_token', None) != token:
+                    return  # superseded while synthesising
+                self.clips[name] = (samples, rate)
+                if self.backend != 'sounddevice':
+                    import shutil
+                    shutil.copyfile(folder / f'{token}.wav', self.folder / f'{name}.wav')
+                self.play(name)
+            except Exception as exc:
+                self.log('PLAYBACK_FAILED', cue=name, error=f'speech synthesis {type(exc).__name__}: {exc}'[:200])
+        if not self.ready.wait(0) or self.error:
+            return False
+        threading.Thread(target=work, daemon=True, name='r3-speech').start()
+        return True
+
+    def play_parts(self, cues, name='SUMMARY'):
+        """Join several clips (with a short pause) into one cue and play it; False if not ready."""
+        import numpy as np
+        if not self.ready.is_set() or self.error or not all(c in self.clips for c in cues):
+            return False
+        rate = self.clips[cues[0]][1]
+        parts = []
+        for cue in cues:
+            data = self.clips[cue][0]
+            parts += [data, np.zeros((int(rate * .15),) + data.shape[1:], data.dtype)]
+        self.clips[name] = (np.concatenate(parts), rate)
+        self.play(name)
+        return True
+
     def play(self, cue):
+        if getattr(self, 'muted', False):
+            return  # "be quiet": silent until the user's next command
         with self.wake:
             self.wanted = cue
             self.wake.notify()
@@ -395,11 +526,12 @@ def audio_test(device=None, backend='auto'):
                 print(f"  output {index}: {info['name']}{'   <- default' if index == default_out else ''}")
     except Exception as exc:
         print('  sounddevice unavailable:', type(exc).__name__)
-    player = ClipPlayer(device=device, backend=backend, log=log)
-    player.ready.wait(90)
-    for cue in ('LEFT', 'RIGHT', 'UP', 'DOWN', 'TRACKING_LOST'):
+    player = ClipPlayer(device=device, backend=backend, log=log, numeric=True)
+    player.ready.wait(300)  # the first run generates the centimetre clips once (about a minute)
+    for cue, pause in (('LEFT', 1.), ('RIGHT', 1.), ('UP', 1.), ('DOWN', 1.), ('LEFT_8', 2.), ('UP_3', 2.),
+                       ('FORWARD_12', 2.2), ('NEAR_OBJECT', 2.6), ('TRACKING_LOST', 1.2)):
         player.play(cue)
-        time.sleep(1.)
+        time.sleep(pause)
     player.close()
     print('Done. If nothing was heard, rerun with --audio-device <number or name> from the list above.')
     return 0 if not player.error else 1

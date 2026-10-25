@@ -49,7 +49,7 @@ class DeciderTests(unittest.TestCase):
         self.assertEqual(d.decide(ev(offset=lidar(-.12, 0, .30)))[:2], ('LEFT', '3D'))
         self.assertEqual(d.decide(ev(offset=lidar(-.01, 0, .30)))[0], 'FORWARD')
         self.assertEqual(d.decide(ev(offset=lidar(-.01, 0, .12)))[0], 'CLOSER')
-        self.assertEqual(d.decide(ev(offset=lidar(.01, .01, .04)))[0], 'READY_TO_GRASP')
+        self.assertEqual(d.decide(ev(offset=lidar(.01, .01, .04)))[0], 'NEAR_OBJECT')
         self.assertEqual(GuidanceDecider().decide(ev(offset=lidar(0, 0, -.2)))[0], 'BACKWARD')
 
     def test_hysteresis_keeps_axis_until_well_inside_tolerance(self):

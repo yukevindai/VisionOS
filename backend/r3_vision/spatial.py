@@ -2,7 +2,8 @@
 
 Reuses the project's own DeskGuide-Laptop modules (MIT, ios/Packages/Perception/Prototypes/DeskGuide-Laptop):
 stream.prepare for colour/depth/confidence/intrinsics alignment, geometry.surface for the target's front-surface
-depth, and metric_hand.HandDepthFusion for the LiDAR-checked fingertip. No Proprio source is used.
+depth, and metric_hand.HandDepthFusion as an independent fingertip estimate check. A palm-fused fingertip is
+explicitly ESTIMATED; direct tip support, agreement and calibration are required by the directional adapter.
 Coordinates are camera-optical metres of the displayed (rotated) frame: x right, y down, z forward;
 delta = target - fingertip. The target point is the visible surface point of the object nearest the fingertip
 (LiDAR samples of the object's front surface, hand pixels excluded), backprojected with X=(u-cx)Z/fx, Y=(v-cy)Z/fy.
@@ -42,14 +43,19 @@ class Offset:
     target_confidence: str = 'UNAVAILABLE'
     fingertip_confidence: str = 'UNAVAILABLE'
     tip_check: str = ''
+    fingertip_estimated: bool = False
+    depth_disagreement_m: float | None = None
+    received_monotonic: float | None = None
 
     @property
     def measured(self):
-        return self.status == 'LIDAR'
+        return self.status == 'LIDAR' and not self.fingertip_estimated
 
     def text(self):
         if self.delta_m is None:
             return f'3D: {self.detail}'
+        if self.status == 'UNRELIABLE':
+            return f'3D UNRELIABLE: {self.tip_check}; physical instructions suppressed'
         prefix = '3D LiDAR' if self.measured else '3D ≈ SIZE ESTIMATE (not LiDAR)'
         approx = '' if self.measured else '≈'
         parts = []
@@ -62,7 +68,9 @@ class Offset:
         return dict(status=self.status, fingertipM=self.fingertip_m, targetM=self.target_m, deltaM=self.delta_m,
                     distanceM=self.distance_m, fingertipSource=self.fingertip_source, detail=self.detail,
                     targetPoint=self.target_point, targetConfidence=self.target_confidence,
-                    fingertipConfidence=self.fingertip_confidence, tipCheck=self.tip_check)
+                    fingertipConfidence=self.fingertip_confidence, tipCheck=self.tip_check,
+                    fingertipEstimated=self.fingertip_estimated, depthDisagreementM=self.depth_disagreement_m,
+                    receivedMonotonic=self.received_monotonic)
 
 
 def level(high_share):
@@ -126,12 +134,16 @@ class SpatialOffset:
         if mask.shape != depth.shape:
             mask = cv2.resize(mask, (depth.shape[1], depth.shape[0]), interpolation=cv2.INTER_NEAREST)
         depth[mask > 0] = 0.
+        target_mask = np.zeros_like(mask)
+        cv2.fillConvexPoly(target_mask, np.asarray(polygon, np.int32), 1)
+        depth[target_mask == 0] = 0.
         surface = self.geometry.surface(replace(frame, depth=depth), (x0, y0, x1, y1))
         measured, estimated, reason = self.fusion.resolve(frame, points, t)
         if surface is None:
             return Offset('UNAVAILABLE', detail='can depth unavailable (hidden by hand or no supported LiDAR)')
         if measured is not None:
-            finger, status, source = measured.xyz, 'LIDAR', measured.source
+            # Palm depth plus nominal bone geometry is still an estimated fingertip.
+            finger, status, source = measured.xyz, 'ESTIMATED', measured.source
         elif estimated is not None:
             finger, status, source = estimated, 'ESTIMATED', 'hand size/shape estimate'
         else:
@@ -141,18 +153,34 @@ class SpatialOffset:
         target_level = level(share)
         diagnostics = self.fusion.diagnostics or {}
         palm = [c for c in diagnostics.get('confidence_values') or [] if c >= 1]
-        finger_level = level(float(np.mean(np.asarray(palm) >= 2)) if palm else None) if status == 'LIDAR' else (
+        finger_level = level(float(np.mean(np.asarray(palm) >= 2)) if palm else None) if measured is not None else (
             'ESTIMATED' if status == 'ESTIMATED' else 'UNAVAILABLE')
         if finger is None:
             return Offset('UNAVAILABLE', target_m=tuple(map(float, target)), detail=f'fingertip depth unavailable ({reason})',
                           target_point=kind, target_confidence=target_level)
         tip = self.geometry.fingertip_depth(frame, points[8])
+        disagreement = None if tip is None else abs(float(tip.xyz[2]) - float(finger[2]))
         check = ('no direct fingertip depth' if tip is None else
-                 f'direct tip depth agrees ({abs(tip.xyz[2] - finger[2]) * 100:.1f} cm)'
-                 if abs(tip.xyz[2] - finger[2]) < .03 else
-                 f'direct tip depth differs by {abs(tip.xyz[2] - finger[2]) * 100:.1f} cm')
+                 f'direct tip depth agrees ({disagreement * 100:.1f} cm)'
+                 if disagreement <= .03 else
+                 f'direct tip depth differs by {disagreement * 100:.1f} cm')
+        estimated_tip = True
+        if disagreement is not None and disagreement > .03:
+            status = 'UNRELIABLE'
+        elif tip is not None and measured is not None and frame.confidence is not None:
+            # Use the direct, center-supported sample only after the independent check agrees.
+            dh, dw = frame.depth.shape
+            h, w = frame.color.shape[:2]
+            u, v = np.floor(points[8] * [dw / w, dh / h]).astype(int)
+            if frame.confidence[v, u] >= 2:
+                finger, status, source = tip.xyz, 'LIDAR', tip.source
+                finger_level, estimated_tip = 'HIGH', False
+                point, share = nearest_surface(frame, depth, (x0, y0, x1, y1), float(surface[1].xyz[2]), finger)
+                target, kind = (point, 'nearest visible surface point') if point is not None else (surface[1].xyz, kind)
+                target_level = level(share)
         delta = np.asarray(target, float) - np.asarray(finger, float)
         if not np.isfinite(delta).all():
             return Offset('UNAVAILABLE', detail='invalid 3D geometry')
         return Offset(status, tuple(map(float, finger)), tuple(map(float, target)), tuple(map(float, delta)),
-                      float(math.sqrt(float(delta @ delta))), source, reason, kind, target_level, finger_level, check)
+                      float(math.sqrt(float(delta @ delta))), source, reason, kind, target_level, finger_level, check,
+                      estimated_tip, disagreement, t)

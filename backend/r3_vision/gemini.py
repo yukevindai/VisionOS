@@ -170,8 +170,10 @@ class GeminiClient:
         # their existing payloads. An explicitly supplied unsupported setting fails before network IO.
         self.thinking_level = (thinking_level if thinking_level is not None else
             os.environ.get("GEMINI_THINKING_LEVEL", "") if self.model.startswith("gemini-3") else "").strip()
-        if self.thinking_level not in ("", "low", "medium", "high"):
-            raise ValueError("GEMINI_THINKING_LEVEL must be low, medium or high, or unset")
+        if self.thinking_level not in ("", "low", "medium", "high") and not (
+                self.thinking_level == "minimal" and self.model in MINIMAL_THINKING_MODELS):
+            raise ValueError("GEMINI_THINKING_LEVEL must be low, medium or high (minimal only on models that support it), "
+                             "or unset")
         configured_timeout = timeout_s if timeout_s is not None else float(os.environ.get("GEMINI_TIMEOUT_S") or DEFAULT_TIMEOUT_S)
         if not math.isfinite(configured_timeout) or configured_timeout <= 0:
             raise ValueError("GEMINI_TIMEOUT_S must be positive and finite")
@@ -285,7 +287,11 @@ class GeminiClient:
                 raise ValueError("invalid content parts")
             text = "".join(part["text"] for part in parts if not part.get("thought"))
             reply = json.loads(text)
-            if (not isinstance(reply, dict) or not isinstance(reply.get("panelType"), str)
+            if self.schema is not RESPONSE_SCHEMA:
+                # Other structured formats (e.g. the target-specific query): every required field must be present.
+                if not isinstance(reply, dict) or any(key not in reply for key in self.schema.get("required", [])):
+                    raise ValueError("reply does not match the requested structure")
+            elif (not isinstance(reply, dict) or not isinstance(reply.get("panelType"), str)
                     or not isinstance(reply.get("availability"), str) or type(reply.get("isPaymentScreen")) is not bool
                     or not isinstance(reply.get("sections"), list) or not isinstance(reply.get("elements"), list)):
                 raise ValueError("reply is not a complete screen description")
