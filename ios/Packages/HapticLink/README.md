@@ -12,7 +12,7 @@ All test hardware values are local synthetic fixtures. Passing these tests estab
 
 ## Arduino 101 sketch compatibility
 
-`Arduino101ReleaseClient` is a separate, deliberately narrow compatibility path for the user-supplied CurieBLE `ServoController` sketch. It scans for service `19B10000-E8F2-537E-4F6C-D104768A1214`, checks command characteristic `19B10001-E8F2-537E-4F6C-D104768A1214` has the GATT `write` property, and sends UTF-8 `reset` with `.withResponse`. It does not encode H1 packets or feed guidance. The Settings hardware test exposes only this release command. Direction commands remain unavailable because the sketch has no independent timeout or disconnect failsafe and its outputs are not compatible with the wristband scheduler contract.
+`Arduino101ReleaseClient` is a separate compatibility path for the supplied CurieBLE `ServoController` sketch. It scans for service `19B10000-E8F2-537E-4F6C-D104768A1214`, checks command characteristic `19B10001-E8F2-537E-4F6C-D104768A1214` has the GATT `write` property, and sends UTF-8 commands with `.withResponse`. Settings offers `reset` and manual directional pulse tests. Each test sends a command such as `up0`, waits 180 ms, then sends `up80`; firmware independently releases after 2 seconds or immediately on BLE disconnect. These are manual hardware tests and are not connected to live R1 guidance cues or H1 wristband packets. The sketch's legacy `*80` release command uses its configured 70-degree release angle.
 
 ## App composition
 
