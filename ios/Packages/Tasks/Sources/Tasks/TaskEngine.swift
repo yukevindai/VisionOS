@@ -195,13 +195,14 @@ public struct TaskEngine: Sendable {
         default:
             if let acceptedFriendTarget { return acceptTarget(acceptedFriendTarget, now: now) }
             state.phase = .resolving
-            return [.resolveTarget(makeRequest(now: now), query: request.query)]
+            let timeout = request.kind == .object ? configuration.objectRecognitionTimeoutMs : configuration.requestTimeoutMs
+            return [.resolveTarget(makeRequest(now: now, timeoutMs: timeout), query: request.query)]
         }
     }
 
-    private mutating func makeRequest(now: Int64, confirmation: Bool = false) -> RequestContext {
+    private mutating func makeRequest(now: Int64, confirmation: Bool = false, timeoutMs: Int64? = nil) -> RequestContext {
         sequence += 1
-        let duration = confirmation ? configuration.confirmationTimeoutMs : configuration.requestTimeoutMs
+        let duration = confirmation ? configuration.confirmationTimeoutMs : (timeoutMs ?? configuration.requestTimeoutMs)
         let expiry = now.addingReportingOverflow(duration)
         let context = RequestContext(task: state.context, requestID: "\(state.context.taskID):\(state.context.generation):\(sequence)",
                                      issuedAtMs: now, expiresAtMs: expiry.overflow ? Int64.max : expiry.partialValue)

@@ -247,7 +247,7 @@ describe("native object recognition action", () => {
     const fetch = vi.fn((_url: string, _init: RequestInit) => new Promise<Response>(resolve => { respond = resolve; }));
     vi.stubGlobal("fetch", fetch);
     const pending = expect(findVisionObject(args)).rejects.toThrow("VISION_TIMEOUT");
-    await vi.advanceTimersByTimeAsync(4501);
+    await vi.advanceTimersByTimeAsync(60001);
     await pending;
     expect(fetch.mock.calls[0]![1].signal!.aborted).toBe(true);
     respond(json(envelope(selected())));
@@ -259,7 +259,7 @@ describe("native object recognition action", () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response(new ReadableStream({ start() {} }),
       { headers: { "Content-Type": "application/json" } })));
     const pending = expect(findVisionObject(args)).rejects.toThrow("VISION_TIMEOUT");
-    await vi.advanceTimersByTimeAsync(4501);
+    await vi.advanceTimersByTimeAsync(60001);
     await pending;
   });
 });

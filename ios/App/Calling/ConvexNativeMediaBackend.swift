@@ -41,6 +41,7 @@ final class ConvexNativeMediaBackend: NativeMediaBackend, R3ScreenReading, R3Obj
     private let origin: URL
     private let identity: any NativeMediaIdentityProviding
     private let session: URLSession
+    private let objectSession: URLSession
     private let redirects = NoRedirects()
     private static let maxSafeInteger: UInt64 = 9_007_199_254_740_991
 
@@ -55,6 +56,7 @@ final class ConvexNativeMediaBackend: NativeMediaBackend, R3ScreenReading, R3Obj
         self.identity = identity
         if let session {
             self.session = session
+            self.objectSession = session
         } else {
             let config = URLSessionConfiguration.ephemeral
             config.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
@@ -64,6 +66,9 @@ final class ConvexNativeMediaBackend: NativeMediaBackend, R3ScreenReading, R3Obj
             config.timeoutIntervalForRequest = 8
             config.timeoutIntervalForResource = 8
             self.session = URLSession(configuration: config)
+            config.timeoutIntervalForRequest = 60
+            config.timeoutIntervalForResource = 60
+            self.objectSession = URLSession(configuration: config)
         }
         identity.onIdentityInvalidated = { [weak self] in self?.onIdentityInvalidated?() }
     }
@@ -162,7 +167,7 @@ final class ConvexNativeMediaBackend: NativeMediaBackend, R3ScreenReading, R3Obj
             rawResult = try await call("vision:findObject", kind: "action", args: [
                 "imageBase64": image.base64EncodedString(), "query": query, "answerQuestion": answerQuestion,
                 "frameId": frameID, "capturedAtMs": capturedAtUTCms, "requestId": requestID
-            ], maximumResponseBytes: 256 * 1024, requestTimeout: 5)
+            ], maximumResponseBytes: 256 * 1024, requestTimeout: 60)
         } catch {
             try Task.checkCancellation()
             throw error
@@ -430,7 +435,7 @@ final class ConvexNativeMediaBackend: NativeMediaBackend, R3ScreenReading, R3Obj
         let response: URLResponse
         let payload: Data
         do {
-            (payload, response) = try await Self.readResponse(session: session, request: request,
+            (payload, response) = try await Self.readResponse(session: path == "vision:findObject" ? objectSession : session, request: request,
                                                              redirects: redirects, maxResponseBytes: maximumResponseBytes)
         } catch {
             let after = try? await identity.currentCredentials()
