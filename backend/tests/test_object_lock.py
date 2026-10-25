@@ -8,7 +8,7 @@ from PIL import Image
 from r3_vision import gemini, lock_replay
 from r3_vision.alignment import fingertip_alignment
 from r3_vision.lock_session import LockSession
-from r3_vision.object_lock import LOCKED, LOST, REACQUIRING, UNCERTAIN, LockMatch, ObjectLockTracker
+from r3_vision.object_lock import HIDDEN, LOCKED, LOST, REACQUIRING, UNCERTAIN, LockMatch, ObjectLockTracker
 from r3_vision.tracker_models import MODEL_PATH
 from r3_vision.tracking_session import IdentifyJob, RequestBudget
 
@@ -51,11 +51,16 @@ class LockSessionTests(unittest.TestCase):
         self.assertEqual(states, ['REACQUIRING', 'LOCKED', 'UNCERTAIN', 'TARGET LOST'])
         self.assertEqual(shown, [False, True, True, False])
 
-    def test_stale_frame_hides_box_and_resets_temporal_tracking(self):
+    def test_long_stall_hides_box_and_resets_temporal_tracking(self):
         s = self.session([])
-        match = s.update(Image.new('RGB', (64, 96)), 1., 1.5)
+        match = s.update(Image.new('RGB', (64, 96)), 1., 2.6)
         self.assertIsNone(match.polygon)
         self.assertEqual((s.state, s.tracker.resets), ('TARGET LOST', 1))
+
+    def test_late_frame_within_grace_keeps_tracking(self):
+        s = self.session([LockMatch(box(), 'ok', LOCKED)])
+        s.update(Image.new('RGB', (64, 96)), 1., 1.5)
+        self.assertEqual((s.state, s.tracker.resets), (LOCKED, 0))
 
     def test_late_gemini_result_cannot_replace_an_active_lock(self):
         s = self.session([LockMatch(box(), 'ok', LOCKED)])
@@ -76,6 +81,43 @@ class LockSessionTests(unittest.TestCase):
         s.update(Image.new('RGB', (64, 96)), 1., 1.)
         self.assertIsNone(s.job(Image.new('RGB', (64, 96)), 1., 1.))
         self.assertEqual(s.budget.total, 0)
+
+
+class RememberedGeometryTests(unittest.TestCase):
+    def tracker(self, box=(100.25, 90.5, 40.5, 60.75)):
+        tracker = ObjectLockTracker.__new__(ObjectLockTracker)
+        tracker.hidden = {'box': box, 'since': 0.}
+        tracker.state, tracker.remember_s = HIDDEN, 10.
+        tracker.prev_gray = None
+        tracker.next_search = float('inf')
+        tracker._camera_motion = lambda previous, gray, area: np.float32([[1, 0, 0], [0, 1, 0]])
+        return tracker
+
+    def test_stationary_remembered_box_keeps_fractional_bounds(self):
+        tracker = self.tracker()
+        original = tracker.hidden['box']
+        for frame in range(200):
+            match = tracker._hidden(np.zeros((480, 640, 3), np.uint8), np.zeros((480, 640), np.uint8), frame / 30.)
+            self.assertEqual(match.state, HIDDEN)
+            np.testing.assert_allclose(tracker.hidden['box'], original, atol=1e-5)
+
+    def test_subpixel_motion_accumulates_without_rounding(self):
+        tracker = self.tracker()
+        tracker._camera_motion = lambda previous, gray, area: np.float32([[1, 0, .25], [0, 1, -.125]])
+        for frame in range(100):
+            tracker._hidden(np.zeros((480, 640, 3), np.uint8), np.zeros((480, 640), np.uint8), frame / 30.)
+        np.testing.assert_allclose(tracker.hidden['box'], (125.25, 78., 40.5, 60.75), atol=1e-5)
+
+    def test_rotation_then_inverse_restores_original_geometry(self):
+        import cv2
+        tracker = self.tracker()
+        original = tracker.hidden['box']
+        forward = cv2.getRotationMatrix2D((120, 120), 20, 1)
+        transforms = iter([forward, cv2.invertAffineTransform(forward)])
+        tracker._camera_motion = lambda previous, gray, area: next(transforms)
+        for now in (1., 2.):
+            tracker._hidden(np.zeros((480, 640, 3), np.uint8), np.zeros((480, 640), np.uint8), now)
+        np.testing.assert_allclose(tracker.hidden['box'], original, atol=1e-4)
 
 
 class AlignmentTests(unittest.TestCase):
@@ -148,6 +190,14 @@ class RecordedCanLockTests(unittest.TestCase):
             self.assertGreaterEqual(p['correct'], p['frames'] - 1, phase)
             self.assertEqual(p['wrong'], 0, phase)
 
+    def test_covered_target_keeps_a_remembered_box_that_follows_the_camera(self):
+        for phase in ('full cover', 'covered pan'):
+            p = self.summary['phases'][phase]
+            self.assertEqual(p['shown'], 0, f'{phase}: no live box on a covered target')
+            self.assertGreaterEqual(p['remembered'], p['frames'] - 1, phase)
+            self.assertGreaterEqual(p['correct'], p['frames'] - 1, f'{phase}: remembered box must stay on the object')
+            self.assertEqual(p['wrong'], 0, phase)
+
     def test_never_shows_box_on_hidden_target(self):
         self.assertEqual(self.summary['boxesOnHiddenTarget'], 0)
         for phase in ('full cover', 'point away'):
@@ -161,7 +211,9 @@ class RecordedCanLockTests(unittest.TestCase):
     def test_box_only_with_lock_states(self):
         for r in self.rows:
             if r['boxShown']:
-                self.assertIn(r['state'], (LOCKED, UNCERTAIN))
+                self.assertIn(r['state'], (LOCKED, UNCERTAIN, 'HIDDEN'))
+        self.assertEqual(self.summary['phases']['point away']['remembered'], 0,
+                         'pointing away must end the remembered location')
 
     def test_two_identical_cans_are_not_chosen_between(self):
         frame = np.load(FRAMES[0])['rgb']

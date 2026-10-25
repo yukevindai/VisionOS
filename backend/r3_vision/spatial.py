@@ -3,7 +3,10 @@
 Reuses the project's own DeskGuide-Laptop modules (MIT, ios/Packages/Perception/Prototypes/DeskGuide-Laptop):
 stream.prepare for colour/depth/confidence/intrinsics alignment, geometry.surface for the target's front-surface
 depth, and metric_hand.HandDepthFusion for the LiDAR-checked fingertip. No Proprio source is used.
-Coordinates are camera-optical metres: x right, y down, z forward; delta = target - fingertip.
+Coordinates are camera-optical metres of the displayed (rotated) frame: x right, y down, z forward;
+delta = target - fingertip. The target point is the visible surface point of the object nearest the fingertip
+(LiDAR samples of the object's front surface, hand pixels excluded), backprojected with X=(u-cx)Z/fx, Y=(v-cy)Z/fy.
+Confidence levels use the share of ARKit high-confidence (2) depth samples actually used.
 """
 from __future__ import annotations
 
@@ -35,6 +38,10 @@ class Offset:
     distance_m: float | None = None
     fingertip_source: str = ''
     detail: str = ''
+    target_point: str = ''
+    target_confidence: str = 'UNAVAILABLE'
+    fingertip_confidence: str = 'UNAVAILABLE'
+    tip_check: str = ''
 
     @property
     def measured(self):
@@ -53,7 +60,38 @@ class Offset:
 
     def record(self):
         return dict(status=self.status, fingertipM=self.fingertip_m, targetM=self.target_m, deltaM=self.delta_m,
-                    distanceM=self.distance_m, fingertipSource=self.fingertip_source, detail=self.detail)
+                    distanceM=self.distance_m, fingertipSource=self.fingertip_source, detail=self.detail,
+                    targetPoint=self.target_point, targetConfidence=self.target_confidence,
+                    fingertipConfidence=self.fingertip_confidence, tipCheck=self.tip_check)
+
+
+def level(high_share):
+    if high_share is None:
+        return 'UNAVAILABLE'
+    return 'HIGH' if high_share >= .7 else 'MEDIUM' if high_share >= .4 else 'LOW'
+
+
+def nearest_surface(frame, depth, box, front_z, finger):
+    """Visible front-surface LiDAR points of the object (hand already removed from depth); nearest to finger."""
+    x0, y0, x1, y1 = box
+    mx, my = .1 * (x1 - x0), .1 * (y1 - y0)
+    a, b, c, d = int(x0 + mx), int(y0 + my), int(x1 - mx), int(y1 - my)
+    region = depth[max(0, b):d:3, max(0, a):c:3]
+    if region.size == 0:
+        return None, None
+    vs, us = np.mgrid[max(0, b):d:3, max(0, a):c:3]
+    keep = np.isfinite(region) & (region > .12) & (np.abs(region - front_z) <= .04)
+    if keep.sum() < 5:
+        return None, None
+    z, u, v = region[keep], us[keep], vs[keep]
+    K = frame.K
+    points = np.stack([(u - K[0, 2]) * z / K[0, 0], (v - K[1, 2]) * z / K[1, 1], z], axis=1)
+    share = None
+    if frame.confidence is not None:
+        share = float(np.mean(frame.confidence[v, u] >= 2))
+    if finger is None:
+        return points.mean(axis=0), share
+    return points[np.argmin(np.linalg.norm(points - np.asarray(finger, float), axis=1))], share
 
 
 class SpatialOffset:
@@ -92,15 +130,29 @@ class SpatialOffset:
         measured, estimated, reason = self.fusion.resolve(frame, points, t)
         if surface is None:
             return Offset('UNAVAILABLE', detail='can depth unavailable (hidden by hand or no supported LiDAR)')
-        target = surface[1].xyz
         if measured is not None:
             finger, status, source = measured.xyz, 'LIDAR', measured.source
         elif estimated is not None:
             finger, status, source = estimated, 'ESTIMATED', 'hand size/shape estimate'
         else:
-            return Offset('UNAVAILABLE', target_m=tuple(map(float, target)), detail=f'fingertip depth unavailable ({reason})')
+            finger, status, source = None, 'UNAVAILABLE', ''
+        point, share = nearest_surface(frame, depth, (x0, y0, x1, y1), float(surface[1].xyz[2]), finger)
+        target, kind = (point, 'nearest visible surface point') if point is not None else (surface[1].xyz, 'box centre on front surface')
+        target_level = level(share)
+        diagnostics = self.fusion.diagnostics or {}
+        palm = [c for c in diagnostics.get('confidence_values') or [] if c >= 1]
+        finger_level = level(float(np.mean(np.asarray(palm) >= 2)) if palm else None) if status == 'LIDAR' else (
+            'ESTIMATED' if status == 'ESTIMATED' else 'UNAVAILABLE')
+        if finger is None:
+            return Offset('UNAVAILABLE', target_m=tuple(map(float, target)), detail=f'fingertip depth unavailable ({reason})',
+                          target_point=kind, target_confidence=target_level)
+        tip = self.geometry.fingertip_depth(frame, points[8])
+        check = ('no direct fingertip depth' if tip is None else
+                 f'direct tip depth agrees ({abs(tip.xyz[2] - finger[2]) * 100:.1f} cm)'
+                 if abs(tip.xyz[2] - finger[2]) < .03 else
+                 f'direct tip depth differs by {abs(tip.xyz[2] - finger[2]) * 100:.1f} cm')
         delta = np.asarray(target, float) - np.asarray(finger, float)
         if not np.isfinite(delta).all():
             return Offset('UNAVAILABLE', detail='invalid 3D geometry')
         return Offset(status, tuple(map(float, finger)), tuple(map(float, target)), tuple(map(float, delta)),
-                      float(math.sqrt(float(delta @ delta))), source, reason)
+                      float(math.sqrt(float(delta @ delta))), source, reason, kind, target_level, finger_level, check)

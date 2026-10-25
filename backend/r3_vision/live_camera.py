@@ -147,23 +147,38 @@ class Source:
             self.phone.close()
 
 
-def process_capture(raw, rotation, request, metadata, client, directory):
-    """Save immutable raw + upright input; existing pipeline is the ONLY interpreter/selector."""
+def process_capture(raw, rotation, request, metadata, client, directory, fast=False, runner=None):
+    """Save immutable raw + upright input; existing pipeline is the ONLY interpreter/selector.
+
+    fast=True (live tracking): send a JPEG straight away and write the diagnostic PNGs in the background afterwards,
+    so about 0.6 s of local encoding is no longer spent before the Gemini request.
+    """
     directory.mkdir(parents=True, exist_ok=False)
-    raw.save(directory / 'original.png')
     image = upright(raw, rotation)
-    image.save(directory / 'captured.png')
     metadata = dict(metadata, rawSize=list(raw.size), uprightSize=list(image.size),
                     clockwiseRotation=rotation, exifOrientation=1, orientationApplied=True,
                     cropNormalized=[0, 0, 1, 1], mirroring='unchanged; source mirroring unknown',
                     transform='upright = raw rotated clockwise, expanded, no resize or additional crop',
                     captureTimeMeaning='desktop snapshot UTC; sensor exposure UTC unavailable')
     (directory / 'capture.json').write_text(json.dumps(metadata, indent=2), encoding='utf-8')
+    if not fast:
+        raw.save(directory / 'original.png')
+        image.save(directory / 'captured.png')
     encoded = io.BytesIO()
-    image.save(encoded, format='PNG')
-    result = pipeline.run(encoded.getvalue(), request, client, frame_id=metadata['frameID'],
+    image.save(encoded, format='JPEG', quality=95) if fast else image.save(encoded, format='PNG')
+    result = (runner or pipeline.run)(encoded.getvalue(), request, client, frame_id=metadata['frameID'],
                           captured_at_ms=metadata['snapshotUTCms'])
     (directory / 'result.json').write_text(json.dumps(result, indent=2), encoding='utf-8')
+    if fast:
+        def save():
+            raw.save(directory / 'original.png')
+            image.save(directory / 'captured.png')
+            try:
+                render_result(image, result)[0].save(directory / 'annotated.png')
+            except (KeyError, TypeError, ValueError):
+                pass
+        threading.Thread(target=save, daemon=True, name='r3-capture-files').start()
+        return None, ''
     rendered, text = render_result(image, result)
     rendered.save(directory / 'annotated.png')
     return rendered, text

@@ -146,7 +146,7 @@ public struct TargetSelector: Sendable {
 }
 
 /// Device-independent word matching. No layouts, brands or positions are known here.
-enum TextMatcher {
+public enum TextMatcher {
     /// Request words that never identify a control.
     static let fillerWords: Set<String> = [
         "a", "an", "the", "please", "can", "could", "you", "i", "me", "my", "want", "would", "like", "need",
@@ -162,7 +162,7 @@ enum TextMatcher {
     ]
 
     /// Lower-cased, diacritic-folded alphanumeric words; number words and ordinals become digits.
-    static func tokens(_ text: String) -> [String] {
+    public static func tokens(_ text: String) -> [String] {
         text.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil).lowercased()
             .components(separatedBy: CharacterSet.alphanumerics.inverted)
             .filter { !$0.isEmpty }

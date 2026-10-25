@@ -29,6 +29,7 @@ def trajectory():
         steps.append(('rotate', 0, 0, 1, float(a), None))
     steps += [('partial cover', 0, 0, 1, 0, 'partial')] * 6
     steps += [('full cover', 0, 0, 1, 0, 'full')] * 6
+    steps += [('covered pan', float(dx), 0, 1, 0, 'full') for dx in np.linspace(0, 70, 8)]
     steps += [('point away', 700, 0, 1, 0, None)] * 10
     steps += [('return', 0, 0, 1, 0, None)] * 10
     return steps
@@ -94,14 +95,17 @@ def run(factory, frames_dir=DEFAULT_FRAMES, region=DEFAULT_REGION, dt=1 / 15, sa
 def summarize(name, rows, timings):
     phases = {}
     for r in rows:
-        p = phases.setdefault(r['phase'], dict(frames=0, shown=0, correct=0, wrong=0))
+        p = phases.setdefault(r['phase'], dict(frames=0, shown=0, remembered=0, correct=0, wrong=0))
+        live = r['boxShown'] and r['state'] != 'HIDDEN'
         p['frames'] += 1
-        p['shown'] += r['boxShown']
+        p['shown'] += live
+        p['remembered'] += r['boxShown'] and r['state'] == 'HIDDEN'
         p['correct'] += bool(r['boxShown'] and r['iou'] is not None and r['iou'] >= .5)
-        p['wrong'] += bool(r['boxShown'] and (not r['targetVisible'] or (r['iou'] or 0) < .3))
+        p['wrong'] += bool(live and not r['targetVisible']) or bool(r['boxShown'] and (r['iou'] or 0) < .3)
     measured = np.array(timings[1:])
     return dict(tracker=name, phases=phases,
-                boxesOnHiddenTarget=sum(r['boxShown'] and not r['targetVisible'] for r in rows),
+                boxesOnHiddenTarget=sum(r['boxShown'] and r['state'] != 'HIDDEN' and not r['targetVisible']
+                                        for r in rows),
                 flickerTransitions=sum(a['boxShown'] != b['boxShown'] for a, b in zip(rows, rows[1:])
                                        if a['targetVisible'] and b['targetVisible']),
                 msMean=round(float(measured.mean()), 1), msP95=round(float(np.percentile(measured, 95)), 1))
