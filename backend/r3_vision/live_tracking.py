@@ -58,6 +58,14 @@ class TrackingWorker:
                                 suppressed=None)
         from .audio_guidance import GuidanceDecider
         self.display_decider = GuidanceDecider()
+        self.hardware = None
+        self.hardware_lock = threading.RLock()
+        self.hardware_armed = False
+        self.hardware_decider = GuidanceDecider()
+        if getattr(args, 'arduino_ble', False):
+            from .arduino_ble import ArduinoBLE
+            self.hardware = ArduinoBLE(address=getattr(args, 'arduino_address', None))
+            self.hardware.start()
         if getattr(args, 'audio', False):
             from .audio_guidance import AudioGuidance, ClipPlayer
             self._audio_log('AUDIO_ENABLED', device=getattr(args, 'audio_device', None))
@@ -126,6 +134,30 @@ class TrackingWorker:
             self.agents = OrchestrationBridge(self, args.agent_router, args.agent_provider)
         self.thread = threading.Thread(target=self.run, daemon=True, name='r3-local-tracker')
         self.thread.start()
+
+    def hardware_gate(self, armed=False):
+        """Invalidate pending output synchronously, including while CV is blocked."""
+        with self.hardware_lock:
+            self.hardware_armed = armed
+            self.hardware_decider.reset()
+            if self.hardware is not None:
+                self.hardware.stop()
+
+    def hardware_update(self, evidence, received, hand_here):
+        with self.hardware_lock:
+            if self.hardware is None:
+                return
+            context = self.agents.context if self.agents is not None else None
+            allowed = (self.hardware_armed and hand_here and self.session.state == 'LOCKED'
+                       and not self.stopped.is_set()
+                       and (self.agents is None or (context is not None and context.is_current())))
+            # Local image-plane geometry only: never translate cloud prose, estimated depth,
+            # forward/back, grasp or success into a servo movement.
+            from .audio_guidance import Evidence
+            cue = self.hardware_decider.decide(Evidence(
+                time.monotonic() - received, allowed, evidence.box,
+                evidence.tip, evidence.size, None))[0]
+            self.hardware.submit(cue.lower() if cue else None, received)
 
     def identify(self, job, raw, info):
         directory = self.args.output / job.frame_id
@@ -487,6 +519,7 @@ class TrackingWorker:
                     self.cancel_scene_speech()
                     self.ticket = ticket
                     self.session.find(query)
+                    self.hardware_gate(bool(query))
                     self.latency.start(query, time.monotonic())
                     if self.audio is not None:
                         self.audio.reset()
@@ -654,6 +687,7 @@ class TrackingWorker:
                                 (255, 255, 0) if self.audio.current else (170, 170, 170))
                         else:
                             direction = self.display_decider.decide(evidence)[:2]
+                        self.hardware_update(evidence, received, hand_here)
                         depth_image = None
                         if getattr(self.args, 'depth_view', False) and self.depth_frame is not None:
                             from .spatial_panel import depth_view
@@ -685,6 +719,8 @@ class TrackingWorker:
                         self.previous_received = received
                         last_frame = received
                     elif now-received > .3:
+                        if self.hardware is not None:
+                            self.hardware.stop()
                         self.latest_frame = self.latest_target = self.latest_hand = None
                         grace = getattr(self.session, 'max_gap_s', .3)
                         if now-received > grace and stale_handled != received:
@@ -694,6 +730,8 @@ class TrackingWorker:
                             self.output = (self.ticket, None, received, 'TARGET LOST', 'Camera frame stale; box hidden',
                                            self.session.mode, self.session.budget.total)
                 else:
+                    if self.hardware is not None:
+                        self.hardware.stop()
                     self.latest_frame = self.latest_target = self.latest_hand = None
                     self.session.update(None, now-1, now)
                     self.output = (self.ticket, None, now, 'TARGET LOST', self.source.status,
@@ -708,6 +746,8 @@ class TrackingWorker:
                     last_state = state
                     last_log = time.monotonic()
             except Exception as exc:
+                if self.hardware is not None:
+                    self.hardware.stop()
                 self.latest_frame = self.latest_target = self.latest_hand = None
                 self.session.tracker = None
                 self.session.hits = 0
@@ -779,6 +819,8 @@ class TrackingWorker:
 
     def _diagnostics(self):
         parts = []
+        if getattr(self, 'hardware', None) is not None:
+            parts.append('Arduino BLE: ' + self.hardware.status)
         if getattr(self, 'all_objects', None) is not None:
             parts.append(self.all_objects.summary())
             if self.hybrid_note:
@@ -834,6 +876,9 @@ class TrackingWorker:
             self.log.flush()
 
     def close(self):
+        if getattr(self, 'hardware', None) is not None:
+            self.hardware_gate()
+            self.hardware.close()
         if getattr(self, 'agents', None) is not None:
             self.agents.close()
         self.stopped.set()
@@ -849,6 +894,8 @@ class TrackingWorker:
 
 def arguments(argv=None):
     p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument('--arduino-ble', action='store_true', help='Opt-in Arduino 101 BLE image-plane servo cues')
+    p.add_argument('--arduino-address', help='Explicit BLE device address (macOS device UUID)')
     p.add_argument('--agents', action='store_true', help='Direct Anthropic/Gemini multi-agent orchestration')
     src = p.add_mutually_exclusive_group(required=True)
     src.add_argument('--host', help='Current user-supplied PathOn REC3D host')
@@ -1068,6 +1115,7 @@ def main(argv=None):
 
     def find():
         nonlocal ticket, last
+        worker.hardware_gate()
         if worker.agents is not None:
             try:
                 worker.agents.coordinator.submit(query.get())
@@ -1095,6 +1143,7 @@ def main(argv=None):
 
     def stop():
         nonlocal ticket, last
+        worker.hardware_gate()
         if worker.agents is not None:
             worker.agents.coordinator.stop()
             if dashboard is not None:
@@ -1149,6 +1198,7 @@ def main(argv=None):
                 describe()
             return
         if command == 'quiet':
+            worker.hardware_gate()
             worker.cancel_scene_speech()
             if player is not None:
                 player.stop()
