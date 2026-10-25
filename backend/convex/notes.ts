@@ -110,7 +110,8 @@ async function notesForObject(ctx: QueryCtx, ownerId: Id<"users">, label: string
     const match = matchNote(note, words, place);
     if (match) matched.push({ note, match });
   }
-  matched.sort((a, b) => (a.match === b.match ? b.note.createdAt - a.note.createdAt : a.match === "warning" ? -1 : 1));
+  matched.sort((a, b) => (a.match !== b.match ? (a.match === "warning" ? -1 : 1)
+    : b.note.createdAt - a.note.createdAt || b.note._creationTime - a.note._creationTime));
   return Promise.all(matched.slice(0, SEARCH_LIMIT).map(async ({ note, match }) => ({
     noteId: note._id, kind: note.kind, match, heard: note.heardAt !== undefined,
     spoken: spokenFor(note, await authorName(ctx, note), now, match),
@@ -156,7 +157,7 @@ export const byAuthor = query({
     const notes = await ctx.db.query("helperNotes")
       .withIndex("by_owner_author", (q) => q.eq("ownerId", ownerId).eq("authorId", helper._id))
       .collect();
-    return notes.sort((a, b) => b.createdAt - a.createdAt).map((n) => ({
+    return notes.sort((a, b) => b.createdAt - a.createdAt || b._creationTime - a._creationTime).map((n) => ({
       noteId: n._id, kind: n.kind, text: n.text, place: n.place ?? null, createdAt: n.createdAt,
       heardAt: n.heardAt ?? null, audioStatus: n.audioStatus, needsReview: isStale(n, now), reviewAt: n.reviewAt ?? null,
     }));
@@ -254,8 +255,10 @@ export const forDevice = query({
     const device = await resolveDevice(ctx, deviceKey);
     if (!device) return null;
     const now = Date.now();
+    // visibleNotes is newest first by (createdAt, _creationTime); reversing keeps a strict order
+    // even when two notes share a millisecond.
     const unheard = (await visibleNotes(ctx, device.ownerId, OWNER_LIST_LIMIT)).filter((n) => n.heardAt === undefined)
-      .sort((a, b) => a.createdAt - b.createdAt).slice(0, DEVICE_QUEUE_LIMIT);
+      .reverse().slice(0, DEVICE_QUEUE_LIMIT);
     return {
       deviceLabel: device.label,
       notes: await Promise.all(unheard.map(async (n) => ({

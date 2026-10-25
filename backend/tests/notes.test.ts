@@ -179,6 +179,7 @@ describe("family notes", () => {
   });
 
   it("a paired laptop gets unheard notes live, oldest first, and can mark them heard", async () => {
+    vi.useFakeTimers({ now: 1_000_000, toFake: ["Date"] }); // both notes in the same millisecond
     cartesia();
     const { t, owner, lan, ownerId } = await family();
     const { key } = await owner.action(api.devicesNode.pair, { label: "Demo laptop" });

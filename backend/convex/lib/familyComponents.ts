@@ -12,6 +12,6 @@ const components = componentsGeneric() as unknown as { rateLimiter: RateLimiterA
 export const NOTE_RATE = { kind: "token bucket", rate: 20, period: HOUR, capacity: 5 } as const;
 export const noteLimiter = new RateLimiter(components.rateLimiter, { familyNote: NOTE_RATE });
 
-/** Cartesia rendering: first try now, then retries after 2 s and 4 s. */
+/** Cartesia rendering: first try now, then up to 2 retries with exponential backoff (2 s base) and jitter. */
 export const NOTE_RENDER_RETRY = { initialBackoffMs: 2_000, base: 2, maxFailures: 2 } as const;
 export const noteRetrier = new ActionRetrier(components.actionRetrier, NOTE_RENDER_RETRY);

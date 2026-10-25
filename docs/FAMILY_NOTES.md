@@ -25,7 +25,7 @@ Live queries (web views and the laptop's Python subscription), transactional fri
 checks (revoking a helper hides their notes in the same query), a search index filtered by
 owner, file storage for audio, the scheduler (review dates), and two components:
 `@convex-dev/rate-limiter` (per helper: burst 5, 20 per hour) and `@convex-dev/action-retrier`
-(Cartesia render retried on timeouts, 429 and 5xx; never on bad keys or exhausted credits).
+(up to 2 retries of the Cartesia render with exponential backoff and jitter, on timeouts, 429 and 5xx only; never on bad keys or exhausted credits).
 
 ## Safety rules the code enforces
 

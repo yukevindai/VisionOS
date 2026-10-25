@@ -39,7 +39,7 @@ Open `http://localhost:5173/?view=owner` on the VisionOS user's laptop to start 
 Live queries (both views), mutations with transactional friendship checks, a search index
 filtered by owner, file storage for the rendered audio, and two components:
 `@convex-dev/rate-limiter` (per-helper token bucket: burst 5, 20 per hour) and
-`@convex-dev/action-retrier` (Cartesia render retried after 2 s and 4 s on timeouts, 429 and 5xx;
+`@convex-dev/action-retrier` (up to 2 retries of the Cartesia render with exponential backoff and jitter, on timeouts, 429 and 5xx;
 bad keys or no credits are not retried).
 
 ## Laptop
