@@ -72,7 +72,7 @@ public struct EventEnvelope: Equatable, Sendable {
 }
 public typealias ImageRegion = Targets.BoundingBox
 public enum TargetKind: String, Sendable { case button, object, screenControl, handle, opener, door }
-public enum ControlSafety: String, Sendable { case ordinary, ambiguous, emergency, payment, purchaseAuthorization, unknownCheckout }
+public enum ControlSafety: String, Sendable { case ordinary, ambiguous, emergency, payment, purchaseAuthorization, unknownCheckout, unassessedObject }
 public struct ResolvedTarget: Equatable, Sendable {
     public let id: String
     public let kind: TargetKind
@@ -174,7 +174,7 @@ public struct MenuContent: Equatable, Sendable {
         self.sections = sections; self.isBlurry = isBlurry; self.isCutOff = isCutOff
     }
 }
-public enum ConfirmationPurpose: String, Sendable { case actionResult, resumeGuidance, doorAction, restartKiosk }
+public enum ConfirmationPurpose: String, Sendable { case actionResult, resumeGuidance, doorAction, restartKiosk, objectGuidance }
 public struct PendingConfirmation: Equatable, Sendable {
     public let context: RequestContext
     public let purpose: ConfirmationPurpose

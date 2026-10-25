@@ -1,6 +1,7 @@
 import CoreGraphics
 import AVFoundation
 import Guidance
+import Tasks
 import XCTest
 @testable import Reflex
 
@@ -112,5 +113,36 @@ final class NativeRearCameraFormatPolicyTests: XCTestCase {
         let description = NativeRearCameraFormatPolicy.description(for: type)
         XCTAssertEqual(description.lens, "ARKit rear camera (FutureRearCamera)")
         XCTAssertNotNil(description.fallbackReason)
+    }
+}
+
+final class NativeTargetBindingPolicyTests: XCTestCase {
+    private func target(id: String = "bottle", frame: String = "recognition-frame",
+                        safety: ControlSafety = .unassessedObject) -> ResolvedTarget {
+        ResolvedTarget(id: id, kind: .object, label: "bottle",
+                       region: .init(x: 0.2, y: 0.2, width: 0.2, height: 0.3),
+                       frameID: frame, safety: safety)
+    }
+
+    func testUnassessedObjectCannotSkipNativePreparation() {
+        XCTAssertEqual(NativeTargetBindingPolicy.action(target: target(), prepared: nil, preparing: false), .reject)
+        XCTAssertEqual(NativeTargetBindingPolicy.action(target: target(), prepared: nil, preparing: true), .seed)
+    }
+
+    func testPreparedObjectRequiresContinuousTrackingEvenIfPreparationIsRetried() {
+        let selected = target()
+        XCTAssertEqual(NativeTargetBindingPolicy.action(target: selected, prepared: selected, preparing: false), .continuous)
+        XCTAssertEqual(NativeTargetBindingPolicy.action(target: selected, prepared: selected, preparing: true), .continuous)
+    }
+
+    func testMatchingIDCannotReuseAnotherSourceImageOrAnotherTarget() {
+        let selected = target()
+        XCTAssertEqual(NativeTargetBindingPolicy.action(target: target(frame: "new-frame"), prepared: selected, preparing: false), .reject)
+        XCTAssertEqual(NativeTargetBindingPolicy.action(target: target(id: "other-bottle"), prepared: selected, preparing: false), .reject)
+        XCTAssertEqual(NativeTargetBindingPolicy.action(target: target(frame: "new-frame"), prepared: selected, preparing: true), .seed)
+    }
+
+    func testOrdinaryLocalTargetRetainsDirectReacquisition() {
+        XCTAssertEqual(NativeTargetBindingPolicy.action(target: target(safety: .ordinary), prepared: nil, preparing: false), .seed)
     }
 }

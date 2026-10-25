@@ -91,8 +91,8 @@ private final class DelayedEvidence: TargetEvidenceClient {
     func answerMenu(_ request: RequestContext, question: String, menu: MenuContent) async throws -> String { try await base.answerMenu(request, question: question, menu: menu) }
     func verify(_ request: RequestContext, action: ActionKind, target: ResolvedTarget) async throws -> VerificationOutcome { .unavailable }
     func cancel(context: SessionContext) {} // Deliberately ignores cancellation to model a late provider response.
-    func complete() {
-        pending?.resume(returning: TaskFixtures.target())
+    func complete(_ target: ResolvedTarget = TaskFixtures.target()) {
+        pending?.resume(returning: target)
         pending = nil
     }
 }
@@ -137,9 +137,15 @@ private final class DeferredPermissionClient: PermissionClient {
 }
 
 @MainActor
-private final class PreviewFixturePerception: PerceptionGuidanceClient, CameraPreviewSource {
+private final class PreviewFixturePerception: PerceptionGuidanceClient, CameraPreviewSource, ObjectTargetPreparing {
     var supportsOfflineStop = false
+    var preparedTargets: [ResolvedTarget] = []
+    var preparation: CheckedContinuation<Void, Error>?
     var guideCount = 0
+    func prepareTarget(_ request: RequestContext, target: ResolvedTarget) async throws {
+        preparedTargets.append(target)
+        try await withCheckedThrowingContinuation { preparation = $0 }
+    }
     let base: FixturePerception
     var onPreview: ((CameraPreviewFrame) -> Void)?
     var onEvent: ((PerceptionEvent) -> Void)? { get { base.onEvent } set { base.onEvent = newValue } }
@@ -186,6 +192,60 @@ final class SessionCoordinatorTests: XCTestCase {
     }
     private func settle() async { for _ in 0..<80 { await Task.yield() } }
 
+    private func preparationHarness() -> (SessionCoordinator, PreviewFixturePerception, DelayedEvidence) {
+        let clock = ManualAppClock()
+        let perception = PreviewFixturePerception(FixturePerception(clock: clock))
+        let evidence = DelayedEvidence(clock: clock)
+        let session = SessionCoordinator(simulated: true,
+            preferences: UserPreferences(defaults: UserDefaults(suiteName: UUID().uuidString)!),
+            diagnostics: Diagnostics(capacity: 8),
+            bands: BandService(controller: nil, simulated: true, clock: clock), clock: clock,
+            perception: perception, speech: FixtureSpeech(audible: false), conversation: FixtureConversation(),
+            evidence: evidence, permissions: FixturePermissionClient(state: .init(camera: true, microphone: true)))
+        return (session, perception, evidence)
+    }
+
+    func testUnassessedTargetPreparationCompletesBeforeConfirmation() async {
+        let (session, perception, evidence) = preparationHarness()
+        session.start(); await settle()
+        session.submitFixtureText("pick up my keys"); await settle()
+        let target = TaskFixtures.target(kind: .object, label: "SIMULATED keys", safety: .unassessedObject)
+        evidence.complete(target); await settle()
+        XCTAssertEqual(perception.preparedTargets, [target])
+        XCTAssertNil(session.taskState?.confirmation)
+        XCTAssertEqual(perception.guideCount, 0)
+        perception.preparation?.resume(); perception.preparation = nil
+        await settle()
+        XCTAssertEqual(session.taskState?.confirmation?.purpose, .objectGuidance)
+        XCTAssertEqual(perception.guideCount, 0)
+        session.stop(.userEnd)
+    }
+
+    func testOrdinaryTargetSkipsPreparation() async {
+        let (session, perception, evidence) = preparationHarness()
+        session.start(); await settle()
+        session.submitFixtureText("press the blue button"); await settle()
+        evidence.complete(); await settle()
+        XCTAssertTrue(perception.preparedTargets.isEmpty)
+        XCTAssertEqual(session.taskState?.confirmation?.purpose, .actionResult)
+        session.stop(.userEnd)
+    }
+
+    func testFailedTargetPreparationCannotStartGuidance() async {
+        let (session, perception, evidence) = preparationHarness()
+        session.start(); await settle()
+        session.submitFixtureText("pick up my keys"); await settle()
+        evidence.complete(TaskFixtures.target(kind: .object, safety: .unassessedObject)); await settle()
+        XCTAssertNotNil(perception.preparation)
+        perception.preparation?.resume(throwing: NSError(domain: "SIMULATED-preparation", code: 1))
+        perception.preparation = nil
+        await settle()
+        XCTAssertNil(session.taskState?.confirmation)
+        XCTAssertEqual(perception.guideCount, 0)
+        XCTAssertNotEqual(session.taskState?.phase, .guiding)
+        session.stop(.userEnd)
+    }
+
     func testSpokenQuestionAnswersWithoutGuidanceOrConfirmation() async {
         let clock = ManualAppClock()
         let evidence = DirectAnswerEvidence(clock: clock)
@@ -200,6 +260,7 @@ final class SessionCoordinatorTests: XCTestCase {
         XCTAssertNil(h.session.taskState?.confirmation)
         XCTAssertNil(h.session.taskState?.target)
         XCTAssertEqual(h.probe?.guideCount, 0)
+        XCTAssertEqual(h.probe?.preparedTargets, [])
         XCTAssertTrue(h.speech.spoken.contains(evidence.directAnswer))
         h.session.stop(.userEnd)
     }

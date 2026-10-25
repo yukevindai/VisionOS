@@ -695,7 +695,12 @@ private extension SessionCoordinator {
                     guard let answering = evidence as? any QuestionAnswering else { throw GeminiObjectError.unavailable }
                     return .answer(try await answering.answer(request, question: query))
                 }
-                return .target(try await evidence.resolve(request, query: query, kind: kind))
+                let target = try await evidence.resolve(request, query: query, kind: kind)
+                if target.safety == .unassessedObject,
+                   let preparer = perception as? any ObjectTargetPreparing {
+                    try await preparer.prepareTarget(request, target: target)
+                }
+                return .target(target)
             }
         case .reacquire(let request, let target):
             launch(request, source: .r1) { .physical(try await perception.reacquire(request, target: target)) }
