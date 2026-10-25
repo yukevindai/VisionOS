@@ -342,8 +342,9 @@ class ClipPlayer:
     winsound on the Windows default device. play() only hands over the latest cue; a newer cue or stop() interrupts.
     """
 
-    def __init__(self, folder=CLIPS, device=None, backend='auto', log=None, numeric=False):
+    def __init__(self, folder=CLIPS, device=None, backend='auto', log=None, numeric=False, speech_provider=None):
         self.folder, self.device = Path(folder), device
+        self.speech_provider = speech_provider
         self.phrases = dict(PHRASES, **SUMMARY_PHRASES, **(CM_PHRASES if numeric else {}))
         self.log = log or (lambda event, **fields: None)
         self.backend = backend
@@ -491,9 +492,10 @@ class ClipPlayer:
         return f'{self.backend} -> {self.device_name}' if not self.error else f'unavailable ({self.error})'
 
     def say(self, text, name='SPEECH', is_current=lambda: True):
-        """Speak any short sentence: offline Windows voice synthesised on a background thread, then played like a clip.
+        """Synthesize conversation on one background worker, then use the existing audio device.
 
-        The camera loop never waits. A newer say() or cue replaces it, as with every other cue."""
+        Cartesia is optional; local guidance clips never call it. Stop or a new cue
+        invalidates pending synthesis. Additional synthesis requests are rejected."""
         import hashlib
         text = ' '.join(''.join(ch for ch in str(text) if ch.isprintable()).split())[:400]
         if not text:
@@ -509,11 +511,39 @@ class ClipPlayer:
 
         def work():
             try:
+                import io
+                import time
                 import wave
                 import numpy as np
                 folder = self.folder / 'speech'
-                make_clips(folder, phrases={token: text})
-                with wave.open(str(folder / f'{token}.wav'), 'rb') as clip:
+                path = folder / f'{token}.wav'
+
+                def eligible():
+                    with self.wake:
+                        return (not self.closed and not getattr(self, 'muted', False)
+                                and self.speech_token is request and is_current())
+
+                provider = getattr(self, 'speech_provider', None)
+                audio = None
+                if provider is not None and eligible():
+                    started = time.monotonic()
+                    self.log('SPEECH_SYNTHESIS_STARTED', provider='cartesia', cue=name)
+                    try:
+                        audio = provider.synthesize(text)
+                        self.log('SPEECH_SYNTHESIS_COMPLETED', provider='cartesia', cue=name,
+                                 latency_ms=round((time.monotonic() - started) * 1000))
+                    except Exception as exc:
+                        # Provider exceptions can contain response bodies or credentials.
+                        from .cartesia_speech import SpeechError
+                        error = str(exc) if isinstance(exc, SpeechError) and re.fullmatch(
+                            r'CARTESIA_[A-Z_0-9]+', str(exc)) else type(exc).__name__
+                        self.log('SPEECH_FALLBACK', provider='windows', cue=name,
+                                 error=error, latency_ms=round((time.monotonic() - started) * 1000))
+                if not eligible():
+                    return
+                if audio is None:
+                    make_clips(folder, phrases={token: text})
+                with wave.open(io.BytesIO(audio) if audio is not None else str(path), 'rb') as clip:
                     rate, channels = clip.getframerate(), clip.getnchannels()
                     samples = np.frombuffer(clip.readframes(clip.getnframes()), '<i2').astype('float32')
                 samples = samples.reshape(-1, channels) / 32768
@@ -527,8 +557,12 @@ class ClipPlayer:
                         return
                     self.clips[name] = (samples, rate)
                     if self.backend != 'sounddevice':
-                        import shutil
-                        shutil.copyfile(folder / f'{token}.wav', self.folder / f'{name}.wav')
+                        if audio is not None:
+                            # One replaceable playback file, never a cache of cloud responses.
+                            (self.folder / f'{name}.wav').write_bytes(audio)
+                        else:
+                            import shutil
+                            shutil.copyfile(path, self.folder / f'{name}.wav')
                     self.wanted = name
                     self.wake.notify()
             except Exception as exc:
