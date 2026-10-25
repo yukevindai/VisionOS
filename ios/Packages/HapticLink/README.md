@@ -10,6 +10,10 @@ The hardware is described as Bluetooth, but its BLE/GATT compatibility still nee
 
 All test hardware values are local synthetic fixtures. Passing these tests establishes app logic behavior; actuator onset, real Bluetooth behavior, independent 500 ms watchdog, TTL enforcement, disconnect silence, and 2 s continuous-on limit still require H1/device validation.
 
+## Arduino 101 sketch compatibility
+
+`Arduino101ReleaseClient` is a separate compatibility path for the supplied CurieBLE `ServoController` sketch. It scans for service `19B10000-E8F2-537E-4F6C-D104768A1214`, checks command characteristic `19B10001-E8F2-537E-4F6C-D104768A1214` has the GATT `write` property, and sends UTF-8 commands with `.withResponse`. Settings offers `reset` and independent servo hold toggles. Turning a toggle on sends `up0` (or its direction equivalent); turning it off sends `up80` (or its equivalent). Multiple servos may be active together. The app queues writes with responses; a servo remains at its commanded position until release, but the app auto-releases after 1.8 seconds and firmware independently auto-releases after 2 seconds. BLE disconnect releases all servos. These are manual hardware controls and are not connected to live R1 guidance cues or H1 wristband packets. The sketch's legacy `*80` release command uses its configured 70-degree release angle.
+
 ## App composition
 
 Construct and use the controller on the main actor. Missing live integrations remain explicitly unavailable:

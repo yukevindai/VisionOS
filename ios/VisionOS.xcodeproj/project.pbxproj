@@ -50,6 +50,7 @@
 		56CE09A7DDA3F1A2F6199033 /* TargetReaderImageEncoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5667283630DE450A095385C9 /* TargetReaderImageEncoder.swift */; };
 		E1A4F953823E82C5A07B04F1 /* TargetReaderModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B1EC69D55F2C9E9E6DF0370 /* TargetReaderModel.swift */; };
 		EF2956AB96CD3C32C530CBE4 /* TargetReaderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AEB7C6C4C2138EE6E1985FA5 /* TargetReaderView.swift */; };
+		9CEDC96A9C8B08250D210D6E /* Arduino101SetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF16E50DA0F0A069AFF5E9C6 /* Arduino101SetupView.swift */; };
 		93363CC6A3777CE700EACC60 /* AssistanceSessionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7963F7E35A2A01EE0D6AE97A /* AssistanceSessionView.swift */; };
 		DBCB45BAE7F23210F2580A59 /* CameraIsland.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE8724C02C7EB4647B5FF69F /* CameraIsland.swift */; };
 		2191032CC1733E10857FD81B /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66BDF1891E0B952F750B69EC /* HomeView.swift */; };
@@ -152,6 +153,7 @@
 		5667283630DE450A095385C9 /* TargetReaderImageEncoder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Targets/TargetReaderImageEncoder.swift"; sourceTree = "<group>"; };
 		4B1EC69D55F2C9E9E6DF0370 /* TargetReaderModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Targets/TargetReaderModel.swift"; sourceTree = "<group>"; };
 		AEB7C6C4C2138EE6E1985FA5 /* TargetReaderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Targets/TargetReaderView.swift"; sourceTree = "<group>"; };
+		DF16E50DA0F0A069AFF5E9C6 /* Arduino101SetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Views/Arduino101SetupView.swift"; sourceTree = "<group>"; };
 		7963F7E35A2A01EE0D6AE97A /* AssistanceSessionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Views/AssistanceSessionView.swift"; sourceTree = "<group>"; };
 		DE8724C02C7EB4647B5FF69F /* CameraIsland.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Views/CameraIsland.swift"; sourceTree = "<group>"; };
 		66BDF1891E0B952F750B69EC /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Views/HomeView.swift"; sourceTree = "<group>"; };
@@ -266,6 +268,7 @@
 			5667283630DE450A095385C9,
 			4B1EC69D55F2C9E9E6DF0370,
 			AEB7C6C4C2138EE6E1985FA5,
+			DF16E50DA0F0A069AFF5E9C6,
 			7963F7E35A2A01EE0D6AE97A,
 			DE8724C02C7EB4647B5FF69F,
 			66BDF1891E0B952F750B69EC,
@@ -387,6 +390,7 @@
 			56CE09A7DDA3F1A2F6199033,
 			E1A4F953823E82C5A07B04F1,
 			EF2956AB96CD3C32C530CBE4,
+			9CEDC96A9C8B08250D210D6E,
 			93363CC6A3777CE700EACC60,
 			DBCB45BAE7F23210F2580A59,
 			2191032CC1733E10857FD81B,
