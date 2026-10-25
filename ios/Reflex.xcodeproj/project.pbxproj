@@ -35,6 +35,7 @@
 		864658360053518E5CB4A1D5 /* R3TargetMapping.swift in Sources */ = {isa = PBXBuildFile; fileRef = E97DA9BB04C4D52FF9E1E536 /* R3TargetMapping.swift */; };
 		D3E22B5BBADF1ACF2ECE7B2F /* UnavailableAdapters.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A278D435E7F00D202F44EB9 /* UnavailableAdapters.swift */; };
 		10B78C9DFD60CD21C84C1F4E /* FixtureAdapters.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3ED44BC8675B28A221A1C6BF /* FixtureAdapters.swift */; };
+		B48303487A6620A36D6C5AD4 /* CameraTrackingState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5118A8B1236EFA3FD843E283 /* CameraTrackingState.swift */; };
 		4B708659B61586F7C2296100 /* NativePerceptionGeometry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E202603C9A23FD1AD42EC49 /* NativePerceptionGeometry.swift */; };
 		B3D4B666EB57C8757B79481F /* NativePerceptionGuidanceClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACC7B0CD848754F52ED4147B /* NativePerceptionGuidanceClient.swift */; };
 		67EA665EAA2C9E11943B4288 /* UserPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57A536087008DA20F1B994D6 /* UserPreferences.swift */; };
@@ -56,6 +57,7 @@
 		F4BC892B71E1E20A57AA52EA /* AdapterCompatibilityHarness.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3BE6A4221B4D738775991E86 /* AdapterCompatibilityHarness.swift */; };
 		94182495A1B453D8AA3AE513 /* Auth0NativeIdentityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9EF6E445126B2ECAC4009105 /* Auth0NativeIdentityTests.swift */; };
 		457740AF10172609259B5FBB /* BandServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E66E3B98870070975025F76 /* BandServiceTests.swift */; };
+		EA6DACA9A1CCBDE337346AE5 /* CameraTrackingStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F60656F0C19BC8EB1DD3F508 /* CameraTrackingStateTests.swift */; };
 		18C89977A949101E57EDF107 /* ConversationalSpeechRequestTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8881A89F70CA21AD11A7E1C /* ConversationalSpeechRequestTests.swift */; };
 		518F5743809B4F687739CBE5 /* ConvexNativeMediaBackendTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFA24222422F19F639637F6F /* ConvexNativeMediaBackendTests.swift */; };
 		EE8A701EDDE7996D5EA20599 /* FriendAssistanceCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1246D652038C77E5860AF416 /* FriendAssistanceCoordinatorTests.swift */; };
@@ -128,6 +130,7 @@
 		E97DA9BB04C4D52FF9E1E536 /* R3TargetMapping.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Integration/R3TargetMapping.swift"; sourceTree = "<group>"; };
 		7A278D435E7F00D202F44EB9 /* UnavailableAdapters.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Integration/UnavailableAdapters.swift"; sourceTree = "<group>"; };
 		3ED44BC8675B28A221A1C6BF /* FixtureAdapters.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Mocks/FixtureAdapters.swift"; sourceTree = "<group>"; };
+		5118A8B1236EFA3FD843E283 /* CameraTrackingState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Perception/CameraTrackingState.swift"; sourceTree = "<group>"; };
 		9E202603C9A23FD1AD42EC49 /* NativePerceptionGeometry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Perception/NativePerceptionGeometry.swift"; sourceTree = "<group>"; };
 		ACC7B0CD848754F52ED4147B /* NativePerceptionGuidanceClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Perception/NativePerceptionGuidanceClient.swift"; sourceTree = "<group>"; };
 		57A536087008DA20F1B994D6 /* UserPreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Persistence/UserPreferences.swift"; sourceTree = "<group>"; };
@@ -149,6 +152,7 @@
 		3BE6A4221B4D738775991E86 /* AdapterCompatibilityHarness.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AdapterCompatibilityHarness.swift"; sourceTree = "<group>"; };
 		9EF6E445126B2ECAC4009105 /* Auth0NativeIdentityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Auth0NativeIdentityTests.swift"; sourceTree = "<group>"; };
 		3E66E3B98870070975025F76 /* BandServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BandServiceTests.swift"; sourceTree = "<group>"; };
+		F60656F0C19BC8EB1DD3F508 /* CameraTrackingStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "CameraTrackingStateTests.swift"; sourceTree = "<group>"; };
 		A8881A89F70CA21AD11A7E1C /* ConversationalSpeechRequestTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ConversationalSpeechRequestTests.swift"; sourceTree = "<group>"; };
 		AFA24222422F19F639637F6F /* ConvexNativeMediaBackendTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ConvexNativeMediaBackendTests.swift"; sourceTree = "<group>"; };
 		1246D652038C77E5860AF416 /* FriendAssistanceCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "FriendAssistanceCoordinatorTests.swift"; sourceTree = "<group>"; };
@@ -233,6 +237,7 @@
 			E97DA9BB04C4D52FF9E1E536,
 			7A278D435E7F00D202F44EB9,
 			3ED44BC8675B28A221A1C6BF,
+			5118A8B1236EFA3FD843E283,
 			9E202603C9A23FD1AD42EC49,
 			ACC7B0CD848754F52ED4147B,
 			57A536087008DA20F1B994D6,
@@ -256,6 +261,7 @@
 			3BE6A4221B4D738775991E86,
 			9EF6E445126B2ECAC4009105,
 			3E66E3B98870070975025F76,
+			F60656F0C19BC8EB1DD3F508,
 			A8881A89F70CA21AD11A7E1C,
 			AFA24222422F19F639637F6F,
 			1246D652038C77E5860AF416,
@@ -345,6 +351,7 @@
 			864658360053518E5CB4A1D5,
 			D3E22B5BBADF1ACF2ECE7B2F,
 			10B78C9DFD60CD21C84C1F4E,
+			B48303487A6620A36D6C5AD4,
 			4B708659B61586F7C2296100,
 			B3D4B666EB57C8757B79481F,
 			67EA665EAA2C9E11943B4288,
@@ -368,6 +375,7 @@
 			F4BC892B71E1E20A57AA52EA,
 			94182495A1B453D8AA3AE513,
 			457740AF10172609259B5FBB,
+			EA6DACA9A1CCBDE337346AE5,
 			18C89977A949101E57EDF107,
 			518F5743809B4F687739CBE5,
 			EE8A701EDDE7996D5EA20599,
