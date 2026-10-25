@@ -109,9 +109,10 @@ class SpeechTests(unittest.TestCase):
         self.assertEqual(flat.player.played, ['RIGHT'])  # 2D: words only, never centimetres
 
     def test_near_object_cue_is_proximity_only(self):
-        self.assertEqual(GuidanceDecider().decide(self.ev(lidar(.01, .01, .04)))[0], 'NEAR_OBJECT')
+        self.assertEqual(GuidanceDecider().decide(self.ev(lidar(.01, .01, .02)))[0], 'GRAB')
+        self.assertNotEqual(GuidanceDecider().decide(self.ev(lidar(.01, .01, .04)))[0], 'GRAB')
         estimate = Offset('ESTIMATED', delta_m=(.01, .01, .04), distance_m=.04)
-        self.assertNotEqual(GuidanceDecider().decide(self.ev(estimate, tip=(330, 240)))[0], 'NEAR_OBJECT')
+        self.assertIsNone(GuidanceDecider().decide(self.ev(estimate, tip=(330, 240)))[0])
 
 
 class EstimatedForwardTests(unittest.TestCase):
@@ -135,6 +136,18 @@ class EstimatedForwardTests(unittest.TestCase):
         self.assertIsNone(GuidanceDecider().decide(self.ev(self.estimate(.10, 'UNRELIABLE', .072)))[0])
         self.assertIsNone(GuidanceDecider().decide(self.ev(self.estimate(.10, confidence='LOW')))[0])
 
+    def test_grab_when_every_estimated_axis_is_within_3_cm(self):
+        close = Offset('ESTIMATED', delta_m=(.01, -.02, .025), distance_m=.03, target_confidence='MEDIUM')
+        cue, mode, reason = GuidanceDecider().decide(self.ev(close))
+        self.assertEqual((cue, mode), ('GRAB', '2D+EST'))
+        self.assertIn('estimated', reason)
+        side_off = Offset('ESTIMATED', delta_m=(.05, 0., .02), distance_m=.05, target_confidence='MEDIUM')
+        self.assertNotEqual(GuidanceDecider().decide(self.ev(side_off))[0], 'GRAB')
+        doubtful = Offset('UNRELIABLE', delta_m=(.01, 0., .02), distance_m=.02, target_confidence='MEDIUM',
+                          depth_disagreement_m=.04)
+        self.assertNotEqual(GuidanceDecider().decide(self.ev(doubtful))[0], 'GRAB')
+        self.assertNotEqual(GuidanceDecider().decide(self.ev(close, tip=(100, 240)))[0], 'GRAB')  # not over it
+
     def test_lateral_correction_comes_first_and_no_centimetres(self):
         self.assertEqual(GuidanceDecider().decide(self.ev(self.estimate(.10), tip=(100, 240)))[0], 'RIGHT')
         player = Recorder()
@@ -150,6 +163,62 @@ class SummaryTests(unittest.TestCase):
                  proposal((.7, .1, .8, .25), pepsi=1.3)]
         self.assertEqual(demo.summarize(found), [('coke', 'left'), ('brown_bagel', 'center'), ('pepsi', 'right')])
         self.assertEqual(demo.summarize([proposal((.1, .1, .2, .2), other=1.5)]), [])
+
+
+class TrackingLostTests(unittest.TestCase):
+    def test_hand_dropout_or_alignment_never_says_tracking_lost(self):
+        player = Recorder()
+        audio = AudioGuidance(player, confirm_frames=1, lost_on_invalid=False)
+        audio.update(Evidence(.05, True, (300, 150, 360, 330), (100, 240), (640, 480), None), 1.)  # RIGHT
+        for t in (1.5, 2., 3., 6.):
+            audio.update(Evidence(.05, True, (300, 150, 360, 330), None, (640, 480), None), t)  # hand gone
+            audio.tick(t)
+        self.assertNotIn('TRACKING_LOST', player.played)
+        self.assertTrue(audio.target_left_view(7.))
+        self.assertFalse(audio.target_left_view(8.))  # at most once every 4 s
+        self.assertEqual(player.played.count('TRACKING_LOST'), 1)
+
+    def worker(self):
+        import numpy as np
+        from r3_vision.live_tracking import TrackingWorker
+        w = TrackingWorker.__new__(TrackingWorker)
+        w.audio = SimpleNamespace(calls=[], target_left_view=lambda now: w.audio.calls.append(now))
+        w.session = SimpleNamespace(state='LOCKED', label='Pepsi can')
+        box = lambda x0, y0, x1, y1: np.float32([[x0, y0], [x1, y0], [x1, y1], [x0, y1]])
+        return w, box
+
+    def test_lost_only_after_leaving_the_screen_for_1_5_s(self):
+        w, box = self.worker()
+        lost = SimpleNamespace(polygon=None, reason='Tracker confidence too low')
+        self.assertFalse(w._watch_target_exit(SimpleNamespace(polygon=box(600, 100, 639, 300)), (640, 480), now=10.))
+        w.session.state = 'TARGET LOST'
+        self.assertFalse(w._watch_target_exit(lost, (640, 480), now=10.1))
+        self.assertFalse(w._watch_target_exit(lost, (640, 480), now=11.))  # 0.9 s: still waiting
+        self.assertTrue(w._watch_target_exit(lost, (640, 480), now=11.7))  # 1.6 s off screen
+        self.assertEqual(len(w.audio.calls), 1)
+        w.session.state = 'HIDDEN'
+        w._watch_target_exit(SimpleNamespace(polygon=box(200, 100, 300, 300)), (640, 480), now=20.)
+        w.session.state = 'TARGET LOST'
+        w._watch_target_exit(SimpleNamespace(polygon=None, reason='Remembered location left the frame; target lost'),
+                             (640, 480), now=20.1)
+        self.assertTrue(w._watch_target_exit(lost, (640, 480), now=21.7))
+
+    def test_coming_back_within_1_5_s_or_losing_a_centred_object_stays_silent(self):
+        w, box = self.worker()
+        w._watch_target_exit(SimpleNamespace(polygon=box(600, 100, 639, 300)), (640, 480), now=10.)
+        w.session.state = 'TARGET LOST'
+        w._watch_target_exit(SimpleNamespace(polygon=None, reason='x'), (640, 480), now=10.1)
+        w.session.state = 'LOCKED'
+        w._watch_target_exit(SimpleNamespace(polygon=box(580, 100, 630, 300)), (640, 480), now=11.)  # back
+        w.session.state = 'LOCKED'
+        self.assertFalse(w._watch_target_exit(SimpleNamespace(polygon=box(580, 100, 630, 300)), (640, 480), now=12.))
+        w2, box2 = self.worker()
+        w2._watch_target_exit(SimpleNamespace(polygon=box2(250, 150, 350, 330)), (640, 480), now=10.)
+        w2.session.state = 'TARGET LOST'
+        for t in (10.1, 11., 13.):
+            self.assertFalse(w2._watch_target_exit(SimpleNamespace(polygon=None, reason='Evidence stayed weak'),
+                                                   (640, 480), now=t))
+        self.assertEqual(w.audio.calls + w2.audio.calls, [])
 
 
 class ArgumentTests(unittest.TestCase):

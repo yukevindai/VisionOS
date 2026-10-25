@@ -3,7 +3,7 @@ param(
     [switch]$DepthCheck,
     [switch]$DepthView,
     [string]$Python = '',
-    [string]$PhoneHost = '192.168.137.223',
+    [string]$PhoneHost = 'auto',
     [string]$Webcam = '',
     [ValidateRange(1,65535)][int]$Port = 8888,
     [ValidateSet(0,90,180,270)][int]$Rotation = 0,
@@ -42,6 +42,36 @@ $discovery = if ($Detection -eq 'allobjects') {
       '--verify-interval', $VerifyInterval.ToString([cultureinfo]::InvariantCulture))
 } else { @() }
 $calibration = if ($DistanceCalibration) { @('--distance-calibration', (Resolve-Path -LiteralPath $DistanceCalibration).Path) } else { @() }
+
+function Find-PhoneHost([int]$TcpPort, [string[]]$Candidates = @()) {
+    # Probe, in parallel, the iPhone Personal Hotspot address (USB cable or iPhone Wi-Fi hotspot) first, then every
+    # address on the laptop's Mobile Hotspot (192.168.137.x) and the iPhone hotspot range (172.20.10.x).
+    $candidates = if ($Candidates.Count) { $Candidates } else {
+        @('172.20.10.1') + (2..15 | ForEach-Object { "172.20.10.$_" }) + (2..254 | ForEach-Object { "192.168.137.$_" })
+    }
+    $probes = foreach ($address in $candidates) {
+        $client = New-Object System.Net.Sockets.TcpClient
+        [pscustomobject]@{ Address = $address; Client = $client; Task = $client.ConnectAsync($address, $TcpPort) }
+    }
+    $deadline = (Get-Date).AddMilliseconds(1500)
+    $found = $null
+    while (-not $found -and (Get-Date) -lt $deadline) {
+        Start-Sleep -Milliseconds 100
+        $found = $probes | Where-Object { $_.Task.Status -eq 'RanToCompletion' -and $_.Client.Connected } | Select-Object -First 1
+    }
+    foreach ($probe in $probes) { $probe.Client.Dispose() }
+    if ($found) { return $found.Address }
+    return $null
+}
+
+if ($Webcam -eq '' -and $PhoneHost -eq 'auto') {
+    Write-Host "Looking for the PathOn stream on port $Port (USB Personal Hotspot or Wi-Fi hotspot)..."
+    $PhoneHost = Find-PhoneHost $Port
+    if (-not $PhoneHost) {
+        throw "PathOn not found on port $Port. Open PathOn on the iPhone and start streaming, keep the screen on, and connect it by USB (Personal Hotspot on) or to the laptop hotspot. Or pass -PhoneHost <address>."
+    }
+    Write-Host "Found PathOn at $PhoneHost"
+}
 Push-Location $PSScriptRoot
 if ($DepthCheck) {
     try { & $Python -m r3_vision.depth_check --host $PhoneHost --port $Port; exit $LASTEXITCODE }

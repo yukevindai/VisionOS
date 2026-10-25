@@ -12,13 +12,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 import math
 from pathlib import Path
+import re
 import subprocess
 import sys
 import threading
 
 PHRASES = {'LEFT': 'Left', 'RIGHT': 'Right', 'UP': 'Up', 'DOWN': 'Down', 'FORWARD': 'Forward', 'BACKWARD': 'Back',
            'CLOSER': 'Closer', 'READY_TO_GRASP': 'Ready to grasp', 'TRACKING_LOST': 'Tracking lost',
-           'NEAR_OBJECT': 'Near the object. Check your grip.'}
+           'NEAR_OBJECT': 'Near the object. Check your grip.', 'GRAB': 'Grab.'}
 DIRECTIONS = {'x': ('RIGHT', 'LEFT'), 'y': ('DOWN', 'UP'), 'z': ('FORWARD', 'BACKWARD')}
 CM_RANGE = range(3, 61)  # spoken centimetre cues: "Left, 8 centimeters." (3D validated mode only)
 CM_PHRASES = {f'{cue}_{cm}': f'{PHRASES[cue]}, {cm} centimeters.'
@@ -52,9 +53,10 @@ class Evidence:
 
 
 class GuidanceDecider:
-    def __init__(self, max_age_s=.3, tolerance_m=.03, ready_m=.06, near_m=.15, release=.6, estimate_m=.06):
+    def __init__(self, max_age_s=.3, tolerance_m=.03, ready_m=.06, near_m=.15, release=.6, estimate_m=.06,
+                 grab_m=.03):
         self.max_age_s, self.tolerance_m, self.ready_m, self.near_m = max_age_s, tolerance_m, ready_m, near_m
-        self.estimate_m = estimate_m
+        self.estimate_m, self.grab_m = estimate_m, grab_m
         self.release = release
         self.axis = None
         self.cm = None
@@ -86,10 +88,10 @@ class GuidanceDecider:
         offset = ev.offset
         if offset is not None and getattr(offset, 'measured', False) and offset.delta_m is not None:
             dx, dy, dz = offset.delta_m
-            if offset.distance_m <= self.ready_m:
+            if max(abs(dx), abs(dy), abs(dz)) <= self.grab_m:
                 self.axis = None
-                # Proximity only; never a touch or grasp confirmation.
-                return 'NEAR_OBJECT', '3D', f'LiDAR distance {offset.distance_m * 100:.0f} cm'
+                # Every axis within 3 cm. Proximity only; never a touch or grasp confirmation.
+                return 'GRAB', '3D', f'all axes within {self.grab_m * 100:.0f} cm (LiDAR)'
             axis = self._pick({'x': dx, 'y': dy, 'z': dz}, dict.fromkeys('xyz', self.tolerance_m))
             if axis is None:
                 self.axis = None
@@ -127,6 +129,10 @@ class GuidanceDecider:
         disagreement = getattr(offset, 'depth_disagreement_m', None) or 0.
         if not (math.isfinite(dz) and math.isfinite(disagreement)) or disagreement > .05:
             return None
+        if (all(math.isfinite(v) and abs(v) <= self.grab_m for v in offset.delta_m)
+                and disagreement <= self.grab_m):
+            # Fingertip over the target and every estimated axis within 3 cm: a best estimate, not measured.
+            return 'GRAB', '2D+EST', f'all axes within {self.grab_m * 100:.0f} cm (estimated depth)'
         if abs(dz) < max(self.estimate_m, 2 * disagreement):
             return None
         return ('FORWARD' if dz > 0 else 'BACKWARD', '2D+EST',
@@ -141,9 +147,12 @@ class AudioGuidance:
     """Cue scheduling. Brief evidence dropouts (< grace_s) neither cut the word being spoken nor start a new one;
     longer invalid evidence stops playback. Every new cue still needs a fresh, valid frame."""
 
-    def __init__(self, player, decider=None, repeat_s=2.5, confirm_frames=2, grace_s=.3, lost_after_s=.6,
-                 lost_gap_s=4., log=None, numeric=False, cm_step=3., cm_gap_s=1.2):
+    def __init__(self, player, decider=None, repeat_s=2.5, confirm_frames=2, grace_s=.3, lost_after_s=1.5,
+                 lost_gap_s=4., log=None, numeric=False, cm_step=3., cm_gap_s=1.2, lost_on_invalid=True):
         self.player = player
+        # lost_on_invalid False: "Tracking lost" only through target_left_view() (the target left the screen),
+        # never for a hand dropout, alignment, brief cover or a stale frame.
+        self.lost_on_invalid = lost_on_invalid
         # numeric: in validated 3D mode say the remaining centimetres ("Left, 8 centimeters.").
         self.numeric, self.cm_step, self.cm_gap_s = numeric, cm_step, cm_gap_s
         self.spoken_cm = None
@@ -222,11 +231,24 @@ class AudioGuidance:
             self.current = None
             self.pending, self.pending_count = None, 0
             self.last_valid = None
-        if (self.guided and self.current is None and now - self.invalid_since >= self.lost_after_s
-                and now - self.lost_said_at >= self.lost_gap_s):
+        if (self.lost_on_invalid and self.guided and self.current is None
+                and now - self.invalid_since >= self.lost_after_s and now - self.lost_said_at >= self.lost_gap_s):
             self.player.play('TRACKING_LOST')
             self.lost_said_at = now
             self.guided = False
+
+    def target_left_view(self, now):
+        """The tracked object left the screen: say "Tracking lost" once (at most every lost_gap_s)."""
+        if now - self.lost_said_at < self.lost_gap_s:
+            return False
+        self.player.stop()
+        self.current, self.pending, self.pending_count, self.guided = None, None, 0, False
+        self.decider.reset()
+        self.log('CUE_COMPUTED', cue='TRACKING_LOST', mode=None, reason='target left the screen')
+        self.player.play('TRACKING_LOST')
+        self.lost_said_at = now
+        self.reason = 'target left the screen'
+        return True
 
     def status(self):
         if self.current is not None:
@@ -277,6 +299,34 @@ def make_clips(folder=CLIPS, rate=3, phrases=None):
     return folder
 
 
+def headset_output(sd):
+    """Output index of the headset whose microphone is the default input (e.g. AirPods Hands-Free), else None.
+
+    Using a Bluetooth headset's microphone switches it to its Hands-Free profile, and its stereo "Headphones"
+    output then goes silent; Reflex's voice must play on the same headset's Hands-Free output instead.
+    """
+    try:
+        devices = sd.query_devices()
+        in_index, default_out = sd.default.device
+        if in_index is None or in_index < 0:
+            return None
+        default_in = devices[in_index]
+    except Exception:
+        return None
+    name = default_in['name']
+    if not re.search(r'hands-free|headset', name, re.I):
+        return None
+    host = devices[default_out]['hostapi'] if default_out is not None and default_out >= 0 else default_in['hostapi']
+    # Match on the device's own name inside the brackets, e.g. "Headset (AirPods Pro Hands-Free)" -> "AirPods Pro".
+    inner = re.search(r'\(([^)]*)\)', name)
+    key = re.sub(r'\s*hands-free.*$', '', (inner.group(1) if inner else name), flags=re.I).strip().lower()
+    for index, info in enumerate(devices):
+        if (info['max_output_channels'] > 0 and info['hostapi'] == host and key and key in info['name'].lower()
+                and re.search(r'hands-free|headset', info['name'], re.I)):
+            return index
+    return None
+
+
 class ClipPlayer:
     """Plays the clips on its own thread so the camera loop never waits on audio.
 
@@ -317,7 +367,7 @@ class ClipPlayer:
             try:
                 import sounddevice as sd
                 self.sd = sd
-                which = self.device if self.device is not None else sd.default.device[1]
+                which = self.device if self.device is not None else (headset_output(sd) or sd.default.device[1])
                 info = sd.query_devices(which, 'output')
                 rate = int(info['default_samplerate'])
                 for name, (samples, clip_rate) in list(self.clips.items()):
@@ -529,7 +579,7 @@ def audio_test(device=None, backend='auto'):
     player = ClipPlayer(device=device, backend=backend, log=log, numeric=True)
     player.ready.wait(300)  # the first run generates the centimetre clips once (about a minute)
     for cue, pause in (('LEFT', 1.), ('RIGHT', 1.), ('UP', 1.), ('DOWN', 1.), ('LEFT_8', 2.), ('UP_3', 2.),
-                       ('FORWARD_12', 2.2), ('NEAR_OBJECT', 2.6), ('TRACKING_LOST', 1.2)):
+                       ('FORWARD_12', 2.2), ('GRAB', 1.2), ('TRACKING_LOST', 1.2)):
         player.play(cue)
         time.sleep(pause)
     player.close()

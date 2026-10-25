@@ -41,6 +41,10 @@ class DeciderTests(unittest.TestCase):
     def test_estimated_depth_never_gives_3d_cues(self):
         estimate = Offset('ESTIMATED', delta_m=(0., 0., .02), distance_m=.02)
         cue, mode, _ = GuidanceDecider().decide(ev(tip=(330, 240), offset=estimate))
+        # Estimated depth may only say Grab (all axes within 3 cm), labelled as an estimate, never as measured 3D.
+        self.assertEqual((cue, mode), ('GRAB', '2D+EST'))
+        cue, mode, _ = GuidanceDecider().decide(ev(tip=(330, 240), offset=Offset('ESTIMATED', delta_m=(0., 0., .045),
+                                                                                    distance_m=.045)))
         self.assertIsNone(cue)
         self.assertEqual(mode, '2D')
 
@@ -49,7 +53,8 @@ class DeciderTests(unittest.TestCase):
         self.assertEqual(d.decide(ev(offset=lidar(-.12, 0, .30)))[:2], ('LEFT', '3D'))
         self.assertEqual(d.decide(ev(offset=lidar(-.01, 0, .30)))[0], 'FORWARD')
         self.assertEqual(d.decide(ev(offset=lidar(-.01, 0, .12)))[0], 'CLOSER')
-        self.assertEqual(d.decide(ev(offset=lidar(.01, .01, .04)))[0], 'NEAR_OBJECT')
+        self.assertEqual(d.decide(ev(offset=lidar(.01, .01, .04)))[0], 'CLOSER')  # forward still 4 cm
+        self.assertEqual(d.decide(ev(offset=lidar(.01, .02, .025)))[0], 'GRAB')  # every axis within 3 cm
         self.assertEqual(GuidanceDecider().decide(ev(offset=lidar(0, 0, -.2)))[0], 'BACKWARD')
 
     def test_hysteresis_keeps_axis_until_well_inside_tolerance(self):
@@ -95,6 +100,8 @@ class SchedulerTests(unittest.TestCase):
         self.assertNotIn('TRACKING_LOST', r.played)
         g.update(ev(tip=None), 1.7)
         g.update(ev(tip=None), 2.5)
+        self.assertNotIn('TRACKING_LOST', r.played)  # 1.45 s: the 1.5 s wait has not passed
+        g.update(ev(tip=None), 2.6)
         self.assertEqual(r.played.count('TRACKING_LOST'), 1)
 
     def test_brief_dropout_neither_cuts_nor_repeats_the_cue(self):
@@ -130,6 +137,8 @@ class SchedulerTests(unittest.TestCase):
         self.assertEqual(r.stops, 1)
         g.tick(2.)
         g.tick(2.4)
+        self.assertEqual(r.played, ['RIGHT'])  # still within the 1.5 s wait
+        g.tick(2.9)
         self.assertEqual(r.played, ['RIGHT', 'TRACKING_LOST'])
 
 

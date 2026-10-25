@@ -31,7 +31,19 @@ class EchoGuardTests(unittest.TestCase):
         import queue
         v.commands, v.speaking, v.min_confidence, v.echo_gap_s = queue.Queue(), lambda: speaking, .6, .5
         v.quiet_until, v.last_heard, v.log = 0., '', lambda *a, **k: None
+        import collections
+        v.transcript, v.transcript_confidence = collections.deque(maxlen=6), .35
         return v
+
+    def test_everything_said_is_written_down_but_only_commands_act(self):
+        v = self.voice(False)
+        self.assertIsNone(v.handle('I had a sandwich for lunch', .7, 10., 'dictation'))
+        self.assertEqual(v.handle('Find the Pepsi can.', .8, 11., 'dictation'), 'find')
+        self.assertEqual([(t['text'], t['command']) for t in v.transcript],
+                         [('I had a sandwich for lunch', None), ('Find the Pepsi can.', 'find')])
+        speaking = self.voice(True)
+        speaking.handle('left', .9, 12., 'dictation')  # Reflex's own voice is not written down
+        self.assertEqual(len(speaking.transcript), 0)
 
     def test_while_speaking_only_stop_is_accepted(self):
         v = self.voice(True)
