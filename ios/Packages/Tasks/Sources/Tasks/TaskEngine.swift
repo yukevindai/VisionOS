@@ -240,6 +240,19 @@ public struct TaskEngine: Sendable {
 
     private mutating func receive(_ response: TaskResponse, source: EventSource, now: Int64) -> [TaskEffect] {
         switch response {
+        case .answer(let answer):
+            guard source == .r3 else { return [.rejected(.wrongSource)] }
+            guard state.phase == .resolving, state.request?.kind == .object else {
+                return [.rejected(.unsupportedState)]
+            }
+            let text = answer.trimmingCharacters(in: .whitespacesAndNewlines)
+            let disallowedControls = CharacterSet.controlCharacters.subtracting(.whitespacesAndNewlines)
+            guard !text.isEmpty, answer.utf16.count <= 2_000,
+                  answer.rangeOfCharacter(from: disallowedControls) == nil else { return [.rejected(.malformed)] }
+            let result = TaskResult(context: state.context, status: .answered, verification: .unverified, error: nil)
+            state.phase = .completed; state.result = result
+            state.pendingRequest = nil; state.confirmation = nil; state.target = nil
+            return [.speak(text: text, priority: 4), .finished(result)]
         case .target(let target):
             guard [.r3, .model, .r1].contains(source) else { return [.rejected(.wrongSource)] }
             guard state.phase == .resolving else { return [.rejected(.unsupportedState)] }
