@@ -71,6 +71,19 @@ class CoordinatorTests(unittest.TestCase):
         self.assertEqual(self.c.snapshot()['status'], 'stopped')
         self.assertEqual([c[0] for c in self.calls], ['describe', 'recall'])
 
+    def test_late_pending_cannot_overwrite_handoff_and_acquisition_has_deadline(self):
+        now = [10.]
+        self.c.clock = lambda: now[0]
+        ctx = self.c.submit('Find cup')
+        until(lambda: self.c.snapshot()['status'] == 'pending')
+        self.c.report(ctx, AgentResult('object-finding', 'handoff', target={'label': 'cup'}))
+        self.c.report(ctx, AgentResult('object-finding', 'pending'))
+        self.assertEqual(self.c.snapshot()['status'], 'handoff')
+        now[0] = 16.
+        self.assertFalse(self.c.report_tracking(ctx, 'tracking', observed_at=16.))
+        self.assertFalse(ctx.is_current())
+        self.assertEqual(self.c.snapshot()['error'], 'PROVIDER_TIMEOUT')
+
     def test_stop_while_provider_blocked_rejects_late_result(self):
         entered, release = threading.Event(), threading.Event()
         def route(*args):

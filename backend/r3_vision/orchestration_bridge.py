@@ -139,6 +139,9 @@ class OrchestrationBridge:
                 target={'label': self.worker.session.label}, observed_at=received)
         elif self.had_lock and state in ('TARGET LOST', 'HIDDEN', 'UNCERTAIN', 'ERROR'):
             self.coordinator.report_tracking(context, 'lost', observed_at=received)
+        elif state == 'ERROR':
+            self.coordinator.report(context, AgentResult('local-tracker', 'error',
+                'The local tracker could not acquire that target. Please try again.', observed_at=received))
 
     def close(self):
         self.coordinator.close()

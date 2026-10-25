@@ -72,7 +72,7 @@ frame IDs; missing/insufficient evidence is explicit. The buffer has no recorded
 audio, and cannot establish unseen causes, speech, emotions or intent.
 
 One coordinator worker and one replaceable pending request bound semantic work.
-Each routing/specialist phase has a five-second maximum deadline; provider sockets
+Each routing/specialist/local-acquisition phase has a five-second maximum deadline; provider sockets
 also time out. Stop invalidates contexts and immediately gates the sole audio
 player, even while provider or camera work is pending. An in-flight HTTP request
 may finish at the transport timeout, but its response cannot apply or speak.
@@ -114,7 +114,7 @@ The current implementation session has no provider credentials or attached devic
 ### Implementation validation — October 25, 2026
 
 - Windows, Python 3.12 x64, Pillow 11.1.0, NumPy 2.5.4, OpenCV 4.14.0.94:
-  48 new agent/provider/voice/audio/bridge tests passed; 7 dashboard JavaScript
+  49 new agent/provider/voice/audio/bridge tests passed; 7 dashboard JavaScript
   tests passed. All providers, transcripts, playback and frames are simulated.
 - Before integrating the concurrent demo update, a full Python run had 354 tests,
   26 skipped, and one error in the existing
@@ -132,5 +132,5 @@ The current implementation session has no provider credentials or attached devic
   was unavailable because no connected browser was present.
 - GitHub required checks and full iOS workflow results are recorded in the PR;
   required-check success alone is not full iOS or live-device validation.
-- The first Linux agent CI run lacked Tkinter. The workflow now installs the
-  existing desktop modules' Tkinter dependency before running the full suite.
+- Initial Linux agent CI runs lacked Tkinter and a display. The workflow now
+  installs Tkinter and runs the desktop tests under Xvfb before running JS tests.
