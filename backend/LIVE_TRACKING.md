@@ -264,3 +264,23 @@ A hidden-window Windows UI test passed using the actual ViTTrack model, a delaye
 Gemini reply, and Claude's HandTracker with SIMULATED landmark detections. Both overlays were
 present in one preview and the buffered reference caught up successfully. This is not an actual
 phone/hand acceptance pass.
+
+
+## Local browser dashboard
+
+Add `-WebDashboard` to your **existing working launch command** to show the R3 camera
+and analysis in the rose/ink browser UI. Keep your current phone host, model,
+calibration, microphone and audio device settings. Example from the repository root:
+
+```powershell
+.\backend\start-live-tracking.ps1 -PhoneHost <CURRENT_PATHON_IP> -Demo -Audio -Voice -WebDashboard
+```
+
+Open `http://127.0.0.1:8765` on the same laptop. `-WebPort` changes the port.
+For direct Python launches, append `--web-dashboard --web-port 8765`.
+The original Tk window stays open and owns the camera/voice/audio processing.
+Find, Stop, Describe and Quick controls enter that existing command path; the
+browser does not capture microphone input or independently generate guidance.
+
+See [dashboard setup and validation](../apps/demo-dashboard/README.md).
+No wearable telemetry transport is present in this bridge; it reports unavailable.
