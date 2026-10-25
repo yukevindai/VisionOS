@@ -38,6 +38,8 @@ final class SessionCoordinator: ObservableObject {
     private var requestWork: [RequestContext: Task<Void, Never>] = [:]
     private var deadline: ScheduledWork?
     private var frameWatchdog: ScheduledWork?
+    private var latestTrackingState: CameraTrackingState?
+    private var trackingContextBeganAtMs: Int64 = 0
     private var previewExpiry: ScheduledWork?
     private var frameWork: Task<Void, Never>?
     private var pendingFrame: FrameSnapshot?
@@ -87,6 +89,13 @@ final class SessionCoordinator: ObservableObject {
 
     private func bindAdapters() {
         perception.onFrame = { [weak self] in self?.receiveFrame($0) }
+        if let source = perception as? any CameraTrackingSource {
+            source.onTrackingState = { [weak self] in self?.receiveTrackingState($0) }
+            source.onTrackingIssue = { [weak self] context, reason in
+                guard let self, context == self.context else { return }
+                self.log("tracking_loss", code: reason)
+            }
+        }
         perception.onEvent = { [weak self] in self?.receivePerception($0) }
         perception.onLocalCommand = { [weak self] context, command in
             guard let self, self.context == context else { return }; self.command(command)
@@ -155,6 +164,7 @@ final class SessionCoordinator: ObservableObject {
         guard let context else { return }
         phase = .preparing; activity = .preparing; message = "Preparing assistance."
         hazardActive = false; microphoneMuted = false; seenConversationEvents.removeAll(); caption = ""
+        latestTrackingState = nil; trackingContextBeganAtMs = clock.nowMs
         lastFrame = nil; pendingFrame = nil; preview = nil; lastFrameDispatchMs = nil
         previewExpiry?.cancel(); previewExpiry = nil
         capabilities = SessionCapabilities(); capabilities.leftBand = bands.leftStatus; capabilities.rightBand = bands.rightStatus
@@ -433,6 +443,7 @@ final class SessionCoordinator: ObservableObject {
             frameWork?.cancel(); pendingFrame = nil
             frameThrottle?.cancel(); frameThrottle = nil
             context = new
+            latestTrackingState = nil; trackingContextBeganAtMs = clock.nowMs
             (evidence as? any FrameTargetEvidenceClient)?.updateContext(new)
             perception.updateContext(new)
             guard engine?.state.context == task, context == new else { return }
@@ -453,6 +464,11 @@ final class SessionCoordinator: ObservableObject {
     }
     private func log(_ name: String, code: String? = nil) {
         diagnostics.record(name, context: context, now: clock.nowMs, taskID: engine?.state.context.taskID, code: code)
+        #if DEBUG
+        if name == "tracking_loss" || name == "session_stop" {
+            print("Reflex diagnostic: \(name) code=\(code ?? "none")")
+        }
+        #endif
     }
 
     private func sessionStopCause(_ reason: StopReason) -> SessionStopCause {
@@ -869,12 +885,37 @@ private extension SessionCoordinator {
             frame.capturedAtMs >= 0 && frame.capturedAtMs <= now &&
             frame.expiresAtMs > now && now - frame.capturedAtMs <= 300
     }
+    func receiveTrackingState(_ state: CameraTrackingState) {
+        guard [.preparing, .active, .paused, .recovering].contains(phase),
+              state.context == context, state.geometryID == camera?.geometryID,
+              state.isFresh(at: clock.nowMs),
+              latestTrackingState.map({ state.capturedAtMs >= $0.capturedAtMs }) ?? true else { return }
+        latestTrackingState = state
+    }
+
     func armFrameWatchdog() {
         frameWatchdog?.cancel()
         frameWatchdog = clock.schedule(afterMs: 100) { [weak self] in
             guard let self, self.phase == .active else { return }
-            if self.hasActiveTask && (self.lastFrame == nil || self.clock.nowMs >= (self.lastFrame?.expiresAtMs ?? 0) || self.clock.nowMs - (self.lastFrame?.capturedAtMs ?? 0) > 300) {
-                self.stop(.trackingLost)
+            if self.hasActiveTask {
+                let issue: String?
+                if self.perception is any CameraTrackingSource {
+                    if let state = self.latestTrackingState, state.context == self.context,
+                       state.geometryID == self.camera?.geometryID, state.isFresh(at: self.clock.nowMs) {
+                        issue = state.status == .normal ? nil : "AR_STATE_" + state.status.rawValue
+                    } else if self.latestTrackingState == nil,
+                              self.clock.nowMs - self.trackingContextBeganAtMs < 300 {
+                        // Wait for the first capture in this generation. This grants no physical evidence.
+                        issue = nil
+                    } else { issue = "CAPTURE_TRACKING_EXPIRED" }
+                } else {
+                    issue = self.lastFrame == nil || self.clock.nowMs >= (self.lastFrame?.expiresAtMs ?? 0) ||
+                        self.clock.nowMs - (self.lastFrame?.capturedAtMs ?? 0) > 300 ? "ENCODED_FRAME_EXPIRED" : nil
+                }
+                if let issue {
+                    self.log("tracking_loss", code: issue)
+                    self.stop(.trackingLost)
+                }
             }
             if self.phase == .active { self.armFrameWatchdog() }
         }
