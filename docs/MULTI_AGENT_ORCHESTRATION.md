@@ -1,12 +1,28 @@
 # VisionOS multi-agent laptop demo
 
-This opt-in runtime integrates the existing iPhone PathOn video/depth receiver,
+This runtime integrates the existing iPhone PathOn video/depth receiver,
 local detection, reference-to-current tracker, calibrated geometry guidance,
 Windows microphone recognition and laptop audio player. The native iPhone app
 remains native iOS. This change does not add a second camera, wearable driver,
 cloud deployment or friend-web workflow.
 
 ## Run
+
+The PowerShell launcher now enables agent routing when `-Voice` is supplied.
+The laptop microphone feeds Windows speech-to-text; accepted utterances become
+full prompts for the coordinator, with the wake prefix removed. Local Stop,
+quiet, and sleep controls remain local and never wait for a provider. Use
+`-Voice -Agents:$false` to explicitly select the older command-only mode.
+Direct Python invocation still needs both `--voice --agents`. The launcher prints
+its routing mode so a command-only session cannot silently look conversational.
+Voice agent mode requires configured Anthropic and Gemini credentials/models;
+it fails clearly if they are unavailable rather than dropping back to basic mode.
+The desktop microphone line updates even before camera frames or a transcript
+arrive. It shows input level, silence, and rejected speech. Terminal diagnostics
+include `VOICE_INPUT`, `VOICE_REJECTED`, `VOICE_HEARD`, `VOICE_COMMAND`, and
+`VOICE_AGENT_SUBMIT`. Rejected speech diagnostics contain no rejected transcript.
+Windows recognition runs continuously in its own process; closing the app stops
+that process, including if close happens during recognizer startup.
 
 Use the existing [live tracking prerequisites](../backend/LIVE_TRACKING.md),
 including the compatible Windows Python environment, local detection/tracker

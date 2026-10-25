@@ -85,27 +85,73 @@ def interpret(text):
 SCRIPT = r"""
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Speech
-$culture = [System.Globalization.CultureInfo]::GetCultureInfo('en-US')
-$engine = New-Object System.Speech.Recognition.SpeechRecognitionEngine($culture)
-$choices = New-Object System.Speech.Recognition.Choices
-foreach ($p in [System.IO.File]::ReadAllLines('{phrases}')) { if ($p) { [void]$choices.Add($p) } }
-$builder = New-Object System.Speech.Recognition.GrammarBuilder($choices)
-$builder.Culture = $culture
-$commands = New-Object System.Speech.Recognition.Grammar($builder)
-$commands.Name = 'commands'
-$commands.Priority = 10
-$engine.LoadGrammar($commands)
-# Dictation is always transcribed; only orchestration mode routes free requests.
-$dictation = New-Object System.Speech.Recognition.DictationGrammar
-$dictation.Name = 'dictation'
-$engine.LoadGrammar($dictation)
-{input}
-[Console]::Out.WriteLine('READY'); [Console]::Out.Flush()
-while ($true) {
-  $r = $engine.Recognize([TimeSpan]::FromSeconds(30))
-  if ($r -ne $null) { [Console]::Out.WriteLine(('HEARD|{0:0.000}|{1}|{2}' -f $r.Confidence, $r.Grammar.Name, $r.Text)); [Console]::Out.Flush() }
-  elseif ({once}) { $tries = 1 + $tries; if ($tries -ge 4) { break } }
+[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
+# CLR callbacks must not invoke PowerShell scriptblocks on threads without a runspace.
+Add-Type -ReferencedAssemblies @([System.Speech.Recognition.SpeechRecognitionEngine].Assembly.Location, 'System.dll') -TypeDefinition @'
+using System;
+using System.Diagnostics;
+using System.Globalization;
+using System.IO;
+using System.Speech.Recognition;
+using System.Threading;
+public static class VisionVoiceHost {
+    static readonly object Gate = new object();
+    static readonly Stopwatch Clock = Stopwatch.StartNew();
+    static long lastLevel = -1000, lastReject = -2000, lastSignal = -2000;
+    static void Emit(string line) {
+        lock (Gate) { Console.Out.WriteLine(line); Console.Out.Flush(); }
+    }
+    public static void Run(string phrases, string wave) {
+        using (var engine = new SpeechRecognitionEngine(CultureInfo.GetCultureInfo("en-US")))
+        using (var done = new ManualResetEvent(false)) {
+            var choices = new Choices();
+            foreach (string p in File.ReadAllLines(phrases)) if (p.Length > 0) choices.Add(p);
+            var builder = new GrammarBuilder(choices);
+            builder.Culture = CultureInfo.GetCultureInfo("en-US");
+            var commands = new Grammar(builder); commands.Name = "commands"; commands.Priority = 10;
+            engine.LoadGrammar(commands);
+            var dictation = new DictationGrammar(); dictation.Name = "dictation";
+            engine.LoadGrammar(dictation);
+            engine.SpeechRecognized += (s, e) => {
+                Emit("HEARD|" + e.Result.Confidence.ToString("0.000", CultureInfo.InvariantCulture)
+                     + "|" + e.Result.Grammar.Name + "|" + e.Result.Text.Replace('\r', ' ').Replace('\n', ' '));
+            };
+            engine.AudioLevelUpdated += (s, e) => {
+                lock (Gate) {
+                    if (Clock.ElapsedMilliseconds - lastLevel >= 1000) {
+                        lastLevel = Clock.ElapsedMilliseconds; Emit("LEVEL|" + e.AudioLevel);
+                    }
+                }
+            };
+            engine.SpeechRecognitionRejected += (s, e) => {
+                lock (Gate) {
+                    if (Clock.ElapsedMilliseconds - lastReject >= 2000) {
+                        lastReject = Clock.ElapsedMilliseconds; Emit("REJECTED");
+                    }
+                }
+            };
+            engine.AudioSignalProblemOccurred += (s, e) => {
+                lock (Gate) {
+                    if (Clock.ElapsedMilliseconds - lastSignal >= 2000) {
+                        lastSignal = Clock.ElapsedMilliseconds; Emit("SIGNAL|" + e.AudioSignalProblem);
+                    }
+                }
+            };
+            engine.RecognizeCompleted += (s, e) => {
+                if (e.Error != null) Emit("ERROR|" + e.Error.GetType().Name);
+                Emit("COMPLETED"); done.Set();
+            };
+            if (String.IsNullOrEmpty(wave)) engine.SetInputToDefaultAudioDevice();
+            else engine.SetInputToWaveFile(wave);
+            engine.RecognizeAsync(RecognizeMode.Multiple);
+            Emit("READY");
+            done.WaitOne();
+        }
+    }
 }
+'@
+try { [VisionVoiceHost]::Run('{phrases}', '{wave}') }
+catch { [Console]::Out.WriteLine('ERROR|' + $_.Exception.GetType().Name); [Console]::Out.Flush(); exit 1 }
 """
 
 
@@ -129,36 +175,94 @@ class VoiceCommands:
         self.quiet_until = 0.
         self.wake_until = 0.
         self.process = None
+        self.closed = threading.Event()
+        self.process_lock = threading.Lock()
+        self.input_level = None
+        self.input_status = 'waiting for microphone input'
+        self._last_input_log = -float('inf')
         folder.mkdir(parents=True, exist_ok=True)
         (folder / 'voice-phrases.txt').write_text('\n'.join(phrases()), encoding='utf-8')
-        source = (f"$engine.SetInputToWaveFile('{str(wave).replace(chr(39), chr(39) * 2)}')" if wave
-                  else '$engine.SetInputToDefaultAudioDevice()')
         script = (SCRIPT.replace('{phrases}', str(folder / 'voice-phrases.txt').replace("'", "''"))
-                  .replace('{input}', source).replace('({once})', '($true)' if wave else '($false)'))
+                  .replace('{wave}', str(wave).replace("'", "''") if wave else ''))
         (folder / 'voice-recognizer.ps1').write_text(script, encoding='utf-8')
         self.thread = threading.Thread(target=self._run, daemon=True, name='r3-voice')
         self.thread.start()
 
     def _run(self):
         try:
-            self.process = subprocess.Popen(
-                ['powershell', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File',
-                 str(self.folder / 'voice-recognizer.ps1')],
-                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8', errors='replace',
-                creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+            with self.process_lock:
+                if self.closed.is_set():
+                    return
+                self.process = subprocess.Popen(
+                    ['powershell', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File',
+                     str(self.folder / 'voice-recognizer.ps1')],
+                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8', errors='replace',
+                    creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
             for line in self.process.stdout:
+                if self.closed.is_set():
+                    break
                 line = line.strip()
-                if line == 'READY':
-                    self.status = READY_STATUS if self.listening else PAUSED_STATUS
-                    self.log('VOICE_READY')
-                elif line.startswith('HEARD|'):
-                    _, confidence, grammar, text = line.split('|', 3)
-                    self.handle(text, float(confidence), time.monotonic(), grammar)
-                elif line:
-                    self.status = f'voice error: {line[:120]}'
-            self.status = f'voice recognition stopped (exit {self.process.wait()})'
+                self._recognizer_line(line, time.monotonic())
+            code = self.process.wait()
+            if not self.closed.is_set() and not self.status.startswith('voice error'):
+                self.status = f'voice recognition stopped (exit {code})'
         except Exception as exc:
-            self.status = f'voice unavailable ({type(exc).__name__})'
+            if not self.closed.is_set():
+                self.status = f'voice unavailable ({type(exc).__name__})'
+        finally:
+            # Parsing/pipe failures must not leave an unseen microphone process running.
+            with self.process_lock:
+                process = self.process
+                if process is not None and process.poll() is None:
+                    process.kill()
+            if process is not None:
+                process.wait(timeout=3)
+                if process.stdout is not None:
+                    process.stdout.close()
+
+    def _recognizer_line(self, line, now):
+        """Bounded input diagnostics contain levels/categories, never rejected speech."""
+        if line == 'READY':
+            self.status = READY_STATUS if self.listening else PAUSED_STATUS
+            self.log('VOICE_READY')
+        elif line.startswith('HEARD|'):
+            _, confidence, grammar, text = line.split('|', 3)
+            self.handle(text, float(confidence), now, grammar)
+        elif line.startswith('LEVEL|'):
+            try:
+                level = int(line.split('|', 1)[1])
+            except ValueError:
+                return
+            if not 0 <= level <= 100:
+                return
+            self.input_level = level
+            self.input_status = f'microphone level {level}/100' if level else 'microphone input is silent'
+            if self.listening and not self.status.startswith(('voice error', 'voice unavailable')):
+                self.status = READY_STATUS + ' | ' + self.input_status
+            if now - self._last_input_log >= 5:
+                self._last_input_log = now
+                self.log('VOICE_INPUT', level=level)
+        elif line == 'REJECTED':
+            self.input_status = 'speech detected but not understood; try again clearly'
+            if self.listening:
+                self.status = self.input_status
+            self.log('VOICE_REJECTED')
+        elif line.startswith('SIGNAL|'):
+            problem = line.split('|', 1)[1]
+            if not re.fullmatch(r'[A-Za-z]+', problem):
+                return
+            self.input_status = f'microphone signal: {problem}'
+            if self.listening:
+                self.status = self.input_status
+            self.log('VOICE_SIGNAL', problem=problem)
+        elif line.startswith('ERROR|'):
+            kind = line.split('|', 1)[1]
+            self.status = f'voice error: {kind[:80]}'
+            self.log('VOICE_ERROR', error=kind[:80])
+        elif line == 'COMPLETED':
+            self.log('VOICE_COMPLETED')
+        elif line:
+            self.status = f'voice error: {line[:120]}'
 
     def handle(self, text, confidence, now, grammar='commands'):
         from contextlib import nullcontext
@@ -175,7 +279,9 @@ class VoiceCommands:
         if paused and (confidence < self.min_confidence or not (wakes or command in INTERRUPTS)):
             # Local recognizer remains awake; background speech is neither retained nor routed.
             return None
-        if command is None and text and getattr(self, 'open_ended', False):
+        if text and getattr(self, 'open_ended', False) and command not in (*INTERRUPTS, 'wake'):
+            # Preserve the whole utterance for intent routing, including named-object
+            # requests and follow-ups; only local wake/stop/sleep bypass the agent.
             command, argument = 'request', re.sub(r'^hey\s+vision\b[\s,!.:;-]*', '', text, flags=re.I) or text
         if not self.speaking() and now >= self.quiet_until and confidence >= self.transcript_confidence and text:
             # Skip VisionOS playback echoes; retain the bounded laptop transcript.
@@ -245,5 +351,12 @@ class VoiceCommands:
                 self.status = READY_STATUS
 
     def close(self):
-        if self.process is not None and self.process.poll() is None:
-            self.process.kill()
+        self.closed.set()
+        with self.process_lock:
+            process = self.process
+            if process is not None and process.poll() is None:
+                process.kill()
+        if process is not None:
+            process.wait(timeout=3)
+        if self.thread is not threading.current_thread():
+            self.thread.join(timeout=3)

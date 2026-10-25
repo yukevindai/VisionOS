@@ -35,6 +35,12 @@ param(
     [ValidateSet('default','low','medium','high')][string]$MediaResolution = 'medium'
 )
 $ErrorActionPreference = 'Stop'
+# Voice is the conversational product path. Keep basic command-only mode explicit.
+if ($Voice -and -not $PSBoundParameters.ContainsKey('Agents')) { $Agents = $true }
+if ($Voice) {
+    Write-Host $(if ($Agents) { 'VOICE ROUTING: laptop speech-to-text -> agent coordinator' }
+                 else { 'VOICE ROUTING: basic local commands only (-Agents:$false)' })
+}
 if ($AllObjects) { $Detection = 'allobjects' }
 if ($Demo) { $Detection = 'demo' }
 if (-not $Python) {

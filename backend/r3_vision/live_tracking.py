@@ -1173,6 +1173,8 @@ def main(argv=None):
     voice = None
     if getattr(args, 'voice', False):
         from .voice_commands import VoiceCommands
+        print('VOICE ROUTING: ' + ('speech-to-text -> agent coordinator' if args.agents
+                                  else 'basic commands only; use --agents for conversational requests'), flush=True)
         player = worker.audio.player if worker.audio is not None else None
         voice = VoiceCommands(Path(__file__).resolve().parents[1] / '.runtime/voice',
                               open_ended=args.agents,
@@ -1192,6 +1194,7 @@ def main(argv=None):
             if command in ('quiet', 'stop_tracking'):
                 stop()
             elif command == 'request':
+                print('VOICE_AGENT_SUBMIT', flush=True)
                 query.set(argument)
                 find()
             elif command == 'find':
@@ -1263,6 +1266,9 @@ def main(argv=None):
             lines = [f'"{item["text"]}"' + (f'  →  {names[item["command"]]}' if item['command'] else '')
                      for item in list(voice.transcript)[::-1][:3]]
             heard.set('YOU SAID: ' + lines[0] + ('\nearlier: ' + '   |   '.join(lines[1:]) if lines[1:] else ''))
+        if voice is not None:
+            microphone = f'LAPTOP MIC: {voice.status} | {voice.input_status}'
+            heard.set((heard.get() + '\n' if voice.transcript else '') + microphone)
         item = worker.output
         if item and item[0] == ticket:
             _, image, received, state, detail, source_mode, requests = item[:7]
