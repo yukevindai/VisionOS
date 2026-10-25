@@ -134,6 +134,20 @@ class TrackingWorker:
             from .agent_providers import AnthropicRouter, GeminiProvider
             from .orchestration_bridge import OrchestrationBridge
             self.agents = OrchestrationBridge(self, args.agent_router, args.agent_provider)
+        self.family_notes = self.family_say_now = self.family_locked = None
+        from .family_notes import FamilyNotesListener, speech_adapters
+        if self.audio is not None and FamilyNotesListener.configured():
+            # Family Notes (docs/FAMILY_NOTES.md): off unless CONVEX_URL and FAMILY_NOTES_DEVICE_KEY are set.
+            # Any problem here turns the feature off; it never stops the pipeline from starting.
+            try:
+                say, self.family_say_now, prepare = speech_adapters(self.audio.player)
+                self.family_notes = FamilyNotesListener.from_env(say=say, speaking=self.audio.player.speaking,
+                                                                 is_idle=self._family_idle, log=self._audio_log,
+                                                                 prepare_audio=prepare)
+                self.family_notes.start()
+            except Exception as exc:  # missing `convex` package, bad key, ...
+                self.family_notes = None
+                self._audio_log('FAMILY_NOTES_OFF', error=f'{type(exc).__name__}: {exc}'[:120])
         self.thread = threading.Thread(target=self.run, daemon=True, name='r3-local-tracker')
         self.thread.start()
 
@@ -601,6 +615,7 @@ class TrackingWorker:
                         match = self.session.update(packet.image, received, now)
                         self.latency.update(self.session)
                         self._watch_target_exit(match, packet.image.size)
+                        self._family_on_lock()
                         polygon = tuple((float(p[0])/display.width, float(p[1])/display.height)
                                         for p in match.polygon) if match.polygon is not None and time.monotonic()-received <= .3 else None
                         self.latest_target = TargetOverlay(packet.stamp, self.session.generation, self.session.state, self.session.label,
@@ -672,7 +687,10 @@ class TrackingWorker:
                                             display.size, measured)
                         hand_here = (self.latest_hand is not None and self.latest_hand.stamp == packet.stamp
                                      and guide_tip is not None)
-                        if self.audio is not None:
+                        if self.audio is not None and self.family_notes is not None and self.family_notes.holding():
+                            # Object notes from family play first; guidance cues resume when they end.
+                            direction = (None, 'FAMILY NOTE')
+                        elif self.audio is not None:
                             self.audio_2d_until = None
                             if physical_valid:
                                 self.audio.update(evidence, time.monotonic())
@@ -765,7 +783,7 @@ class TrackingWorker:
             if self.hand_setup is not None:
                 if self.hand_setup.expire(time.monotonic()):
                     self.hand_status = self.hand_setup.status + ' | camera frame stale'
-            if self.audio is not None:
+            if self.audio is not None and not (self.family_notes is not None and self.family_notes.holding()):
                 audio_now = time.monotonic()
                 stamp = self.latest_frame.stamp if self.latest_frame is not None else None
                 deadline = (getattr(self.distance_readout, 'valid_until_monotonic', None)
@@ -888,6 +906,33 @@ class TrackingWorker:
         if self.logged % 15 == 0:
             self.log.flush()
 
+    def _family_idle(self):
+        """Idle = no find task, no pending request, no agent task. Family notes speak only then."""
+        if self.session.active or self.session.inflight is not None:
+            return False
+        if self.agents is not None:
+            return self.agents.coordinator.snapshot().get('status') not in ('routing', 'running', 'pending')
+        return True
+
+    def _family_on_lock(self):
+        """Once per find task, when it first locks onto a labelled object: speak family notes about it."""
+        if self.family_notes is None:
+            return
+        if not self.session.active:
+            self.family_locked = None
+            return
+        if self.session.state != 'LOCKED' or not self.session.label:
+            return
+        # Keyed by the request, not the generation: re-finding after a loss or a camera reconnect is the same task.
+        query = self.session.query
+        key = (query, self.session.label)
+        if self.family_locked == key:
+            return
+        self.family_locked = key
+        self.family_notes.on_target_locked(
+            self.session.label, say=self.family_say_now,
+            is_current=lambda: self.session.active and self.session.query == query)
+
     def close(self):
         if getattr(self, 'hand_setup', None) is not None:
             self.hand_setup.cancel()
@@ -896,6 +941,8 @@ class TrackingWorker:
             self.hardware.close()
         if getattr(self, 'agents', None) is not None:
             self.agents.close()
+        if getattr(self, 'family_notes', None) is not None:
+            self.family_notes.close()
         self.stopped.set()
         self.cancel_scene_speech()
         self.source.close()

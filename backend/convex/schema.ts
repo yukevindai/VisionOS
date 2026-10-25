@@ -5,5 +5,6 @@ import { mediaTables } from "./mediaTables";
 import { inviteLimitTables } from "./inviteLimitTables";
 import { mediaRequestLimitTables } from "./mediaRequestLimitTables";
 import { speechTables } from "./speechTables";
+import { noteTables } from "./noteTables";
 
-export default defineSchema({ ...authTables, ...sessionTables, ...mediaTables, ...inviteLimitTables, ...mediaRequestLimitTables, ...speechTables });
+export default defineSchema({ ...authTables, ...sessionTables, ...mediaTables, ...inviteLimitTables, ...mediaRequestLimitTables, ...speechTables, ...noteTables });

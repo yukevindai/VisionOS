@@ -72,6 +72,13 @@ All visual specialists share one frame service. Task generations, frame identifi
 
 Conversational speech can use **Cartesia**, with Windows speech fallback. Immediate movement and loss cues remain local. See the [orchestration guide](docs/MULTI_AGENT_ORCHESTRATION.md) for model configuration, audio priorities, and recent-frame limits.
 
+## Family Notes and Family Voice
+
+Trusted family members can leave short notes for the VisionOS user to hear between tasks or when a relevant object is found. Family Voice supports a helper's own consented voice through Cartesia. These integrations require separate setup and live validation; notes never authorize movement or confirm an action.
+
+See [Family Notes setup](docs/FAMILY_NOTES.md) and [Family Voice features, consent, and limitations](docs/FAMILY_VOICE.md).
+
+
 ## Get started
 
 Choose the part of VisionOS you want to run:
@@ -138,6 +145,7 @@ The company website is a public product and mission page. It does not operate th
 | [`apps/demo-dashboard/`](apps/demo-dashboard/) | Local audience/operator dashboard for the Python demo |
 | [`apps/website/`](apps/website/) | Public company website and Vercel build configuration |
 | [`apps/friend-web/`](apps/friend-web/) | Authenticated watch-only browser helper |
+| [`apps/family-notes/`](apps/family-notes/) | Trusted-helper notes and consented Family Voice |
 | [`backend/r3_vision/`](backend/r3_vision/) | Camera integration, visual agents, orchestration, tracking, audio, and BLE adapter |
 | [`backend/hand_tracking/`](backend/hand_tracking/) | Hand and fingertip tracking |
 | [`backend/convex/`](backend/convex/) | Authentication, sharing/media state, vision and speech actions |

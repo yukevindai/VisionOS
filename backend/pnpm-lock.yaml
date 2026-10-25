@@ -8,6 +8,12 @@ importers:
 
   .:
     dependencies:
+      '@convex-dev/action-retrier':
+        specifier: 0.3.1
+        version: 0.3.1(convex@1.48.0)
+      '@convex-dev/rate-limiter':
+        specifier: 0.4.2
+        version: 0.4.2(convex@1.48.0)(typescript@7.0.2)
       convex:
         specifier: 1.48.0
         version: 1.48.0
@@ -38,6 +44,25 @@ packages:
 
   '@bufbuild/protobuf@1.10.1':
     resolution: {integrity: sha512-wJ8ReQbHxsAfXhrf9ixl0aYbZorRuOWpBNzm8pL8ftmSxQx/wnJD5Eg861NwJU/czy2VXFIebCeZnZrI9rktIQ==}
+
+  '@convex-dev/action-retrier@0.3.1':
+    resolution: {integrity: sha512-uji7ZV4GYN24fgnV9FrXABbq2mWCpcMohkEa2ie1zmD5S7ioSxNNBE0lNPB1jlMzICqWCTrbSTr68bgJPag6Ww==}
+    peerDependencies:
+      convex: ^1.24.8
+
+  '@convex-dev/batch-worker@0.3.5':
+    resolution: {integrity: sha512-kTxLGy1TXRN6WLcENcoRWWnvPshv1sIZp2EpPqGqCB4FxDI7m8tEHUr+jCLdhGtSZT1UHkWtb1w8YYuEzTxHWQ==}
+    peerDependencies:
+      convex: ^1.43.0
+
+  '@convex-dev/rate-limiter@0.4.2':
+    resolution: {integrity: sha512-njheoDd//MZgxtw+0PP3LL47PVMkvOKZmXDjYglDKSu5IdrfJtGmz/EHd6px9UcALuk/w7LTo83YwQ3bTGsMIg==}
+    peerDependencies:
+      convex: ^1.43.0
+      react: ^18.2.0 || ^19.0.0
+    peerDependenciesMeta:
+      react:
+        optional: true
 
   '@edge-runtime/primitives@6.0.0':
     resolution: {integrity: sha512-FqoxaBT+prPBHBwE1WXS1ocnu/VLTQyZ6NMUBAdbP7N2hsFTTxMC/jMu2D/8GAlMQfxeuppcPuCUk/HO3fpIvA==}
@@ -472,6 +497,28 @@ packages:
     resolution: {integrity: sha512-XWAtwJ6OHO+tj0EKCs0Y2UamnyOxseZWltU4x2U2wh8g4AigdjwvtUjvLP2tqkA/avxHEtzxNaqGq/YGNwckKg==}
     engines: {node: '>=18'}
 
+  convex-helpers@0.1.129:
+    resolution: {integrity: sha512-8QJLbym0fKsf3tYcF2ZTX37NeYt/BkOFBjBwB2LR1fXUAajeYaTLV11gi/0IVOU/jCdH2j/VseHhHid1qQcqFw==}
+    hasBin: true
+    peerDependencies:
+      '@standard-schema/spec': ^1.0.0
+      convex: ^1.46.0
+      hono: ^4.0.5
+      react: ^17.0.2 || ^18.0.0 || ^19.0.0
+      typescript: ^5.5 || ^6.0.0 || ^7.0.0
+      zod: ^3.25.0 || ^4.0.0
+    peerDependenciesMeta:
+      '@standard-schema/spec':
+        optional: true
+      hono:
+        optional: true
+      react:
+        optional: true
+      typescript:
+        optional: true
+      zod:
+        optional: true
+
   convex-test@0.0.65:
     resolution: {integrity: sha512-2FgHlLGraM2O3tEVpOfvoHSleK0x92J8xjQ/qClWzNJX3NcmgvuNeWBrmma7sLJ8lB3ENPxx6ykJTfvZmWg3BQ==}
     peerDependencies:
@@ -775,6 +822,31 @@ snapshots:
 
   '@bufbuild/protobuf@1.10.1': {}
 
+  '@convex-dev/action-retrier@0.3.1(convex@1.48.0)':
+    dependencies:
+      convex: 1.48.0
+
+  '@convex-dev/batch-worker@0.3.5(convex@1.48.0)(typescript@7.0.2)':
+    dependencies:
+      convex: 1.48.0
+      convex-helpers: 0.1.129(convex@1.48.0)(typescript@7.0.2)
+    transitivePeerDependencies:
+      - '@standard-schema/spec'
+      - hono
+      - react
+      - typescript
+      - zod
+
+  '@convex-dev/rate-limiter@0.4.2(convex@1.48.0)(typescript@7.0.2)':
+    dependencies:
+      '@convex-dev/batch-worker': 0.3.5(convex@1.48.0)(typescript@7.0.2)
+      convex: 1.48.0
+    transitivePeerDependencies:
+      - '@standard-schema/spec'
+      - hono
+      - typescript
+      - zod
+
   '@edge-runtime/primitives@6.0.0': {}
 
   '@edge-runtime/vm@5.0.0':
@@ -1008,6 +1080,12 @@ snapshots:
   assertion-error@2.0.1: {}
 
   chai@6.3.0: {}
+
+  convex-helpers@0.1.129(convex@1.48.0)(typescript@7.0.2):
+    dependencies:
+      convex: 1.48.0
+    optionalDependencies:
+      typescript: 7.0.2
 
   convex-test@0.0.65(convex@1.48.0):
     dependencies:
