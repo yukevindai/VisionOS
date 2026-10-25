@@ -10,6 +10,7 @@ ignored silently.
 """
 from __future__ import annotations
 
+import collections
 import queue
 import re
 import subprocess
@@ -19,7 +20,7 @@ import time
 from .demo_objects import OBJECTS
 
 VERBS = ('find', 'find me', 'where is', 'get', 'locate', 'track', 'show me')
-DESCRIBE = ("what's around me", 'what is around me', 'describe the surroundings', 'describe surroundings',
+DESCRIBE = ("what's around me", 'whats around me', 'what is around me', 'describe the surroundings', 'describe surroundings',
             'what do you see', 'describe')
 QUIET = ('stop talking', 'be quiet', 'quiet', 'silence')
 STOP_TRACKING = ('stop', 'stop tracking', 'cancel', 'stop guiding')
@@ -47,7 +48,8 @@ def phrases():
 def interpret(text):
     """(command, argument) for a recognized phrase: ('find', key), ('describe', None), ('quiet', None),
     ('stop_tracking', None), or (None, None)."""
-    text = ' '.join(text.lower().replace('-', ' ').split())
+    # Dictation adds capitals and punctuation ("Find the Pepsi can."); the command list has neither.
+    text = ' '.join(re.sub(r"[^\w\s']", ' ', text.lower().replace('-', ' ')).split())
     if text in STOP_TRACKING:
         return 'stop_tracking', None
     if text in QUIET:
@@ -72,12 +74,19 @@ $choices = New-Object System.Speech.Recognition.Choices
 foreach ($p in [System.IO.File]::ReadAllLines('{phrases}')) { if ($p) { [void]$choices.Add($p) } }
 $builder = New-Object System.Speech.Recognition.GrammarBuilder($choices)
 $builder.Culture = $culture
-$engine.LoadGrammar((New-Object System.Speech.Recognition.Grammar($builder)))
+$commands = New-Object System.Speech.Recognition.Grammar($builder)
+$commands.Name = 'commands'
+$commands.Priority = 10
+$engine.LoadGrammar($commands)
+# Free dictation alongside the commands, so anything the user says can be written down on screen.
+$dictation = New-Object System.Speech.Recognition.DictationGrammar
+$dictation.Name = 'dictation'
+$engine.LoadGrammar($dictation)
 {input}
 [Console]::Out.WriteLine('READY'); [Console]::Out.Flush()
 while ($true) {
   $r = $engine.Recognize([TimeSpan]::FromSeconds(30))
-  if ($r -ne $null) { [Console]::Out.WriteLine(('HEARD|{0:0.000}|{1}' -f $r.Confidence, $r.Text)); [Console]::Out.Flush() }
+  if ($r -ne $null) { [Console]::Out.WriteLine(('HEARD|{0:0.000}|{1}|{2}' -f $r.Confidence, $r.Grammar.Name, $r.Text)); [Console]::Out.Flush() }
   elseif ({once}) { $tries = 1 + $tries; if ($tries -ge 4) { break } }
 }
 """
@@ -89,6 +98,8 @@ class VoiceCommands:
         self.folder, self.speaking, self.min_confidence, self.echo_gap_s = folder, speaking, min_confidence, echo_gap_s
         self.log = log
         self.commands = queue.Queue()
+        self.transcript = collections.deque(maxlen=6)  # recent things the user said, newest last
+        self.transcript_confidence = .35
         self.status = 'starting voice recognition'
         self.last_heard = ''
         self.quiet_until = 0.
@@ -116,16 +127,21 @@ class VoiceCommands:
                     self.status = 'LISTENING (say "find the Pepsi can", "what is around me", "stop")'
                     self.log('VOICE_READY')
                 elif line.startswith('HEARD|'):
-                    _, confidence, text = line.split('|', 2)
-                    self.handle(text, float(confidence), time.monotonic())
+                    _, confidence, grammar, text = line.split('|', 3)
+                    self.handle(text, float(confidence), time.monotonic(), grammar)
                 elif line:
                     self.status = f'voice error: {line[:120]}'
             self.status = f'voice recognition stopped (exit {self.process.wait()})'
         except Exception as exc:
             self.status = f'voice unavailable ({type(exc).__name__})'
 
-    def handle(self, text, confidence, now):
+    def handle(self, text, confidence, now, grammar='commands'):
         command, argument = interpret(text)
+        if not self.speaking() and now >= self.quiet_until and confidence >= self.transcript_confidence and text.strip():
+            # Everything the user says is written down (Reflex's own voice is skipped while it speaks).
+            self.transcript.append(dict(text=text.strip(), command=command if confidence >= self.min_confidence
+                                        else None, at=now))
+            self.log('VOICE_HEARD', text=text, grammar=grammar, confidence=round(confidence, 2))
         if command is None or confidence < self.min_confidence:
             self.log('VOICE_IGNORED', text=text, confidence=round(confidence, 2))
             return None

@@ -15,7 +15,12 @@ def fingertip_alignment(polygon, tip, size):
                 center_distance_norm=math.hypot(cx - tx, cy - ty) / math.hypot(*size))
 
 
+SHOW_TEXT = True  # the live window turns this off unless "Details" is ticked; the text is still returned
+
+
 def draw_line(image, text, row=1, color=(60, 220, 255)):
+    if not SHOW_TEXT:
+        return text
     draw = ImageDraw.Draw(image)
     bottom = image.height - 8 - 26 * (row - 1)
     draw.rectangle([8, bottom - 22, min(image.width - 4, 12 + 6 * len(text)), bottom], fill=(0, 0, 0))
