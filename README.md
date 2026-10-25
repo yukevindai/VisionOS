@@ -1,4 +1,4 @@
-# Reflex — Cal Hacks 13
+# VisionOS — Cal Hacks 13
 
 Native iPhone assistance app targeting iOS 17 and later. The repository name is `VisionOS`; the application runs on iPhone.
 
