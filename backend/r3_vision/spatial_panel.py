@@ -1,16 +1,45 @@
 """Large, high-contrast spatial readout beside the live video (Tk widgets, so the video is never covered).
 
-Shows only values the worker measured for the current frame. Without accepted LiDAR depth it says 3D UNAVAILABLE and
-shows the 2D offset in pixels, never as centimetres. A stale frame clears every value and says guidance stopped.
+Displays signed axis movement only from the calibrated, fresh distance adapter. Proprio-style estimated axis
+differences are visible as amber diagnostic values, never movement commands. Stale data clears every axis field.
 """
 from __future__ import annotations
 
 import time
 import tkinter as tk
+import math
 
 BG, FG, DIM = '#101418', '#f2f5f7', '#9aa6b2'
 GOOD, WARN, BAD, CUE = '#5ee07a', '#ffb347', '#ff6b6b', '#ffe14d'
 STATE_COLORS = {'LOCKED': GOOD, 'UNCERTAIN': WARN, 'HIDDEN': WARN, 'REACQUIRING': WARN}
+
+
+def estimate_preview(offset, readout, fresh, locked):
+    """Old prototype's target-minus-hand numbers, for observation only, never movement commands.
+
+    Keep this display-only branch outside DirectionalDistance.axes and speech authorization.
+    The readout must already have accepted exact-frame pairing before exposing raw deltas.
+    """
+    if (not fresh or not locked or offset is None or readout is None or readout.delta_cm is None
+            or offset.status not in ('ESTIMATED', 'LIDAR') or offset.fingertip_m is None or offset.target_m is None):
+        return None
+    disagreement = offset.depth_disagreement_m
+    if disagreement is not None and (not math.isfinite(disagreement) or not 0 <= disagreement <= .03):
+        return None
+    if len(offset.target_m) != 3 or len(offset.fingertip_m) != 3 or len(readout.delta_cm) != 3:
+        return None
+    # Same signed metric subtraction as testing_ver_calhack/upstream/interfaces.hand_error.
+    delta = tuple((goal - finger) * 100 for goal, finger in zip(offset.target_m, offset.fingertip_m))
+    if not all(math.isfinite(v) for v in delta) or not all(
+            math.isclose(a, b, abs_tol=1e-6) for a, b in zip(delta, readout.delta_cm)):
+        return None
+    qualifier = 'ESTIMATED' if offset.fingertip_estimated or offset.status == 'ESTIMATED' else 'UNVALIDATED'
+    labels = {}
+    for axis, value, positive, negative in zip('xyz', delta, ('RIGHT', 'DOWN', 'FORWARD'), ('LEFT', 'UP', 'BACK')):
+        direction = positive if value > 0 else negative if value < 0 else f'{axis.upper()} OFFSET'
+        labels[axis] = f'{direction} ≈{abs(value):.1f} cm'
+    labels['qualifier'] = qualifier
+    return labels
 
 
 class SpatialPanel:
@@ -32,18 +61,31 @@ class SpatialPanel:
             return widget
         self.target = label('TARGET: -', 24, FG, True, row=0)
         self.tracking = label('TRACKING: -', 22, DIM, True, row=1)
-        self.direction = label('DIRECTION: -', 30, CUE, True, row=2)
-        self.distance = label('3D UNAVAILABLE', 60, BAD, True, row=3)
-        label('cm', 18, DIM, row=4, column=0, columnspan=1)
+        self.direction = label('CAMERA RELATIVE / UNRELIABLE', 18, WARN, True, row=2)
+        self.distance = label('FORWARD: UNRELIABLE', 46, BAD, True, row=3)
+        self.side = label('LEFT / RIGHT: -', 40, FG, True, row=4)
+        self.height = label('UP / DOWN: -', 40, FG, True, row=5)
+        self.diagnostic_toggle = tk.BooleanVar(value=False)
+        self.diagnostics = tk.Frame(self.frame, bg=BG)
+        self.diagnostics.grid(row=8, column=0, columnspan=4, sticky='w')
+        self.diagnostics.grid_remove()
+        tk.Checkbutton(self.frame, text='Diagnostics: raw XYZ and total distance', variable=self.diagnostic_toggle,
+                       bg=BG, fg=FG, selectcolor=BG, activebackground=BG, activeforeground=FG,
+                       command=lambda: self.diagnostics.grid() if self.diagnostic_toggle.get()
+                       else self.diagnostics.grid_remove()).grid(row=6, column=0, columnspan=4, sticky='w')
+        self.total = tk.Label(self.diagnostics, text='', bg=BG, fg=DIM, font=('Segoe UI', -14))
+        self.total.grid(row=0, column=0, columnspan=4, sticky='w')
         self.cells = {}
         for column, axis in enumerate(('X', 'Y', 'Z'), 1):
-            label(axis, 22, DIM, True, 'Consolas', row=4, column=column, columnspan=1)
-        for row, name in enumerate(('FINGER', 'TARGET', 'DIFF'), 5):
-            label(name, 18, DIM, True, row=row, column=0, columnspan=1)
+            tk.Label(self.diagnostics, text=axis, bg=BG, fg=DIM).grid(row=1, column=column)
+        for row, name in enumerate(('FINGER', 'TARGET', 'DIFF'), 2):
+            tk.Label(self.diagnostics, text=name, bg=BG, fg=DIM).grid(row=row, column=0, sticky='w')
             for column in range(1, 4):
-                self.cells[name, column] = label('-', 30, FG, True, 'Consolas', row=row, column=column,
-                                                 columnspan=1, padx=(10, 0))
-        label('Axes as seen by the phone: X+ right, Y+ down, Z+ away from the phone', 15, DIM, row=8)
+                cell = tk.Label(self.diagnostics, text='-', bg=BG, fg=FG, font=('Consolas', -22, 'bold'))
+                cell.grid(row=row, column=column, padx=12, sticky='w')
+                self.cells[name, column] = cell
+        label('CAMERA axes: right / down / away from phone. Not body-relative. Calibrate before movement.',
+              15, WARN, row=7)
         self.source = label('DEPTH SOURCE: -', 16, DIM, row=14, pady=(8, 0))
         self.confidence = label('DEPTH CONFIDENCE: -', 20, FG, True, row=9)
         self.pixels = label('2D OFFSET: -', 18, DIM, row=10)
@@ -72,25 +114,40 @@ class SpatialPanel:
                                    + (f"  |  LAST CUE: {audio.get('last_cue') or '-'}  |  {audio.get('playback') or '-'}"
                                       f"\nSUPPRESSED: {audio.get('suppressed') or '-'}" if audio.get('enabled') else '')))
         offset = data.get('offset') if fresh else None
-        measured = offset is not None and offset.measured and offset.delta_m is not None
-        cue, mode = data.get('direction') if fresh else (None, None)
-        self.direction.configure(text=f"DIRECTION: {cue.replace('_', ' ') if cue else '-'}"
-                                      + (f'  ({mode})' if cue and mode else ''),
-                                 fg=CUE if cue else DIM)
-        if not fresh:
-            self.distance.configure(text='FRAME STALE', fg=BAD)
-            self.source.configure(text='Guidance stopped: no fresh frame (300 ms limit)')
-        elif measured:
-            self.distance.configure(text=f'{offset.distance_m * 100:.1f} cm', fg=GOOD)
-            self.source.configure(text=f'DEPTH SOURCE: finger {offset.fingertip_source}; target LiDAR '
-                                       f'{offset.target_point}\n{offset.tip_check}')
+        distances = data.get('distances') if fresh and state == 'LOCKED' else None
+        if (distances is not None and distances.axes and (distances.valid_until_monotonic is None
+                                                         or time.monotonic() > distances.valid_until_monotonic)):
+            distances = None
+        axes = {a.axis: a for a in distances.axes} if distances is not None else {}
+        self.direction.configure(text='CAMERA RELATIVE / ' + ('VALIDATED' if axes else 'UNRELIABLE'),
+                                 fg=GOOD if axes else BAD)
+        if axes:
+            self.distance.configure(text=axes['z'].text, fg=GOOD)
+            self.side.configure(text=axes['x'].text, fg=GOOD)
+            self.height.configure(text=axes['y'].text, fg=GOOD)
+            self.source.configure(text=f'DEPTH: {offset.fingertip_source}; target {offset.target_point}\n{offset.tip_check}')
         else:
-            reason = offset.detail if offset is not None else 'no locked target, hand or synchronized depth'
-            self.distance.configure(text='3D UNAVAILABLE', fg=BAD)
-            self.source.configure(text=f'DEPTH SOURCE: {reason[:90]}')
-        self._values('FINGER', offset.fingertip_m if measured else None, '{:.1f}')
-        self._values('TARGET', offset.target_m if measured else None, '{:.1f}')
-        self._values('DIFF', offset.delta_m if measured else None)
+            estimated = distances is not None and distances.estimated
+            preview = estimate_preview(offset, distances, fresh, state == 'LOCKED')
+            if preview:
+                self.direction.configure(text=f"CAMERA RELATIVE / {preview['qualifier']} ONLY", fg=WARN)
+                self.distance.configure(text=preview['z'] + '\n' + preview['qualifier'], fg=WARN)
+                self.side.configure(text=preview['x'], fg=WARN)
+                self.height.configure(text=preview['y'], fg=WARN)
+            else:
+                self.distance.configure(text='FORWARD: ' + ('ESTIMATED\nUNRELIABLE' if estimated else 'UNRELIABLE'), fg=BAD)
+                self.side.configure(text='LEFT / RIGHT: -', fg=DIM)
+                self.height.configure(text='UP / DOWN: -', fg=DIM)
+            reason = ('frame stale (300 ms limit)' if not fresh else distances.reason if distances is not None
+                      else 'no locked target, hand or synchronized depth')
+            self.source.configure(text=f'NOT FOR MOVEMENT: {reason}')
+        raw = offset if fresh and state == 'LOCKED' else None
+        self._values('FINGER', raw.fingertip_m if raw else None, '{:.1f}')
+        self._values('TARGET', raw.target_m if raw else None, '{:.1f}')
+        self._values('DIFF', raw.delta_m if raw else None)
+        self.total.configure(text=('ESTIMATED / UNVALIDATED' if raw and raw.fingertip_estimated else
+                                   'UNVALIDATED' if not axes else 'VALIDATED') + ' camera XYZ in cm; '
+                             + (f'total {raw.distance_m * 100:.1f} cm' if raw and raw.distance_m is not None else 'total -'))
         self.confidence.configure(
             text=('DEPTH CONFIDENCE: finger {} / target {}'.format(offset.fingertip_confidence, offset.target_confidence)
                   if offset is not None else 'DEPTH CONFIDENCE: UNAVAILABLE'))
@@ -103,7 +160,7 @@ class SpatialPanel:
             from PIL import ImageTk
             self.depth_photo = ImageTk.PhotoImage(depth)
             self.depth.configure(image=self.depth_photo)
-        elif self.depth_photo is not None and not fresh:
+        elif self.depth_photo is not None:
             self.depth.configure(image='')
             self.depth_photo = None
 

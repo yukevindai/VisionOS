@@ -63,7 +63,7 @@ class LockSession(TrackingSession):
                                ' | make the request more specific and click Find & Track')
             return
         if self.inflight is job and self.state in (LOCKED, UNCERTAIN, HIDDEN) and job.generation == self.generation:
-            if result.get('mode') != 'HYBRID':
+            if result.get('mode') != 'HYBRID' or result.get('providerPending') is False:
                 self.inflight = None
             selection = result.get('selection', {})
             latency = result.get('timingMs', {}).get('provider', 0) / 1000
@@ -90,8 +90,11 @@ class LockSession(TrackingSession):
                            + ' | type a more specific request (for example colour or size) and click Find & Track')
 
     def _complete_hybrid(self, job, result, now):
-        # The early local candidate installs a tracker, but Gemini still owns the
-        # request slot until HYBRID_VERIFY arrives, even after Find/Stop changes generation.
+        # Early local candidates retain the slot until Gemini verification finishes.
+        # Inventory/demo results explicitly mark requests with no provider work as terminal.
+        pending = result.get('providerPending') is not False
+        if not pending:
+            self.inflight = None
         if job.generation != self.generation or job.epoch != self.epoch or not self.active:
             return
         self.tracker = None
@@ -100,7 +103,8 @@ class LockSession(TrackingSession):
         timing = result.get('timingMs', {})
         gemini_s = timing.get('provider', 0) / 1000
         self.last_identification = (f"{self.source} {selection.get('status')} | local {timing.get('local', 0):.0f} ms"
-                                    + (f' | Gemini {gemini_s:.1f}s' if gemini_s else ' | waiting for Gemini check'))
+                                    + (f' | Gemini {gemini_s:.1f}s' if gemini_s else
+                                       ' | waiting for Gemini check' if pending else ' | no Gemini call'))
         target = selection.get('target')
         if selection.get('status') != 'SELECTED' or not target:
             self.state = 'TARGET LOST'

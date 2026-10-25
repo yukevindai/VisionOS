@@ -38,18 +38,24 @@ class DeciderTests(unittest.TestCase):
         self.assertIsNone(cue)
         self.assertIn('need LiDAR', reason)
 
-    def test_estimated_depth_never_gives_3d_cues(self):
-        estimate = Offset('ESTIMATED', delta_m=(0., 0., .02), distance_m=.02)
-        cue, mode, _ = GuidanceDecider().decide(ev(tip=(330, 240), offset=estimate))
-        self.assertIsNone(cue)
-        self.assertEqual(mode, '2D')
+    def test_unmeasured_depth_never_authorizes_depth_motion(self):
+        for status in ('ESTIMATED', 'UNRELIABLE'):
+            for confidence in ('HIGH', 'MEDIUM', 'LOW', 'UNAVAILABLE'):
+                for dz in (-.3, -.02, .02, .3):
+                    with self.subTest(status=status, confidence=confidence, dz=dz):
+                        offset = Offset(status, delta_m=(0., 0., dz), distance_m=abs(dz),
+                                        target_confidence=confidence, fingertip_confidence=confidence)
+                        cue, mode, _ = GuidanceDecider().decide(ev(tip=(330, 240), offset=offset))
+                        self.assertIsNone(cue)
+                        self.assertEqual(mode, '2D')
+                        self.assertEqual(GuidanceDecider().decide(ev(offset=offset))[:2], ('RIGHT', '2D'))
 
     def test_3d_sequence_left_forward_closer_ready(self):
         d = GuidanceDecider()
         self.assertEqual(d.decide(ev(offset=lidar(-.12, 0, .30)))[:2], ('LEFT', '3D'))
         self.assertEqual(d.decide(ev(offset=lidar(-.01, 0, .30)))[0], 'FORWARD')
         self.assertEqual(d.decide(ev(offset=lidar(-.01, 0, .12)))[0], 'CLOSER')
-        self.assertEqual(d.decide(ev(offset=lidar(.01, .01, .04)))[0], 'READY_TO_GRASP')
+        self.assertEqual(d.decide(ev(offset=lidar(.01, .01, .04)))[0], 'NEAR_OBJECT')
         self.assertEqual(GuidanceDecider().decide(ev(offset=lidar(0, 0, -.2)))[0], 'BACKWARD')
 
     def test_hysteresis_keeps_axis_until_well_inside_tolerance(self):
@@ -173,6 +179,62 @@ class PlayerMixingTests(unittest.TestCase):
         self.assertIsNone(player.buffer)
         player._callback(out, 10, None, None)
         self.assertEqual(int(out.sum()), 0)
+
+
+class SpeechCancellationTests(unittest.TestCase):
+    def test_late_synthesis_cannot_restart_stopped_closed_or_replaced_audio(self):
+        import tempfile
+        import threading
+        import wave
+        from pathlib import Path
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        from r3_vision.audio_guidance import ClipPlayer
+
+        for action in ('stop', 'close', 'replace'):
+            with self.subTest(action=action), tempfile.TemporaryDirectory() as directory:
+                started, release = threading.Event(), threading.Event()
+                workers = []
+                original_thread = threading.Thread
+
+                def start_thread(*args, **kwargs):
+                    worker = original_thread(*args, **kwargs)
+                    workers.append(worker)
+                    return worker
+
+                def synthesize(folder, phrases):
+                    started.set()
+                    if not release.wait(2):
+                        raise TimeoutError('test did not release synthesis')
+                    folder.mkdir(parents=True, exist_ok=True)
+                    for key in phrases:
+                        with wave.open(str(folder / f'{key}.wav'), 'wb') as output:
+                            output.setnchannels(1)
+                            output.setsampwidth(2)
+                            output.setframerate(24000)
+                            output.writeframes(b'\x00\x00' * 24)
+
+                player = ClipPlayer.__new__(ClipPlayer)
+                player.folder, player.backend = Path(directory), 'sounddevice'
+                player.wake, player.ready = threading.Condition(), threading.Event()
+                player.ready.set()
+                player.closed, player.error, player.wanted = False, None, None
+                player.clips, player.log = {}, lambda *args, **kwargs: None
+                player.stream = SimpleNamespace(samplerate=24000, stop=lambda: None, close=lambda: None)
+                with patch('r3_vision.audio_guidance.make_clips', side_effect=synthesize), \
+                        patch('r3_vision.audio_guidance.threading.Thread', side_effect=start_thread):
+                    self.assertTrue(player.say('SIMULATED scene description'))
+                    self.assertTrue(started.wait(2))
+                    if action == 'replace':
+                        player.play('LEFT')
+                    else:
+                        getattr(player, action)()
+                    expected = player.wanted
+                    release.set()
+                    workers[0].join(2)
+                    self.assertFalse(workers[0].is_alive())
+                    self.assertEqual(player.wanted, expected)
+                    self.assertNotIn('SPEECH', player.clips)
 
 
 class CooldownTests(unittest.TestCase):

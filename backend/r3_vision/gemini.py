@@ -179,8 +179,10 @@ class GeminiClient:
         # their existing payloads. An explicitly supplied unsupported setting fails before network IO.
         self.thinking_level = (thinking_level if thinking_level is not None else
             os.environ.get("GEMINI_THINKING_LEVEL", "") if self.model.startswith("gemini-3") else "").strip()
-        if self.thinking_level not in ("", "low", "medium", "high"):
-            raise ValueError("GEMINI_THINKING_LEVEL must be low, medium or high, or unset")
+        if self.thinking_level not in ("", "low", "medium", "high") and not (
+                self.thinking_level == "minimal" and self.model in MINIMAL_THINKING_MODELS):
+            raise ValueError("GEMINI_THINKING_LEVEL must be low, medium or high (minimal only on models that support it), "
+                             "or unset")
         configured_timeout = timeout_s if timeout_s is not None else float(os.environ.get("GEMINI_TIMEOUT_S") or DEFAULT_TIMEOUT_S)
         if not math.isfinite(configured_timeout) or configured_timeout <= 0:
             raise ValueError("GEMINI_TIMEOUT_S must be positive and finite")

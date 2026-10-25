@@ -84,7 +84,7 @@ def pixels(area, size):
     return (area['x'] * w, area['y'] * h, (area['x'] + area['width']) * w, (area['y'] + area['height']) * h)
 
 
-def result(job, status, source, reason, timing, candidates, chosen=None, label=''):
+def result(job, status, source, reason, timing, candidates, chosen=None, label='', provider_pending=True):
     size = job.image.size
     controls = [{'id': f"det-{c['id']:03d}", 'label': '/'.join(c['names']), 'type': 'other', 'legibility': 'clear',
                  'region': region(c['box'], size), 'detectorScore': round(c['score'], 3)} for c in candidates]
@@ -95,7 +95,7 @@ def result(job, status, source, reason, timing, candidates, chosen=None, label='
         selection['target'] = {'label': label or '/'.join(chosen['names']), 'imageRegion': region(chosen['box'], size),
                                'frameId': job.frame_id, 'coordinateSystem': selector.SUPPORTED_COORDINATES,
                                'detectorId': chosen['id']}
-    return {'mode': 'HYBRID', 'detectionSource': source, 'screenModel': model, 'selection': selection,
+    return {'mode': 'HYBRID', 'providerPending': provider_pending, 'detectionSource': source, 'screenModel': model, 'selection': selection,
             'provider': {'ok': True}, 'timingMs': timing}
 
 

@@ -56,27 +56,47 @@ class PanelTests(unittest.TestCase):
         data.update(changes)
         return data
 
+    @staticmethod
+    def validated():
+        from r3_vision.directional_distance import AxisDistance, DistanceReadout
+        return DistanceReadout('VALIDATED CAMERA RELATIVE', 'camera-relative only; no contact inference',
+                               (AxisDistance('x', 'LEFT', 1.8), AxisDistance('y', 'UP', 5.4),
+                                AxisDistance('z', 'FORWARD', 16.2)), False, (-1.8, -5.4, 16.2), 17.2,
+                               time.monotonic() + 1)
+
     def test_measured_values_are_large_and_in_centimetres(self):
-        self.panel.update(self.data())
-        self.assertEqual(self.panel.distance.cget('text'), '17.2 cm')
+        self.panel.update(self.data(distances=self.validated()))
+        self.assertEqual(self.panel.distance.cget('text'), 'REACH FORWARD: 16.2 cm')
+        self.assertEqual(self.panel.side.cget('text'), 'MOVE LEFT: 1.8 cm')
+        self.assertEqual(self.panel.height.cget('text'), 'MOVE UP: 5.4 cm')
+        self.assertEqual(self.panel.direction.cget('text'), 'CAMERA RELATIVE / VALIDATED')
         self.assertEqual(self.panel.cells['FINGER', 3].cget('text'), '43.3')
         self.assertEqual(self.panel.cells['DIFF', 3].cget('text'), '+16.2')
         self.assertIn('finger HIGH / target LOW', self.panel.confidence.cget('text'))
-        self.assertIn('FORWARD', self.panel.direction.cget('text'))
         self.assertIn('pixels, not cm', self.panel.pixels.cget('text'))
-        self.assertEqual(int(self.root.tk.splitlist(self.panel.distance.cget('font'))[1]), -60)
+        self.assertEqual(int(self.root.tk.splitlist(self.panel.distance.cget('font'))[1]), -46)
 
-    def test_no_measured_depth_says_3d_unavailable_and_no_centimetres(self):
-        estimate = Offset('ESTIMATED', (.0, .0, .4), (.0, .0, .6), (.0, .0, .2), .2, 'hand size/shape estimate')
-        self.panel.update(self.data(offset=estimate, direction=(None, '2D')))
-        self.assertEqual(self.panel.distance.cget('text'), '3D UNAVAILABLE')
-        self.assertEqual(self.panel.cells['FINGER', 1].cget('text'), '-')
+    def test_no_measured_depth_says_unreliable_and_no_centimetres(self):
+        from r3_vision.directional_distance import DistanceReadout
+        estimate = Offset('ESTIMATED', (.0, .0, .4), (.0, .0, .6), (.0, .0, .2), .2, 'hand size/shape estimate',
+                          fingertip_estimated=True)
+        unreliable = DistanceReadout('UNRELIABLE', 'fingertip depth ESTIMATED; physical instructions suppressed',
+                                     estimated=True)
+        self.panel.update(self.data(offset=estimate, distances=unreliable, direction=(None, '2D')))
+        self.assertEqual(self.panel.distance.cget('text'), 'FORWARD: ESTIMATED\nUNRELIABLE')
+        self.assertEqual(self.panel.side.cget('text'), 'LEFT / RIGHT: -')
+        self.assertNotIn('cm', self.panel.distance.cget('text') + self.panel.side.cget('text')
+                         + self.panel.height.cget('text'))
+        self.assertTrue(self.panel.source.cget('text').startswith('NOT FOR MOVEMENT'))
+        self.assertTrue(self.panel.total.cget('text').startswith('ESTIMATED / UNVALIDATED'))
 
     def test_stale_frame_clears_values_and_direction(self):
-        self.panel.update(self.data(received=time.monotonic() - .5))
-        self.assertEqual(self.panel.distance.cget('text'), 'FRAME STALE')
-        self.assertEqual(self.panel.direction.cget('text'), 'DIRECTION: -')
+        self.panel.update(self.data(received=time.monotonic() - .5, distances=self.validated()))
+        self.assertEqual(self.panel.distance.cget('text'), 'FORWARD: UNRELIABLE')
+        self.assertEqual(self.panel.side.cget('text'), 'LEFT / RIGHT: -')
+        self.assertEqual(self.panel.direction.cget('text'), 'CAMERA RELATIVE / UNRELIABLE')
         self.assertEqual(self.panel.cells['DIFF', 1].cget('text'), '-')
+        self.assertIn('frame stale (300 ms limit)', self.panel.source.cget('text'))
 
 
 class DepthViewTests(unittest.TestCase):
