@@ -1,0 +1,2 @@
+# Optional laptop-to-Arduino 101 connection; install in the tracking Python environment.
+bleak>=1.0,<4

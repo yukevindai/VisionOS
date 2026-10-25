@@ -39,6 +39,8 @@ class OrchestrationBridge:
         return None  # Explicit asynchronous handoff to existing identification worker.
 
     def stop_local(self):
+        if hasattr(self.worker, 'hardware_gate'):
+            self.worker.hardware_gate()
         # Audio is gated synchronously, even when camera/CV work is blocked.
         if self.worker.audio is not None:
             self.worker.audio.player.enable_guidance(False)
@@ -61,6 +63,8 @@ class OrchestrationBridge:
         self.last_state, self.had_lock = None, False
         self.worker.ticket += 1
         self.worker.session.find(query)
+        if hasattr(self.worker, 'hardware_gate'):
+            self.worker.hardware_gate(context is not None)
         self.worker.latest_frame = self.worker.latest_target = self.worker.latest_hand = None
         if self.worker.spatial is not None:
             self.worker.spatial.reset()
