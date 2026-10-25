@@ -7,6 +7,9 @@ need them, between tasks, and the helper sees live when each note was heard.
 > blood pressure medicine." His VisionOS laptop says it between tasks, and her phone shows
 > "Heard at 2:41".
 
+Notes can be read in the helper's own voice (Family Voice, Cartesia voice clone with spoken
+consent): see [FAMILY_VOICE.md](FAMILY_VOICE.md).
+
 ## Pieces
 
 | Piece | Where | Owner |
@@ -14,10 +17,11 @@ need them, between tasks, and the helper sees live when each note was heard.
 | Notes, search, review dates, receipts | `backend/convex/notes.ts`, `noteTables.ts` | R3 |
 | Device pairing (laptop key, hash only) | `backend/convex/devices.ts`, `devicesNode.ts` | R3 |
 | Cartesia note audio (rendered once) | `backend/convex/notesAudio.ts` | R3 |
+| Family Voice: consented clone, delete, listener settings | `backend/convex/voices.ts`, `voicesNode.ts`, `apps/family-notes/src/voice.tsx` | R3 |
 | Asymmetric object matching | `backend/convex/lib/familyMatch.ts` | R3 |
 | Web page for helpers and the user | `apps/family-notes/` | R3 |
 | Laptop listener (Convex Python subscription) | `backend/r3_vision/family_notes.py` | R3 |
-| Hook into the laptop pipeline | `backend/r3_vision/live_tracking.py` | **R2/laptop owner** |
+| Hook into the laptop pipeline | `backend/r3_vision/live_tracking.py` | R3 (review: laptop owner) |
 
 ## Convex features
 
@@ -31,8 +35,9 @@ owner, file storage for audio, the scheduler (review dates), and two components:
 
 - Every note is spoken with its author first: "Note from Lan: …", "Safety note from Lan: …".
 - Notes are information, never permission: nothing starts guidance, confirms a press or pays.
-- The laptop speaks a note only while the pipeline is idle and nothing else is playing.
-  Stop, hazards and guidance always win; an interrupted note is not marked heard and is
+- The laptop speaks a note only while the pipeline is idle and nothing else is playing. The
+  one exception: notes about the object a find task just locked onto play once, right
+  before hand-guidance audio (bounded wait, haptics continue). Stop and new requests always win; an interrupted note is not marked heard and is
   spoken again later. "Heard" is recorded only after the note played to the end.
 - Object matching is asymmetric. A warning is read if any meaningful label word appears in
   it; reassurance needs every word and the same place, and is spoken as "According to Lan's
@@ -49,23 +54,21 @@ owner, file storage for audio, the scheduler (review dates), and two components:
 3. In the laptop's `backend/.env`: `CONVEX_URL=https://<deployment>.convex.cloud` and the
    copied `FAMILY_NOTES_DEVICE_KEY=…`. Then `pip install -r requirements-family-notes.txt`.
 
-## Hook for the laptop pipeline (needs the owner of live_tracking.py)
+## Laptop pipeline hook (live_tracking.py)
 
-```python
-from .family_notes import FamilyNotesListener
+`TrackingWorker` turns Family Notes on only when `CONVEX_URL` and `FAMILY_NOTES_DEVICE_KEY`
+are set and `--audio` is on; any setup problem logs `FAMILY_NOTES_OFF` and the pipeline starts
+normally.
 
-self.family_notes = FamilyNotesListener.from_env(
-    say=self.audio.player.say,             # the sole audio player; Stop/new cues invalidate it
-    speaking=self.audio.player.speaking,
-    is_idle=lambda: <no active task, no pending request, not listening>,
-    log=self._audio_log)
-if self.family_notes:
-    self.family_notes.start()
-# after a find task succeeds on a labeled object:
-#     self.family_notes and self.family_notes.announce_for_target(label)
-# on shutdown:
-#     self.family_notes and self.family_notes.close()
-```
+- **Idle notes:** spoken when there is no find task, no pending request and no running agent
+  task (`_family_idle`).
+- **Object notes:** the first time a find task locks onto a labelled object
+  (`_family_on_lock`), `notes:forObjectByDevice` is queried off the frame loop and up to two
+  notes (warnings first) are spoken at once. Hand-guidance audio stays quiet while they play
+  (`holding()`), at most 1.5 s for the lookup and 8 s for speech to start; haptics continue.
+  Stop or a new request cuts the note. Re-finding the same object after a loss does not repeat it.
+- `speech_adapters()` handles both players: `ClipPlayer` and `PriorityAudio` (`--agents`), whose
+  `say()` takes a context instead of `is_current`.
 
 `from_env` returns `None` when either variable is missing, so the feature is off by default.
 
