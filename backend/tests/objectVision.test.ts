@@ -115,6 +115,7 @@ describe("native object recognition action", () => {
   it("rejects malformed, inverted or out-of-image boxes and invalid selections", async () => {
     const bad = [
       { ...selected(), selectedIndex: 3 }, { ...selected(), status: "AMBIGUOUS" },
+      { ...selected(), objects: [...selected().objects, { label: "other keys", box_2d: [400, 500, 600, 700] }] },
       { ...selected(), status: "NOT_FOUND", selectedIndex: null },
       ...[[0, 1, 0, 2], [-1, 0, 10, 20], [0, 0, 1001, 10], [0, 0, 1.5, 10]].map(box_2d =>
         ({ ...selected(), objects: [{ label: "keys", box_2d }] })),

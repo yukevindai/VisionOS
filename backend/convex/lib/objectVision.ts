@@ -133,8 +133,7 @@ function parseResult(value: unknown, args: ObjectVisionRequest, model: string,
   });
   let selectedObjectId: string | null = null;
   if (value.status === "SELECTED") {
-    if (!Number.isInteger(value.selectedIndex) || typeof value.selectedIndex !== "number" ||
-        value.selectedIndex < 0 || value.selectedIndex >= controls.length) fail("INVALID_VISION_RESPONSE");
+    if (controls.length !== 1 || value.selectedIndex !== 0) fail("INVALID_VISION_RESPONSE");
     selectedObjectId = controls[value.selectedIndex]!.id;
   } else if (value.selectedIndex !== null) fail("INVALID_VISION_RESPONSE");
   if (value.status === "NOT_FOUND" && controls.length !== 0) fail("INVALID_VISION_RESPONSE");
