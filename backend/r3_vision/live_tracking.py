@@ -1023,6 +1023,15 @@ def main(argv=None):
         # Same top as the status lines and same bottom as the video, so both columns line up.
         panel.frame.grid(row=1, column=1, rowspan=3, sticky='nsew', padx=(0, 8), pady=(0, 6))
     worker = TrackingWorker(args, client)
+    agent_answer = None
+    if args.agents:
+        answer_frame = tk.LabelFrame(root, text='VisionOS response')
+        answer_frame.grid(row=5, column=0, columnspan=2, sticky='ew', padx=10, pady=6)
+        agent_answer = tk.Text(answer_frame, height=4, wrap='word', state='disabled', takefocus=True)
+        answer_scroll = tk.Scrollbar(answer_frame, command=agent_answer.yview)
+        agent_answer.configure(yscrollcommand=answer_scroll.set)
+        answer_scroll.pack(side='right', fill='y')
+        agent_answer.pack(side='left', fill='both', expand=True)
     toggle_details()
     ticket = 0
     last = None
@@ -1234,6 +1243,12 @@ def main(argv=None):
                               orchestration=worker.agents.coordinator.snapshot() if worker.agents else None)
         if worker.agents is not None:
             agent_state = worker.agents.coordinator.snapshot()
+            response = agent_state.get('response') or ''
+            if agent_answer.get('1.0', 'end-1c') != response:
+                agent_answer.configure(state='normal')
+                agent_answer.delete('1.0', 'end')
+                agent_answer.insert('1.0', response)
+                agent_answer.configure(state='disabled')
             status.set(f"{agent_state['agent']}: {agent_state['status']} | "
                        f"{agent_state.get('clarification') or agent_state.get('error') or agent_state['goal']}")
         root.after(30, tick)
