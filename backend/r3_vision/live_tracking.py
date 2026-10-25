@@ -1117,6 +1117,9 @@ def main(argv=None):
     def voice_command(command, argument):
         from .demo_objects import OBJECTS
         player = worker.audio.player if worker.audio is not None else None
+        if command == 'wake':
+            root.bell()  # Local acknowledgement; never starts or cancels tracking.
+            return
         if worker.agents is not None:
             if command in ('quiet', 'stop_tracking'):
                 stop()
@@ -1177,11 +1180,13 @@ def main(argv=None):
                     worker.agents.coordinator.submit('What did I miss?')
                 elif action == 'quick' and args.detection == 'demo':
                     worker.describe()
+        if voice is not None:
+            voice.tick(time.monotonic())
         while voice is not None and not voice.commands.empty():
             command, argument, _ = voice.commands.get_nowait()
             voice_command(command, argument)
         if voice is not None and voice.transcript:
-            names = {'find': 'FIND', 'describe': 'DESCRIBE', 'quiet': 'QUIET', 'stop_tracking': 'STOP TRACKING',
+            names = {'wake': 'LISTENING', 'find': 'FIND', 'describe': 'DESCRIBE', 'quiet': 'QUIET', 'stop_tracking': 'STOP TRACKING',
                      'request': 'REQUEST'}
             lines = [f'"{item["text"]}"' + (f'  →  {names[item["command"]]}' if item['command'] else '')
                      for item in list(voice.transcript)[::-1][:3]]

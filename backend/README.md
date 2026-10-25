@@ -240,3 +240,16 @@ October 24 latency check: Gemini 3.8 Flash with `low` thinking, direct real API,
 The provider reported 1080 image tokens with default detail, 532 with medium and 260 with low. Prompt text was 216 tokens; response-body reads added 1–3 ms after headers. Separately, the real iPhone's cloud log showed two `VISION_TIMEOUT` failures after authenticated `users:me` queries completed in 1 ms. This isolates those failures to the provider stage; the synthetic measurements do not guarantee that lower detail fixes the phone case. Gemini 3.8 Flash already uses its lowest supported thinking level (`low`); [Google's thinking support table](https://firebase.google.com/docs/ai-logic/thinking#supported-thinking-level-values) excludes `minimal` for that model.
 
 Validation after adding the optional setting: 115 backend tests pass, including 14 object-action cases; TypeScript checking passes. No timeout was lengthened and no model fallback was introduced.
+
+### Optional “Hey Vision” on the Windows laptop
+
+With the existing `--voice` option enabled, direct commands continue to work unchanged.
+You can also say “Hey Vision, find the Pepsi can” or “Hey Vision” followed by a
+supported command. The standalone phrase requests a local system bell and shows
+LISTENING in the transcript; the browser voice status acknowledges it for six seconds.
+System sound settings may silence the bell. Repeated wake phrases within that window
+are ignored. The window is only feedback, never a requirement for direct commands.
+Stop and quiet commands still interrupt speech, with or without the prefix.
+Existing dictation, manual controls, camera input and tracking behavior are retained.
+This uses Windows System.Speech; it does not wake a sleeping laptop or add Mac support.
+Live microphone/noisy-room recognition and audible bell playback require Windows testing.
