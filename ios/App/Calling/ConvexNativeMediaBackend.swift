@@ -141,6 +141,12 @@ final class ConvexNativeMediaBackend: NativeMediaBackend, R3ScreenReading, R3Obj
 
     func findObject(image: Data, query: String, frameID: String,
                     capturedAtUTCms: Int64, requestID: String) async throws -> GeminiObjectRecognition {
+        try await findObject(image: image, query: query, frameID: frameID,
+                             capturedAtUTCms: capturedAtUTCms, requestID: requestID, answerQuestion: false)
+    }
+
+    func findObject(image: Data, query: String, frameID: String,
+                    capturedAtUTCms: Int64, requestID: String, answerQuestion: Bool) async throws -> GeminiObjectRecognition {
         try Task.checkCancellation()
         let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty, query.utf16.count <= 500,
@@ -154,7 +160,7 @@ final class ConvexNativeMediaBackend: NativeMediaBackend, R3ScreenReading, R3Obj
         let rawResult: Any
         do {
             rawResult = try await call("vision:findObject", kind: "action", args: [
-                "imageBase64": image.base64EncodedString(), "query": query,
+                "imageBase64": image.base64EncodedString(), "query": query, "answerQuestion": answerQuestion,
                 "frameId": frameID, "capturedAtMs": capturedAtUTCms, "requestId": requestID
             ], maximumResponseBytes: 256 * 1024, requestTimeout: 5)
         } catch {
@@ -193,7 +199,16 @@ final class ConvexNativeMediaBackend: NativeMediaBackend, R3ScreenReading, R3Obj
             }
             selectedObjectId = nil
         }
-        return GeminiObjectRecognition(status: status, selectedObjectId: selectedObjectId, screenModel: model)
+        let answer = result["answer"] as? String
+        if answerQuestion {
+            guard status == .notFound, selectedObjectId == nil, model.controls.isEmpty,
+                  let answer, !answer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  answer.utf16.count <= 2_000,
+                  !answer.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) else {
+                throw NativeMediaTransportError.invalidResponse
+            }
+        }
+        return GeminiObjectRecognition(status: status, selectedObjectId: selectedObjectId, screenModel: model, answer: answer)
     }
 
     func createInvite() async throws -> NativeOwnerInvite {

@@ -78,3 +78,11 @@ Requests expire with the existing task deadline (five seconds); the HTTP request
 The direct action has a 4.5-second total provider deadline, including response-body reads, inside the native five-second request deadline. It accepts upright JPEGs, obtains dimensions from the JPEG rather than asking Gemini to guess them, and rejects rotated EXIF. Output is bounded to 20 matching objects and 256 KiB. The prompt and response whitelist omit confidence and safety; successful recognition therefore remains identification-only.
 
 Offline tests use explicitly simulated HTTP replies. A compiled client, passing mocked tests, and a direct provider smoke test do not establish authenticated Convex deployment or real-device recognition accuracy.
+
+## Direct answers to questions
+
+The optional `answerQuestion: true` action argument switches Gemini from object selection to direct answering. Questions such as “what is in front of me”, “where are my keys”, “how many bottles”, and “is the bottle empty”, plus describe/explain requests, take this path. A scene with multiple objects is described directly rather than treated as an ambiguous target. General questions can use relevant general knowledge, distinguished from visible evidence; uncertain or unavailable facts are stated declaratively without a clarification question.
+
+The response carries a bounded `answer` string and the existing correlated live camera envelope with `status: NOT_FOUND`, null selection, and empty controls. Here NOT_FOUND means no movement target is selected, not that the answer failed. Native code validates provenance and bounds, then finishes with informational `answered` status, unverified physical result, and speech only. It never prepares native tracking, guides, asks a grasp confirmation, or emits physical success feedback. New questions replace pending action confirmations instead of being swallowed. Explicit find/guide/pick requests retain the separate guidance path and its physical gates.
+
+Backend validation rejects question marks and common clarification requests, including unpunctuated “please specify” replies. Provider failure produces a declarative inability statement, never an invented answer. These guards prevent the observed clarification loop; model factual accuracy remains a live-device acceptance item.

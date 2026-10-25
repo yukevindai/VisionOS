@@ -5,6 +5,7 @@ import Tasks
 enum GeminiObjectError: Error, Equatable, LocalizedError {
     case notConfigured, signInRequired, unavailable, invalidResponse, ambiguous, notFound, busy
     case identificationOnly(String)
+    case answerUnavailable
 
     var errorDescription: String? {
         switch self {
@@ -12,7 +13,8 @@ enum GeminiObjectError: Error, Equatable, LocalizedError {
         case .signInRequired: return "Sign in through the image reader or friend tools before using online object recognition."
         case .unavailable: return "Online object recognition is unavailable. Please try again."
         case .invalidResponse: return "The object response could not be verified. Please try again."
-        case .ambiguous: return "More than one object could match. Describe which one you mean."
+        case .ambiguous: return "Several visible objects match that request, so I cannot safely select one for hand guidance."
+        case .answerUnavailable: return "I could not obtain a reliable answer to that question from the current camera image."
         case .notFound: return "I could not identify that object in this image. Reposition the phone and try again."
         case .busy: return "The previous object request is still finishing. Please try again."
         case .identificationOnly(let label):
@@ -21,19 +23,36 @@ enum GeminiObjectError: Error, Equatable, LocalizedError {
     }
 }
 
+enum ObjectRequestIntent {
+    static func isQuestion(_ query: String) -> Bool {
+        let text = query.lowercased().replacingOccurrences(of: "’", with: "'").trimmingCharacters(in: .whitespacesAndNewlines)
+        let actions = ["guide my hand", "guide me", "help me pick", "help me grab", "help me reach", "help me find"]
+        if actions.contains(where: text.contains) { return false }
+        if text.hasSuffix("?") { return true }
+        return ["what", "where", "which", "who", "why", "when", "how", "is", "are", "am", "can", "could", "would", "will", "should", "do", "does", "did", "has", "have", "tell", "describe", "explain"].contains {
+            text == $0 || text.hasPrefix($0 + " ") || text.hasPrefix($0 + "'")
+        }
+    }
+}
+
 @MainActor
-final class GeminiObjectEvidenceClient: FrameTargetEvidenceClient {
+protocol QuestionAnswering: AnyObject {
+    func answer(_ request: RequestContext, question: String) async throws -> String
+}
+
+@MainActor
+final class GeminiObjectEvidenceClient: FrameTargetEvidenceClient, QuestionAnswering {
     private let reader: (any R3ObjectReading)?
     private let clock: any AppClock
     private var context: SessionContext?
     private var cancelledContext: SessionContext?
     private var latest: (frame: FrameSnapshot, utc: Int64)?
     private var epoch = UUID()
-    private var work: [UUID: Task<ResolvedTarget, Error>] = [:]
+    private var work: [UUID: Task<(GeminiObjectRecognition, FrameTransform), Error>] = [:]
 
     var isConfigured: Bool { reader != nil }
     var introduction: String {
-        isConfigured ? "Describe the object you want to find. Say Stop to pause." :
+        isConfigured ? "Ask a question about what is around you, or ask me to find an object. Say Stop to pause." :
             "Camera and voice are ready. Online object recognition is not configured yet. Say Stop to pause."
     }
 
@@ -64,20 +83,47 @@ final class GeminiObjectEvidenceClient: FrameTargetEvidenceClient {
 
     func resolve(_ request: RequestContext, query: String, kind: TaskKind) async throws -> ResolvedTarget {
         guard kind == .object else { throw R3EvidenceError.unsupportedTask }
+        let (result, transform) = try await recognize(request, query: query, answering: false)
+        return try Self.target(result, transform: transform)
+    }
+
+    func answer(_ request: RequestContext, question: String) async throws -> String {
+        do {
+            let (result, _) = try await recognize(request, query: question, answering: true)
+            guard result.status == .notFound, result.selectedObjectId == nil, result.screenModel.controls.isEmpty,
+                  let answer = result.answer, !answer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  answer.utf16.count <= 2_000, !answer.contains("?"), !answer.contains("？"), !answer.contains("؟"),
+                  !answer.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) else {
+                throw GeminiObjectError.answerUnavailable
+            }
+            return answer
+        } catch is CancellationError { throw CancellationError() }
+        catch GeminiObjectError.signInRequired { throw GeminiObjectError.signInRequired }
+        catch GeminiObjectError.notConfigured { throw GeminiObjectError.notConfigured }
+        catch { throw GeminiObjectError.answerUnavailable }
+    }
+
+    private func recognize(_ request: RequestContext, query: String, answering: Bool) async throws -> (GeminiObjectRecognition, FrameTransform) {
         let current = try validate(request)
         guard let reader else { throw GeminiObjectError.notConfigured }
         guard work.count < 8 else { throw GeminiObjectError.busy }
         let expectedEpoch = epoch
         let id = UUID()
-        let operation = Task { [weak self] () throws -> ResolvedTarget in
+        let operation = Task { [weak self] () throws -> (GeminiObjectRecognition, FrameTransform) in
             guard let self else { throw CancellationError() }
             // A new task changes generation before its next camera frame arrives.
             // Wait for that actual frame; never relabel an older frame as current.
             let source = try await self.waitForFrame(request, context: current, epoch: expectedEpoch)
             let result: GeminiObjectRecognition
             do {
+                if answering {
+                    guard let questionReader = reader as? any R3QuestionReading else { throw GeminiObjectError.unavailable }
+                    result = try await questionReader.answerQuestion(image: source.frame.encodedImage!, query: query,
+                        frameID: source.frame.frameID, capturedAtUTCms: source.utc, requestID: request.requestID)
+                } else {
                 result = try await reader.findObject(image: source.frame.encodedImage!, query: query,
                     frameID: source.frame.frameID, capturedAtUTCms: source.utc, requestID: request.requestID)
+                }
             } catch is CancellationError { throw CancellationError() }
             catch NativeMediaTransportError.unauthenticated { throw GeminiObjectError.signInRequired }
             catch NativeMediaTransportError.invalidResponse { throw GeminiObjectError.invalidResponse }
@@ -87,7 +133,7 @@ final class GeminiObjectEvidenceClient: FrameTargetEvidenceClient {
             _ = try self.validate(request)
             try R3TargetMapping.validateRecognition(result.screenModel, frameID: source.frame.frameID,
                                                      capturedAtUTCms: source.utc)
-            return try Self.target(result, transform: source.frame.transform)
+            return (result, source.frame.transform)
         }
         work[id] = operation
         defer { work.removeValue(forKey: id) }
