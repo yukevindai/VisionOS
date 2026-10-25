@@ -21,6 +21,7 @@ beforeEach(() => {
   vi.stubEnv("GEMINI_API_KEY", key);
   vi.stubEnv("GEMINI_MODEL", "gemini-SIMULATED");
   vi.stubEnv("GEMINI_THINKING_LEVEL", "");
+  vi.stubEnv("GEMINI_OBJECT_MEDIA_RESOLUTION", "");
 });
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.useRealTimers(); });
 async function signedIn() {
@@ -58,6 +59,7 @@ describe("native object recognition action", () => {
     expect(request[1].headers).toEqual({ "Content-Type": "application/json", "x-goog-api-key": key });
     expect(request[1].redirect).toBe("error");
     const body = JSON.parse(request[1].body as string);
+    expect(body.generationConfig).not.toHaveProperty("mediaResolution");
     expect(JSON.parse(body.contents[0].parts[0].text)).toEqual({ objectQuery: args.query });
     expect(body.contents[0].parts[1].inline_data.data).toBe(args.imageBase64);
     expect(JSON.stringify(result)).not.toContain(key);
@@ -110,6 +112,27 @@ describe("native object recognition action", () => {
     const fetch = vi.fn(async (_url: string, _init: RequestInit) => json(envelope(selected()))); vi.stubGlobal("fetch", fetch);
     await findVisionObject(args);
     expect(JSON.parse(fetch.mock.calls[0]![1].body as string).generationConfig.thinkingConfig).toEqual({ thinkingLevel: "low" });
+  });
+
+  it("applies only the explicitly configured object media resolution", async () => {
+    for (const setting of ["low", "medium", "high"]) {
+      vi.stubEnv("GEMINI_OBJECT_MEDIA_RESOLUTION", setting);
+      const fetch = vi.fn(async (_url: string, _init: RequestInit) => json(envelope(selected())));
+      vi.stubGlobal("fetch", fetch);
+      await findVisionObject(args);
+      const body = JSON.parse(fetch.mock.calls[0]![1].body as string);
+      expect(body.generationConfig.mediaResolution).toBe(`MEDIA_RESOLUTION_${setting.toUpperCase()}`);
+      expect(body.contents[0].parts[1].inline_data.data).toBe(args.imageBase64);
+    }
+  });
+
+  it("rejects unknown media resolution before making a provider request", async () => {
+    const fetch = vi.fn(); vi.stubGlobal("fetch", fetch);
+    for (const setting of ["LOW", " low", "ultra_high", "automatic", "0"]) {
+      vi.stubEnv("GEMINI_OBJECT_MEDIA_RESOLUTION", setting);
+      await expect(findVisionObject(args)).rejects.toThrow("VISION_NOT_CONFIGURED");
+    }
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it("rejects malformed, inverted or out-of-image boxes and invalid selections", async () => {

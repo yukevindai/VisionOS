@@ -110,11 +110,13 @@ function configuration() {
   const key = process.env.GEMINI_API_KEY;
   const model = process.env.GEMINI_MODEL;
   const thinkingLevel = process.env.GEMINI_THINKING_LEVEL || undefined;
+  const mediaResolution = process.env.GEMINI_OBJECT_MEDIA_RESOLUTION || undefined;
   if (!key || !boundedText(key, 256) || !model || !/^gemini-[A-Za-z0-9._-]{1,100}$/.test(model) ||
-      (thinkingLevel && (!model.startsWith("gemini-3") || !["low", "medium", "high"].includes(thinkingLevel)))) {
+      (thinkingLevel && (!model.startsWith("gemini-3") || !["low", "medium", "high"].includes(thinkingLevel))) ||
+      (mediaResolution && !["low", "medium", "high"].includes(mediaResolution))) {
     fail("VISION_NOT_CONFIGURED");
   }
-  return { key, model, thinkingLevel };
+  return { key, model, thinkingLevel, mediaResolution };
 }
 
 function parseResult(value: unknown, args: ObjectVisionRequest, model: string,
@@ -196,6 +198,7 @@ export async function findVisionObject(args: ObjectVisionRequest): Promise<Objec
           contents: [{ role: "user", parts: [{ text: JSON.stringify({ objectQuery: args.query }) },
             { inline_data: { mime_type: "image/jpeg", data: args.imageBase64 } }] }],
           generationConfig: { responseMimeType: "application/json", responseSchema, candidateCount: 1,
+            ...(config.mediaResolution ? { mediaResolution: `MEDIA_RESOLUTION_${config.mediaResolution.toUpperCase()}` } : {}),
             ...(config.thinkingLevel ? { thinkingConfig: { thinkingLevel: config.thinkingLevel } } : {}) },
         }),
       });

@@ -199,3 +199,18 @@ The authenticated `vision:findObject` action accepts an upright camera JPEG, the
 The 4.5-second total provider deadline also bounds streamed response reads. Provider errors, blocked/truncated output, invalid boxes and rotated EXIF fail closed. Only successful real HTTP responses receive live provenance; response metadata is correlated to the original request. Labels are identification-only: the action deliberately supplies no confidence/safety authorization or movement commands. See [the native integration contract](../docs/R3_GEMINI_OBJECT_INTEGRATION.md) for client configuration and physical acceptance steps.
 
 Validation for this addition: 113 backend tests pass, including 12 object-action cases and the existing screen bridge; TypeScript checking and offline Convex code generation pass. Provider replies in that suite are simulated. Initial local live smoke attempts failed because of the Mac Node networking path (service unavailable/timeouts). With an IPv4-only workaround confined to the ignored local test harness, a real Gemini 3.8 Flash request on a synthetic two-button panel selected button 2 in 3,781 ms with the production 4.5-second deadline. An earlier diagnostic allowing 15 seconds completed in 2,537 ms. These are direct-provider synthetic-fixture checks, not deployed Convex authentication or real-camera recognition acceptance. No network workaround was added to production code.
+
+### Object image detail and latency
+
+`GEMINI_OBJECT_MEDIA_RESOLUTION` optionally sets `low`, `medium`, or `high` for `vision:findObject` only. Unset or empty preserves the provider default; any other value fails configuration validation before a provider request. This maps to the documented [Gemini Generate Content global media resolution](https://ai.google.dev/gemini-api/docs/generate-content/media-resolution) setting. It leaves the image bytes, normalized coordinates, model, thinking level and 4.5-second deadline intact. `vision:readScreen` and the shared native encoder are unchanged. Low detail can miss small objects or fine text, so a faster synthetic result does not establish real-scene accuracy.
+
+October 24 latency check: Gemini 3.8 Flash with `low` thinking, direct real API, one synthetic two-button panel and an enlarged copy, two sequential samples per cell. All ten calls completed within the production deadline and selected button 2. These are small diagnostic samples, not a p95 estimate or a phone pass.
+
+| Input | Default latency (ms) | Medium latency (ms) | Low latency (ms) |
+|---|---:|---:|---:|
+| 600 × 400 synthetic panel | 3510, 2546 | 4272, 2406 | 2890, 1794 |
+| Same panel enlarged to 1600 × 1067 | 3281, 2582 | Not measured | 2325, 2294 |
+
+The provider reported 1080 image tokens with default detail, 532 with medium and 260 with low. Prompt text was 216 tokens; response-body reads added 1–3 ms after headers. Separately, the real iPhone's cloud log showed two `VISION_TIMEOUT` failures after authenticated `users:me` queries completed in 1 ms. This isolates those failures to the provider stage; the synthetic measurements do not guarantee that lower detail fixes the phone case. Gemini 3.8 Flash already uses its lowest supported thinking level (`low`); [Google's thinking support table](https://firebase.google.com/docs/ai-logic/thinking#supported-thinking-level-values) excludes `minimal` for that model.
+
+Validation after adding the optional setting: 115 backend tests pass, including 14 object-action cases; TypeScript checking passes. No timeout was lengthened and no model fallback was introduced.
