@@ -1,0 +1,30 @@
+name: Agent and demo tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  simulated-integration:
+    name: Simulated agent and pipeline tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-tk
+          python3 -m venv backend/.venv
+          backend/.venv/bin/python -m pip install -r backend/requirements.txt 'numpy>=1.26,<3' 'opencv-python>=4.10,<5'
+      - name: Mocked providers and replayed pipeline tests (not hardware)
+        working-directory: backend
+        run: .venv/bin/python -m unittest discover -s tests
+      - name: Dashboard state tests
+        run: node --test apps/demo-dashboard/state.test.js

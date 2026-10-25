@@ -1,8 +1,9 @@
-"""Always-listening voice commands for the Windows preview: offline Windows speech recognition, fixed phrases.
+"""Always-listening voice commands for the Windows preview: offline Windows speech recognition, optional open dictation.
 
-A PowerShell child process hosts System.Speech's recognizer with a small grammar (the six demo objects with their
-aliases behind a verb, "what's around me", "stop", "stop tracking") and prints each recognition with its confidence.
-A fixed grammar is far faster and more accurate than open dictation in a noisy room, and needs no network.
+A PowerShell child process hosts System.Speech on the laptop. The normal demo
+keeps its command grammar and transcribes Windows dictation. With open_ended=True,
+free requests and clarification answers also reach the coordinator; Stop retains its explicit grammar and queue priority. Recognition
+quality depends on the installed Windows language pack and microphone.
 
 Echo guard: while VisionOS is speaking (and briefly after), only "stop"/"be quiet" are accepted, so its own voice
 ("Pepsi can, right") never triggers a command, yet the user can always interrupt it. Low-confidence results are
@@ -78,7 +79,7 @@ $commands = New-Object System.Speech.Recognition.Grammar($builder)
 $commands.Name = 'commands'
 $commands.Priority = 10
 $engine.LoadGrammar($commands)
-# Free dictation alongside the commands, so anything the user says can be written down on screen.
+# Dictation is always transcribed; only orchestration mode routes free requests.
 $dictation = New-Object System.Speech.Recognition.DictationGrammar
 $dictation.Name = 'dictation'
 $engine.LoadGrammar($dictation)
@@ -94,11 +95,12 @@ while ($true) {
 
 class VoiceCommands:
     """Starts the recognizer process; recognized commands arrive on self.commands as (command, argument, text)."""
-    def __init__(self, folder, speaking=lambda: False, min_confidence=.6, echo_gap_s=.5, wave=None, log=print):
+    def __init__(self, folder, speaking=lambda: False, min_confidence=.6, echo_gap_s=.5, wave=None, log=print, open_ended=False):
         self.folder, self.speaking, self.min_confidence, self.echo_gap_s = folder, speaking, min_confidence, echo_gap_s
         self.log = log
-        self.commands = queue.Queue()
-        self.transcript = collections.deque(maxlen=6)  # recent things the user said, newest last
+        self.open_ended = open_ended
+        self.commands = queue.Queue(maxsize=8)
+        self.transcript = collections.deque(maxlen=6)
         self.transcript_confidence = .35
         self.status = 'starting voice recognition'
         self.last_heard = ''
@@ -124,7 +126,7 @@ class VoiceCommands:
             for line in self.process.stdout:
                 line = line.strip()
                 if line == 'READY':
-                    self.status = 'LISTENING (say "find the Pepsi can", "what is around me", "stop")'
+                    self.status = ('LISTENING (open requests; say stop to cancel)' if self.open_ended else 'LISTENING (say "find the Pepsi can", "what is around me", "stop")')
                     self.log('VOICE_READY')
                 elif line.startswith('HEARD|'):
                     _, confidence, grammar, text = line.split('|', 3)
@@ -136,10 +138,13 @@ class VoiceCommands:
             self.status = f'voice unavailable ({type(exc).__name__})'
 
     def handle(self, text, confidence, now, grammar='commands'):
+        text = ' '.join(str(text).split())[:500]
         command, argument = interpret(text)
-        if not self.speaking() and now >= self.quiet_until and confidence >= self.transcript_confidence and text.strip():
-            # Everything the user says is written down (Reflex's own voice is skipped while it speaks).
-            self.transcript.append(dict(text=text.strip(), command=command if confidence >= self.min_confidence
+        if command is None and text and getattr(self, 'open_ended', False):
+            command, argument = 'request', text
+        if not self.speaking() and now >= self.quiet_until and confidence >= self.transcript_confidence and text:
+            # Skip VisionOS playback echoes; retain the bounded laptop transcript.
+            self.transcript.append(dict(text=text, command=command if confidence >= self.min_confidence
                                         else None, at=now))
             self.log('VOICE_HEARD', text=text, grammar=grammar, confidence=round(confidence, 2))
         if command is None or confidence < self.min_confidence:
@@ -153,7 +158,13 @@ class VoiceCommands:
             return None
         self.last_heard = f'"{text}" ({confidence:.2f})'
         self.log('VOICE_COMMAND', command=command, argument=argument, text=text, confidence=round(confidence, 2))
-        self.commands.put((command, argument, text))
+        with self.commands.mutex:
+            if command in ('stop_tracking', 'quiet'):
+                self.commands.queue.clear()
+            elif self.commands.maxsize and len(self.commands.queue) >= self.commands.maxsize:
+                self.commands.queue.popleft()
+            self.commands.queue.append((command, argument, text))
+            self.commands.not_empty.notify()
         return command
 
     def close(self):
