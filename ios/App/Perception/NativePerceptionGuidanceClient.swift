@@ -19,9 +19,10 @@ struct NativePerceptionDiagnostics {
 }
 
 @MainActor
-final class NativePerceptionGuidanceClient: NSObject, PerceptionGuidanceClient, NativeMediaCaptureClient {
+final class NativePerceptionGuidanceClient: NSObject, PerceptionGuidanceClient, NativeMediaCaptureClient, CameraPreviewSource {
     var onEvent: ((PerceptionEvent) -> Void)?
     var onFrame: ((FrameSnapshot) -> Void)?
+    var onPreview: ((CameraPreviewFrame) -> Void)?
     var onLocalCommand: ((SessionContext, LocalCommand) -> Void)?
     var onHapticRelease: ((ScheduledHapticRelease) -> Void)?
     var onDiagnostics: ((NativePerceptionDiagnostics) -> Void)?
@@ -94,12 +95,19 @@ final class NativePerceptionGuidanceClient: NSObject, PerceptionGuidanceClient, 
             guard startID == attempt, self.context == context else { throw CancellationError() }
             let depthAvailable = ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth)
             let mailbox = NativePerceptionObservationMailbox()
+            let previewMailbox = NativeCameraPreviewMailbox()
             let processor = NativePerceptionProcessor(context: context, rotation: currentRotation(),
                                                        preferredHand: preferredHand(), delivery: { [weak self] observation in
                 guard mailbox.offer(observation) else { return }
                 Task { @MainActor [weak self] in
                     guard let observation = mailbox.take() else { return }
                     self?.receive(observation, attempt: attempt)
+                }
+            }, previewDelivery: { [weak self] preview in
+                guard previewMailbox.offer(preview) else { return }
+                Task { @MainActor [weak self] in
+                    guard let preview = previewMailbox.take() else { return }
+                    self?.receivePreview(preview, attempt: attempt)
                 }
             }, failure: { [weak self] in
                 Task { @MainActor [weak self] in
@@ -220,9 +228,23 @@ final class NativePerceptionGuidanceClient: NSObject, PerceptionGuidanceClient, 
     }
     func detach() { attachedSessionID = nil; captureReceiver = nil }
 
+    private func receivePreview(_ preview: CameraPreviewFrame, attempt: UUID) {
+        guard startID == attempt, preview.context == context, let context,
+              preview.geometryID == processor?.geometryID, fresh(preview.capturedAtMs) else { return }
+        if lastGeometryID != nil, lastGeometryID != preview.geometryID {
+            cancelGuidance(context: context)
+            lastGeometryID = preview.geometryID
+            onEvent?(.cameraChanged(context, cameraCapabilities(geometryID: preview.geometryID,
+                depth: ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth))))
+        }
+        guard preview.context == self.context else { return }
+        lastGeometryID = preview.geometryID
+        onPreview?(preview)
+    }
+
     private func receive(_ observation: NativePerceptionObservation, attempt: UUID) {
         guard startID == attempt, observation.context == context, let context,
-              fresh(observation.capturedAtMs) else { return }
+              observation.geometryID == processor?.geometryID, fresh(observation.capturedAtMs) else { return }
         if let lastGeometryID, lastGeometryID != observation.geometryID {
             cancelGuidance(context: context)
             self.lastGeometryID = observation.geometryID
@@ -421,6 +443,13 @@ private struct NativePerceptionObservation {
 /// Capture offers one latest frame; Vision and JPEG work run on a separate serial queue.
 /// Historical frames are bounded JPEGs that exactly match the images sent to R3.
 private final class NativePerceptionProcessor: NSObject, ARSessionDelegate, @unchecked Sendable {
+    private struct Capture {
+        let frame: ARFrame
+        let context: SessionContext
+        let rotation: NativeMediaVideoRotation
+        let hand: GuidingHand
+        let geometryID: String
+    }
     private struct StoredFrame {
         let id: String
         let jpeg: Data
@@ -432,14 +461,16 @@ private final class NativePerceptionProcessor: NSObject, ARSessionDelegate, @unc
     private let queue = DispatchQueue(label: "Reflex.NativePerception.Vision", qos: .userInitiated)
     private let delivery: (NativePerceptionObservation) -> Void
     private let failure: () -> Void
+    private let previewPipeline: NativeCameraPreviewPipeline
+    private var capturedDimensions: CGSize?
     private var open = true
-    private var pending: ARFrame?
+    private var pending: Capture?
     private var processing = false
     private var context: SessionContext
     private var rotation: NativeMediaVideoRotation
     private var preferredHand: GuidingHand
     private let geometryPrefix = UUID().uuidString
-    private var latestFrame: ARFrame?
+    private var latestFrame: Capture?
     private var history: [StoredFrame] = []
     private var lastProcessedAt: TimeInterval = -.infinity
     private var lastPublishedAt: TimeInterval = -.infinity
@@ -451,9 +482,11 @@ private final class NativePerceptionProcessor: NSObject, ARSessionDelegate, @unc
     private var sequence = VNSequenceRequestHandler()
 
     init(context: SessionContext, rotation: NativeMediaVideoRotation, preferredHand: GuidingHand,
-         delivery: @escaping (NativePerceptionObservation) -> Void, failure: @escaping () -> Void) {
+         delivery: @escaping (NativePerceptionObservation) -> Void,
+         previewDelivery: @escaping (CameraPreviewFrame) -> Void, failure: @escaping () -> Void) {
         self.context = context; self.rotation = rotation; self.preferredHand = preferredHand
         self.delivery = delivery; self.failure = failure
+        self.previewPipeline = NativeCameraPreviewPipeline(deliver: previewDelivery)
     }
 
     var geometryID: String {
@@ -479,6 +512,7 @@ private final class NativePerceptionProcessor: NSObject, ARSessionDelegate, @unc
     }
     func close() {
         lock.lock(); open = false; pending = nil; lock.unlock()
+        previewPipeline.close()
         queue.async { [self] in
             history.removeAll(); latestFrame = nil; trackedTarget = nil; tracker = nil
         }
@@ -487,10 +521,21 @@ private final class NativePerceptionProcessor: NSObject, ARSessionDelegate, @unc
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
         lock.lock()
         guard open else { lock.unlock(); return }
-        pending = frame
+        let dimensions = CGSize(width: CVPixelBufferGetWidth(frame.capturedImage),
+                                height: CVPixelBufferGetHeight(frame.capturedImage))
+        if let capturedDimensions, capturedDimensions != dimensions { geometryRevision &+= 1 }
+        capturedDimensions = dimensions
+        let context = self.context, rotation = self.rotation
+        let geometryID = "\(geometryPrefix):rear:\(NativePerceptionGeometry.imageOrientation(rotation).rawValue):\(geometryRevision)"
+        pending = Capture(frame: frame, context: context, rotation: rotation, hand: preferredHand, geometryID: geometryID)
         let schedule = !processing
         processing = true
         lock.unlock()
+        if frame.timestamp.isFinite, frame.timestamp >= 0, frame.timestamp < Double(Int64.max) / 1_000 {
+            previewPipeline.offer(.init(context: context, geometryID: geometryID,
+                video: .init(localSessionID: context.sessionID, pixelBuffer: frame.capturedImage,
+                             capturedAtMs: Int64(frame.timestamp * 1_000), rotation: rotation)))
+        }
         if schedule { queue.async { [self] in drain() } }
     }
     func sessionWasInterrupted(_ session: ARSession) { failure() }
@@ -498,18 +543,18 @@ private final class NativePerceptionProcessor: NSObject, ARSessionDelegate, @unc
 
     private func drain() {
         lock.lock()
-        guard open, let frame = pending else {
+        guard open, let capture = pending else {
             processing = false; lock.unlock(); return
         }
         pending = nil
-        let context = self.context, rotation = self.rotation, hand = preferredHand
         lock.unlock()
+        let frame = capture.frame
         if frame.timestamp.isFinite, frame.timestamp >= 0,
            frame.timestamp < Double(Int64.max) / 1_000,
            frame.timestamp - lastProcessedAt >= 0.075 {
             lastProcessedAt = frame.timestamp
-            latestFrame = frame
-            delivery(observe(frame, context: context, rotation: rotation, hand: hand, publish: true))
+            latestFrame = capture
+            delivery(observe(capture, publish: true))
         }
         // Yield the worker between frames so bind/cancel commands cannot starve
         // when capture runs faster than Vision can process it.
@@ -521,15 +566,16 @@ private final class NativePerceptionProcessor: NSObject, ARSessionDelegate, @unc
             queue.async { [self] in
                 lock.lock()
                 let allowed = open && context.sessionID == request.task.sessionID && context.generation == request.task.generation
-                let context = self.context, rotation = self.rotation, hand = preferredHand
+                let context = self.context, rotation = self.rotation
                 lock.unlock()
                 let now = Int64(ProcessInfo.processInfo.systemUptime * 1_000)
                 guard allowed, request.expiresAtMs > now, target.region.isValid,
                       let source = history.first(where: { $0.id == target.frameID }),
                       source.context == context, source.geometryID == geometry(rotation),
                       source.capturedAtMs <= now, now - source.capturedAtMs <= 5_000,
-                      let current = latestFrame, current.timestamp * 1_000 <= Double(now),
-                      Double(now) - current.timestamp * 1_000 < 300,
+                      let current = latestFrame, current.context == context, current.geometryID == geometry(rotation),
+                      current.frame.timestamp * 1_000 <= Double(now),
+                      Double(now) - current.frame.timestamp * 1_000 < 300,
                       let imageSource = CGImageSourceCreateWithData(source.jpeg as CFData, nil),
                       let image = CGImageSourceCreateImageAtIndex(imageSource, 0, nil) else {
                     continuation.resume(throwing: NativePerceptionError.targetNotObserved)
@@ -551,7 +597,7 @@ private final class NativePerceptionProcessor: NSObject, ARSessionDelegate, @unc
                     self.tracker = tracker
                     trackedBox = first.boundingBox
                     trackedTarget = target
-                    let observation = observe(current, context: context, rotation: rotation, hand: hand, publish: false)
+                    let observation = observe(current, publish: false)
                     guard observation.targetVisible else { throw NativePerceptionError.targetNotObserved }
                     continuation.resume(returning: observation)
                 } catch {
@@ -562,18 +608,17 @@ private final class NativePerceptionProcessor: NSObject, ARSessionDelegate, @unc
         }
     }
 
-    private func observe(_ frame: ARFrame, context: SessionContext, rotation: NativeMediaVideoRotation,
-                         hand: GuidingHand, publish: Bool) -> NativePerceptionObservation {
+    private func observe(_ capture: Capture, publish: Bool) -> NativePerceptionObservation {
+        let frame = capture.frame, context = capture.context, rotation = capture.rotation, hand = capture.hand
         let processingStarted = ProcessInfo.processInfo.systemUptime
         let captured = Int64(frame.timestamp * 1_000)
         let dimensions = CGSize(width: CVPixelBufferGetWidth(frame.capturedImage), height: CVPixelBufferGetHeight(frame.capturedImage))
         if let imageDimensions, imageDimensions != dimensions {
-            lock.lock(); geometryRevision &+= 1; lock.unlock()
             tracker = nil; trackedTarget = nil; trackedBox = nil; history.removeAll()
         }
         imageDimensions = dimensions
         let frameID = "native-\(UUID().uuidString)"
-        let geometryID = geometry(rotation)
+        let geometryID = capture.geometryID
         let video = NativeMediaVideoFrame(localSessionID: context.sessionID, pixelBuffer: frame.capturedImage,
                                           capturedAtMs: captured, rotation: rotation)
         let normal: Bool

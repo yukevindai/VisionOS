@@ -87,6 +87,7 @@ final class SessionCoordinator: ObservableObject {
 
     private func bindAdapters() {
         perception.onFrame = { [weak self] in self?.receiveFrame($0) }
+        (perception as? any CameraPreviewSource)?.onPreview = { [weak self] in self?.receiveCameraPreview($0) }
         perception.onEvent = { [weak self] in self?.receivePerception($0) }
         perception.onLocalCommand = { [weak self] context, command in
             guard let self, self.context == context else { return }; self.command(command)
@@ -813,20 +814,34 @@ private extension SessionCoordinator {
             if phase == .active { apply(.receive(envelope, response)) }
         }
     }
+    func receiveCameraPreview(_ frame: CameraPreviewFrame) {
+        guard [.preparing, .active, .paused, .recovering].contains(phase),
+              frame.context == context, frame.capturedAtMs >= 0, frame.capturedAtMs <= clock.nowMs,
+              clock.nowMs - frame.capturedAtMs < 300,
+              camera == nil || frame.geometryID == camera?.geometryID else { return }
+        showPreview(frame.image, expiresAtMs: frame.capturedAtMs + 300)
+    }
+
+    private func showPreview(_ image: UIImage?, expiresAtMs: Int64) {
+        preview = image
+        previewExpiry?.cancel()
+        previewExpiry = nil
+        if image != nil {
+            previewExpiry = clock.schedule(afterMs: expiresAtMs - clock.nowMs) { [weak self] in
+                self?.preview = nil
+                self?.previewExpiry = nil
+            }
+        }
+    }
+
     func receiveFrame(_ frame: FrameSnapshot) {
         guard [.preparing, .active, .paused, .recovering].contains(phase),
               frame.context == context, frame.transform.isValid, frame.capturedAtMs >= 0, frame.capturedAtMs <= clock.nowMs,
               frame.expiresAtMs > clock.nowMs, clock.nowMs - frame.capturedAtMs <= 300,
               camera == nil || frame.geometryID == camera?.geometryID else { return }
-        lastFrame = frame; preview = frame.preview
-        previewExpiry?.cancel()
-        previewExpiry = nil
-        if frame.preview != nil {
-            previewExpiry = clock.schedule(afterMs: min(frame.expiresAtMs - clock.nowMs,
-                                                        300 - (clock.nowMs - frame.capturedAtMs))) { [weak self] in
-                self?.preview = nil
-                self?.previewExpiry = nil
-            }
+        lastFrame = frame
+        if !(perception is any CameraPreviewSource) {
+            showPreview(frame.preview, expiresAtMs: min(frame.expiresAtMs, frame.capturedAtMs + 300))
         }
         if !frame.trackingNormal { if phase == .active { stop(.trackingLost) }; return }
         guard phase == .active else { return }

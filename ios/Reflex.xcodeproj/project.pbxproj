@@ -35,6 +35,7 @@
 		864658360053518E5CB4A1D5 /* R3TargetMapping.swift in Sources */ = {isa = PBXBuildFile; fileRef = E97DA9BB04C4D52FF9E1E536 /* R3TargetMapping.swift */; };
 		D3E22B5BBADF1ACF2ECE7B2F /* UnavailableAdapters.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A278D435E7F00D202F44EB9 /* UnavailableAdapters.swift */; };
 		10B78C9DFD60CD21C84C1F4E /* FixtureAdapters.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3ED44BC8675B28A221A1C6BF /* FixtureAdapters.swift */; };
+		E8789B378E483F61D4291C9D /* NativeCameraPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70A1CCCC0277ABA0ADB23ED0 /* NativeCameraPreview.swift */; };
 		4B708659B61586F7C2296100 /* NativePerceptionGeometry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E202603C9A23FD1AD42EC49 /* NativePerceptionGeometry.swift */; };
 		B3D4B666EB57C8757B79481F /* NativePerceptionGuidanceClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACC7B0CD848754F52ED4147B /* NativePerceptionGuidanceClient.swift */; };
 		67EA665EAA2C9E11943B4288 /* UserPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57A536087008DA20F1B994D6 /* UserPreferences.swift */; };
@@ -63,6 +64,7 @@
 		B5A3C5647C7890E5BB918328 /* LiveCompositionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7454E292F336B7E1CDE6DB6A /* LiveCompositionTests.swift */; };
 		14BFC04EE82C0FE57FE36726 /* LiveKitFrameAdmissionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8940CF37322A5C07F3DDA87E /* LiveKitFrameAdmissionTests.swift */; };
 		209509FC3839E60EFDEC40C1 /* NativeAudioPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10864AA81A128A79466B1CCD /* NativeAudioPolicyTests.swift */; };
+		1938160670ACB8B1C6B81036 /* NativeCameraPreviewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84BEB0D22A2D4E0B7FF5AFED /* NativeCameraPreviewTests.swift */; };
 		BD683899ADE7A2E82767417B /* NativeHelperTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 817B21001EE55AA428EADA0E /* NativeHelperTests.swift */; };
 		A1592858D978DC530879A311 /* NativeMediaCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A679334F694AEEBDD6963832 /* NativeMediaCoordinatorTests.swift */; };
 		D912CBC512DE6A8C7BACD060 /* NativeMediaSampleGateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62B8B58627D08BE1B199FA9E /* NativeMediaSampleGateTests.swift */; };
@@ -128,6 +130,7 @@
 		E97DA9BB04C4D52FF9E1E536 /* R3TargetMapping.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Integration/R3TargetMapping.swift"; sourceTree = "<group>"; };
 		7A278D435E7F00D202F44EB9 /* UnavailableAdapters.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Integration/UnavailableAdapters.swift"; sourceTree = "<group>"; };
 		3ED44BC8675B28A221A1C6BF /* FixtureAdapters.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Mocks/FixtureAdapters.swift"; sourceTree = "<group>"; };
+		70A1CCCC0277ABA0ADB23ED0 /* NativeCameraPreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Perception/NativeCameraPreview.swift"; sourceTree = "<group>"; };
 		9E202603C9A23FD1AD42EC49 /* NativePerceptionGeometry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Perception/NativePerceptionGeometry.swift"; sourceTree = "<group>"; };
 		ACC7B0CD848754F52ED4147B /* NativePerceptionGuidanceClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Perception/NativePerceptionGuidanceClient.swift"; sourceTree = "<group>"; };
 		57A536087008DA20F1B994D6 /* UserPreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Persistence/UserPreferences.swift"; sourceTree = "<group>"; };
@@ -156,6 +159,7 @@
 		7454E292F336B7E1CDE6DB6A /* LiveCompositionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "LiveCompositionTests.swift"; sourceTree = "<group>"; };
 		8940CF37322A5C07F3DDA87E /* LiveKitFrameAdmissionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "LiveKitFrameAdmissionTests.swift"; sourceTree = "<group>"; };
 		10864AA81A128A79466B1CCD /* NativeAudioPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NativeAudioPolicyTests.swift"; sourceTree = "<group>"; };
+		84BEB0D22A2D4E0B7FF5AFED /* NativeCameraPreviewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NativeCameraPreviewTests.swift"; sourceTree = "<group>"; };
 		817B21001EE55AA428EADA0E /* NativeHelperTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NativeHelperTests.swift"; sourceTree = "<group>"; };
 		A679334F694AEEBDD6963832 /* NativeMediaCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NativeMediaCoordinatorTests.swift"; sourceTree = "<group>"; };
 		62B8B58627D08BE1B199FA9E /* NativeMediaSampleGateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NativeMediaSampleGateTests.swift"; sourceTree = "<group>"; };
@@ -233,6 +237,7 @@
 			E97DA9BB04C4D52FF9E1E536,
 			7A278D435E7F00D202F44EB9,
 			3ED44BC8675B28A221A1C6BF,
+			70A1CCCC0277ABA0ADB23ED0,
 			9E202603C9A23FD1AD42EC49,
 			ACC7B0CD848754F52ED4147B,
 			57A536087008DA20F1B994D6,
@@ -263,6 +268,7 @@
 			7454E292F336B7E1CDE6DB6A,
 			8940CF37322A5C07F3DDA87E,
 			10864AA81A128A79466B1CCD,
+			84BEB0D22A2D4E0B7FF5AFED,
 			817B21001EE55AA428EADA0E,
 			A679334F694AEEBDD6963832,
 			62B8B58627D08BE1B199FA9E,
@@ -345,6 +351,7 @@
 			864658360053518E5CB4A1D5,
 			D3E22B5BBADF1ACF2ECE7B2F,
 			10B78C9DFD60CD21C84C1F4E,
+			E8789B378E483F61D4291C9D,
 			4B708659B61586F7C2296100,
 			B3D4B666EB57C8757B79481F,
 			67EA665EAA2C9E11943B4288,
@@ -375,6 +382,7 @@
 			B5A3C5647C7890E5BB918328,
 			14BFC04EE82C0FE57FE36726,
 			209509FC3839E60EFDEC40C1,
+			1938160670ACB8B1C6B81036,
 			BD683899ADE7A2E82767417B,
 			A1592858D978DC530879A311,
 			D912CBC512DE6A8C7BACD060,

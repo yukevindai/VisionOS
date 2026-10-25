@@ -1,6 +1,7 @@
 import XCTest
 import UIKit
 import Tasks
+import HapticLink
 @testable import Reflex
 
 #if DEBUG
@@ -114,6 +115,24 @@ private final class DeferredPermissionClient: PermissionClient {
 }
 
 @MainActor
+private final class PreviewFixturePerception: PerceptionGuidanceClient, CameraPreviewSource {
+    let base: FixturePerception
+    var onPreview: ((CameraPreviewFrame) -> Void)?
+    var onEvent: ((PerceptionEvent) -> Void)? { get { base.onEvent } set { base.onEvent = newValue } }
+    var onFrame: ((FrameSnapshot) -> Void)? { get { base.onFrame } set { base.onFrame = newValue } }
+    var onLocalCommand: ((SessionContext, LocalCommand) -> Void)? { get { base.onLocalCommand } set { base.onLocalCommand = newValue } }
+    var onHapticRelease: ((ScheduledHapticRelease) -> Void)? { get { base.onHapticRelease } set { base.onHapticRelease = newValue } }
+    init(_ base: FixturePerception) { self.base = base }
+    func start(context: SessionContext, policy: CameraPolicy) async throws -> PerceptionReadiness { try await base.start(context: context, policy: policy) }
+    func updateContext(_ context: SessionContext) { base.updateContext(context) }
+    func reacquire(_ request: RequestContext, target: ResolvedTarget) async throws -> PhysicalEvidence { try await base.reacquire(request, target: target) }
+    func guide(_ request: RequestContext, mode: GuidanceMode, target: ResolvedTarget, hand: GuidingHand) async throws -> TaskResponse { try await base.guide(request, mode: mode, target: target, hand: hand) }
+    func authorizePassage(_ request: RequestContext, target: ResolvedTarget) async throws -> PhysicalEvidence { try await base.authorizePassage(request, target: target) }
+    func cancelGuidance(context: SessionContext) { base.cancelGuidance(context: context) }
+    func stop(context: SessionContext) { base.stop(context: context) }
+}
+
+@MainActor
 final class SessionCoordinatorTests: XCTestCase {
     private struct Harness {
         let session: SessionCoordinator
@@ -124,13 +143,13 @@ final class SessionCoordinatorTests: XCTestCase {
     }
     private func makeHarness(evidence: (any TargetEvidenceClient)? = nil, clock: ManualAppClock? = nil,
                              permission: PermissionState = .init(camera: true, microphone: true), simulated: Bool = true,
-                             permissionClient: (any PermissionClient)? = nil) -> Harness {
+                             permissionClient: (any PermissionClient)? = nil, independentPreview: Bool = false) -> Harness {
         let clock = clock ?? ManualAppClock()
         let prefs = UserPreferences(defaults: UserDefaults(suiteName: UUID().uuidString)!)
         let perception = FixturePerception(clock: clock), speech = FixtureSpeech(audible: false), conversation = FixtureConversation()
         let session = SessionCoordinator(simulated: simulated, preferences: prefs, diagnostics: Diagnostics(capacity: 8),
             bands: BandService(controller: nil, simulated: simulated, clock: clock), clock: clock,
-            perception: perception, speech: speech, conversation: conversation,
+            perception: independentPreview ? PreviewFixturePerception(perception) : perception, speech: speech, conversation: conversation,
             evidence: evidence ?? FixtureEvidence(clock: clock), permissions: permissionClient ?? FixturePermissionClient(state: permission))
         return .init(session: session, clock: clock, perception: perception, conversation: conversation, speech: speech)
     }
@@ -419,6 +438,68 @@ final class SessionCoordinatorTests: XCTestCase {
             h.session.stop(.userEnd)
             XCTAssertEqual(h.clock.pendingCount, 0)
         }
+    }
+
+    func testDelayedRecognitionSnapshotCannotReplaceOrExpireLivePreview() async {
+        let h = makeHarness(independentPreview: true)
+        h.session.start(); await settle()
+        h.perception.stop(context: h.session.context!)
+        let image = syntheticPreview(.green)
+        let source = h.session.perception as! PreviewFixturePerception
+        source.onPreview?(.init(context: h.session.context!, geometryID: h.perception.camera.geometryID,
+            capturedAtMs: h.clock.nowMs, image: image))
+        h.clock.advance(100)
+        deliverPreview(syntheticPreview(.red), to: h, capturedAtMs: h.clock.nowMs - 200,
+                       expiresAtMs: h.clock.nowMs + 20)
+        XCTAssertTrue(h.session.preview === image)
+        h.clock.advance(20)
+        XCTAssertTrue(h.session.preview === image, "The recognition frame expiry cannot blank the live display.")
+        h.clock.advance(180)
+        XCTAssertNil(h.session.preview, "The independent preview still expires when capture stops.")
+        h.session.stop(.userEnd)
+    }
+
+    func testDisplayPreviewDoesNotBecomeRecognitionEvidenceAndExpiresWhenCaptureStops() async {
+        let clock = ManualAppClock()
+        let h = makeHarness(clock: clock, independentPreview: true)
+        h.session.start(); await settle()
+        h.perception.stop(context: h.session.context!)
+        h.session.stop(.userPause)
+        let context = h.session.context!
+        let image = syntheticPreview(.green)
+        for _ in 0..<10 {
+            (h.session.perception as! PreviewFixturePerception).onPreview?(.init(context: context, geometryID: h.perception.camera.geometryID,
+                capturedAtMs: clock.nowMs, image: image))
+            clock.advance(66)
+            XCTAssertTrue(h.session.preview === image)
+        }
+        h.session.resume()
+        XCTAssertEqual(h.session.phase, .paused, "Display-only pixels cannot establish the fresh evidence required to resume guidance.")
+        clock.advance(234)
+        XCTAssertNil(h.session.preview, "A stopped capture must not leave a frozen preview indefinitely.")
+        h.session.stop(.userEnd)
+    }
+
+    func testDisplayPreviewRejectsWrongGeometryExpiredAndLateSessionImages() async {
+        let h = makeHarness(independentPreview: true); h.session.start(); await settle()
+        h.perception.stop(context: h.session.context!)
+        let context = h.session.context!
+        let image = syntheticPreview(.green)
+        (h.session.perception as! PreviewFixturePerception).onPreview?(.init(context: context, geometryID: "wrong-camera",
+            capturedAtMs: h.clock.nowMs, image: image))
+        XCTAssertNil(h.session.preview)
+        h.clock.advance(301)
+        (h.session.perception as! PreviewFixturePerception).onPreview?(.init(context: context, geometryID: h.perception.camera.geometryID,
+            capturedAtMs: h.clock.nowMs - 301, image: image))
+        XCTAssertNil(h.session.preview)
+        h.session.stop(.userPause)
+        (h.session.perception as! PreviewFixturePerception).onPreview?(.init(context: context, geometryID: h.perception.camera.geometryID,
+            capturedAtMs: h.clock.nowMs, image: image))
+        XCTAssertNil(h.session.preview, "A queued image from before Stop cannot resurrect the preview.")
+        h.session.stop(.userEnd)
+        (h.session.perception as! PreviewFixturePerception).onPreview?(.init(context: h.session.context ?? context,
+            geometryID: h.perception.camera.geometryID, capturedAtMs: h.clock.nowMs, image: image))
+        XCTAssertNil(h.session.preview)
     }
 
     private func syntheticPreview(_ color: UIColor) -> UIImage {
