@@ -1,5 +1,6 @@
 """Simulated transcripts only; does not validate microphone recognition."""
 import queue
+import collections
 import unittest
 from r3_vision.voice_commands import VoiceCommands, SCRIPT
 
@@ -13,6 +14,8 @@ class OpenVoiceTests(unittest.TestCase):
         voice.quiet_until, voice.last_heard = 0., ''
         voice.log = lambda *args, **kwargs: None
         voice.open_ended = True
+        voice.transcript = collections.deque(maxlen=6)
+        voice.transcript_confidence = .35
         return voice
 
     def test_open_request_and_clarification(self):
@@ -35,3 +38,11 @@ class OpenVoiceTests(unittest.TestCase):
         self.assertEqual(voice.commands.qsize(), 2)
         self.assertEqual(voice.commands.get_nowait()[1], 'Question 18')
 
+
+    def test_open_dictation_preserves_bounded_transcript_and_stop_punctuation(self):
+        voice = self.voice()
+        for i in range(10): voice.handle(f'Question {i}.', .9, i, 'dictation')
+        self.assertEqual(len(voice.transcript), 6)
+        self.assertEqual(voice.transcript[-1]['command'], 'request')
+        self.assertEqual(voice.handle('Stop!', .9, 11, 'dictation'), 'stop_tracking')
+        self.assertEqual(voice.commands.qsize(), 1)

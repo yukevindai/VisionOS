@@ -1,9 +1,8 @@
 """Always-listening voice commands for the Windows preview: offline Windows speech recognition, optional open dictation.
 
 A PowerShell child process hosts System.Speech on the laptop. The normal demo
-keeps its command grammar. With open_ended=True, Windows DictationGrammar is
-loaded alongside it, so free requests and clarification answers reach the
-coordinator; Stop retains its explicit grammar and queue priority. Recognition
+keeps its command grammar and transcribes Windows dictation. With open_ended=True,
+free requests and clarification answers also reach the coordinator; Stop retains its explicit grammar and queue priority. Recognition
 quality depends on the installed Windows language pack and microphone.
 
 Echo guard: while VisionOS is speaking (and briefly after), only "stop"/"be quiet" are accepted, so its own voice
@@ -12,6 +11,7 @@ ignored silently.
 """
 from __future__ import annotations
 
+import collections
 import queue
 import re
 import subprocess
@@ -21,7 +21,7 @@ import time
 from .demo_objects import OBJECTS
 
 VERBS = ('find', 'find me', 'where is', 'get', 'locate', 'track', 'show me')
-DESCRIBE = ("what's around me", 'what is around me', 'describe the surroundings', 'describe surroundings',
+DESCRIBE = ("what's around me", 'whats around me', 'what is around me', 'describe the surroundings', 'describe surroundings',
             'what do you see', 'describe')
 QUIET = ('stop talking', 'be quiet', 'quiet', 'silence')
 STOP_TRACKING = ('stop', 'stop tracking', 'cancel', 'stop guiding')
@@ -49,7 +49,8 @@ def phrases():
 def interpret(text):
     """(command, argument) for a recognized phrase: ('find', key), ('describe', None), ('quiet', None),
     ('stop_tracking', None), or (None, None)."""
-    text = ' '.join(text.lower().replace('-', ' ').split())
+    # Dictation adds capitals and punctuation ("Find the Pepsi can."); the command list has neither.
+    text = ' '.join(re.sub(r"[^\w\s']", ' ', text.lower().replace('-', ' ')).split())
     if text in STOP_TRACKING:
         return 'stop_tracking', None
     if text in QUIET:
@@ -74,13 +75,19 @@ $choices = New-Object System.Speech.Recognition.Choices
 foreach ($p in [System.IO.File]::ReadAllLines('{phrases}')) { if ($p) { [void]$choices.Add($p) } }
 $builder = New-Object System.Speech.Recognition.GrammarBuilder($choices)
 $builder.Culture = $culture
-$engine.LoadGrammar((New-Object System.Speech.Recognition.Grammar($builder)))
-{dictation}
+$commands = New-Object System.Speech.Recognition.Grammar($builder)
+$commands.Name = 'commands'
+$commands.Priority = 10
+$engine.LoadGrammar($commands)
+# Dictation is always transcribed; only orchestration mode routes free requests.
+$dictation = New-Object System.Speech.Recognition.DictationGrammar
+$dictation.Name = 'dictation'
+$engine.LoadGrammar($dictation)
 {input}
 [Console]::Out.WriteLine('READY'); [Console]::Out.Flush()
 while ($true) {
   $r = $engine.Recognize([TimeSpan]::FromSeconds(30))
-  if ($r -ne $null) { [Console]::Out.WriteLine(('HEARD|{0:0.000}|{1}' -f $r.Confidence, $r.Text)); [Console]::Out.Flush() }
+  if ($r -ne $null) { [Console]::Out.WriteLine(('HEARD|{0:0.000}|{1}|{2}' -f $r.Confidence, $r.Grammar.Name, $r.Text)); [Console]::Out.Flush() }
   elseif ({once}) { $tries = 1 + $tries; if ($tries -ge 4) { break } }
 }
 """
@@ -93,6 +100,8 @@ class VoiceCommands:
         self.log = log
         self.open_ended = open_ended
         self.commands = queue.Queue(maxsize=8)
+        self.transcript = collections.deque(maxlen=6)
+        self.transcript_confidence = .35
         self.status = 'starting voice recognition'
         self.last_heard = ''
         self.quiet_until = 0.
@@ -102,7 +111,6 @@ class VoiceCommands:
         source = (f"$engine.SetInputToWaveFile('{str(wave).replace(chr(39), chr(39) * 2)}')" if wave
                   else '$engine.SetInputToDefaultAudioDevice()')
         script = (SCRIPT.replace('{phrases}', str(folder / 'voice-phrases.txt').replace("'", "''"))
-                  .replace('{dictation}', '$engine.LoadGrammar((New-Object System.Speech.Recognition.DictationGrammar))' if open_ended else '')
                   .replace('{input}', source).replace('({once})', '($true)' if wave else '($false)'))
         (folder / 'voice-recognizer.ps1').write_text(script, encoding='utf-8')
         self.thread = threading.Thread(target=self._run, daemon=True, name='r3-voice')
@@ -121,19 +129,24 @@ class VoiceCommands:
                     self.status = ('LISTENING (open requests; say stop to cancel)' if self.open_ended else 'LISTENING (say "find the Pepsi can", "what is around me", "stop")')
                     self.log('VOICE_READY')
                 elif line.startswith('HEARD|'):
-                    _, confidence, text = line.split('|', 2)
-                    self.handle(text, float(confidence), time.monotonic())
+                    _, confidence, grammar, text = line.split('|', 3)
+                    self.handle(text, float(confidence), time.monotonic(), grammar)
                 elif line:
                     self.status = f'voice error: {line[:120]}'
             self.status = f'voice recognition stopped (exit {self.process.wait()})'
         except Exception as exc:
             self.status = f'voice unavailable ({type(exc).__name__})'
 
-    def handle(self, text, confidence, now):
+    def handle(self, text, confidence, now, grammar='commands'):
         text = ' '.join(str(text).split())[:500]
         command, argument = interpret(text)
         if command is None and text and getattr(self, 'open_ended', False):
             command, argument = 'request', text
+        if not self.speaking() and now >= self.quiet_until and confidence >= self.transcript_confidence and text:
+            # Skip VisionOS playback echoes; retain the bounded laptop transcript.
+            self.transcript.append(dict(text=text, command=command if confidence >= self.min_confidence
+                                        else None, at=now))
+            self.log('VOICE_HEARD', text=text, grammar=grammar, confidence=round(confidence, 2))
         if command is None or confidence < self.min_confidence:
             self.log('VOICE_IGNORED', text=text, confidence=round(confidence, 2))
             return None
