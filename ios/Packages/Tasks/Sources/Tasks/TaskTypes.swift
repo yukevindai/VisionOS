@@ -19,13 +19,16 @@ public enum TaskError: String, Codable, Sendable {
 public struct TaskConfiguration: Equatable, Sendable {
     public var freshnessMs: Int64
     public var requestTimeoutMs: Int64
+    public var objectRecognitionTimeoutMs: Int64
     public var confirmationTimeoutMs: Int64
     /// Retries AFTER the initial attempt.
     public var maximumRetries: Int
     public init(freshnessMs: Int64 = 300, requestTimeoutMs: Int64 = 5_000,
-                confirmationTimeoutMs: Int64 = 30_000, maximumRetries: Int = 3) {
+                confirmationTimeoutMs: Int64 = 30_000, maximumRetries: Int = 3,
+                objectRecognitionTimeoutMs: Int64 = 60_000) {
         self.freshnessMs = max(1, freshnessMs)
         self.requestTimeoutMs = max(1, requestTimeoutMs)
+        self.objectRecognitionTimeoutMs = max(1, objectRecognitionTimeoutMs)
         self.confirmationTimeoutMs = max(1, confirmationTimeoutMs)
         self.maximumRetries = max(0, maximumRetries)
     }
@@ -181,6 +184,7 @@ public struct PendingConfirmation: Equatable, Sendable {
 public enum ConfirmationAnswer: Equatable, Sendable { case yes, no, doorAction(DoorAction) }
 public enum MenuCommand: Equatable, Sendable { case repeatOptions, more, back, question(String) }
 public enum TaskResponse: Equatable, Sendable {
+    case answer(String)
     case target(ResolvedTarget)
     case physical(PhysicalEvidence)
     case guidance(mode: GuidanceMode, targetID: String, status: GuidanceStatus, evidence: PhysicalEvidence?)
@@ -208,7 +212,7 @@ public enum TaskPhase: String, Sendable {
     case idle, resolving, reacquiring, approaching, guiding, verifying, readingScreen, choosing
     case readingMenu, discussingMenu, answeringMenu, awaitingConfirmation, awaitingPassage, paused, completed, failed, cancelled
 }
-public enum ResultStatus: String, Codable, Sendable { case completed, failed, cancelled, handoff }
+public enum ResultStatus: String, Codable, Sendable { case completed, answered, failed, cancelled, handoff }
 public struct TaskResult: Equatable, Sendable {
     public let context: TaskContext
     public let status: ResultStatus

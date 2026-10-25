@@ -195,13 +195,14 @@ public struct TaskEngine: Sendable {
         default:
             if let acceptedFriendTarget { return acceptTarget(acceptedFriendTarget, now: now) }
             state.phase = .resolving
-            return [.resolveTarget(makeRequest(now: now), query: request.query)]
+            let timeout = request.kind == .object ? configuration.objectRecognitionTimeoutMs : configuration.requestTimeoutMs
+            return [.resolveTarget(makeRequest(now: now, timeoutMs: timeout), query: request.query)]
         }
     }
 
-    private mutating func makeRequest(now: Int64, confirmation: Bool = false) -> RequestContext {
+    private mutating func makeRequest(now: Int64, confirmation: Bool = false, timeoutMs: Int64? = nil) -> RequestContext {
         sequence += 1
-        let duration = confirmation ? configuration.confirmationTimeoutMs : configuration.requestTimeoutMs
+        let duration = confirmation ? configuration.confirmationTimeoutMs : (timeoutMs ?? configuration.requestTimeoutMs)
         let expiry = now.addingReportingOverflow(duration)
         let context = RequestContext(task: state.context, requestID: "\(state.context.taskID):\(state.context.generation):\(sequence)",
                                      issuedAtMs: now, expiresAtMs: expiry.overflow ? Int64.max : expiry.partialValue)
@@ -240,6 +241,19 @@ public struct TaskEngine: Sendable {
 
     private mutating func receive(_ response: TaskResponse, source: EventSource, now: Int64) -> [TaskEffect] {
         switch response {
+        case .answer(let answer):
+            guard source == .r3 else { return [.rejected(.wrongSource)] }
+            guard state.phase == .resolving, state.request?.kind == .object else {
+                return [.rejected(.unsupportedState)]
+            }
+            let text = answer.trimmingCharacters(in: .whitespacesAndNewlines)
+            let disallowedControls = CharacterSet.controlCharacters.subtracting(.whitespacesAndNewlines)
+            guard !text.isEmpty, answer.utf16.count <= 2_000,
+                  answer.rangeOfCharacter(from: disallowedControls) == nil else { return [.rejected(.malformed)] }
+            let result = TaskResult(context: state.context, status: .answered, verification: .unverified, error: nil)
+            state.phase = .completed; state.result = result
+            state.pendingRequest = nil; state.confirmation = nil; state.target = nil
+            return [.speak(text: text, priority: 4), .finished(result)]
         case .target(let target):
             guard [.r3, .model, .r1].contains(source) else { return [.rejected(.wrongSource)] }
             guard state.phase == .resolving else { return [.rejected(.unsupportedState)] }

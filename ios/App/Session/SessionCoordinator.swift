@@ -388,12 +388,13 @@ final class SessionCoordinator: ObservableObject {
 
     func submitTask(_ request: TaskRequest) {
         guard phase == .active, !microphoneMuted, calibrationIndex == nil else { return }
-        guard request.kind == .wallMenu || simulated || capabilities.offlineStop.usable else {
+        let informational = request.kind == .object && ObjectRequestIntent.isQuestion(request.query)
+        guard informational || request.kind == .wallMenu || simulated || capabilities.offlineStop.usable else {
             message = "Physical guidance is unavailable until offline spoken Stop is integrated. Scene and menu conversation can continue."
             if let context { speech.speak(message, priority: 4, context: context) }
             return
         }
-        guard request.kind == .wallMenu || supportsSpeechOnlyGuidance || (bands.isReady && preferences.calibratedPairSignature == bands.pairSignature) else {
+        guard informational || request.kind == .wallMenu || supportsSpeechOnlyGuidance || (bands.isReady && preferences.calibratedPairSignature == bands.pairSignature) else {
             message = "Calibrate both wristbands before physical guidance, or use a supported speech-only mode."; return
         }
         apply(.start(request))
@@ -690,6 +691,10 @@ private extension SessionCoordinator {
             activity = .thinking
             let kind = engine?.state.request?.kind ?? .button
             launch(request, source: .r3) {
+                if kind == .object, ObjectRequestIntent.isQuestion(query) {
+                    guard let answering = evidence as? any QuestionAnswering else { throw GeminiObjectError.unavailable }
+                    return .answer(try await answering.answer(request, question: query))
+                }
                 let target = try await evidence.resolve(request, query: query, kind: kind)
                 if target.safety == .unassessedObject,
                    let preparer = perception as? any ObjectTargetPreparing {
@@ -993,13 +998,21 @@ extension SessionCoordinator {
                 receiveResponse(prompt.context, source: .user,
                     response: .confirmation(promptID: prompt.promptID, answer: answer))
             }
+            if answer != nil { return }
+            if ObjectRequestIntent.isQuestion(input) {
+                submitTask(.init(id: UUID().uuidString, kind: .object, query: input))
+            }
+            return
+        }
+        if ObjectRequestIntent.isQuestion(input), taskState?.phase == .choosing {
+            submitTask(.init(id: UUID().uuidString, kind: .object, query: input))
             return
         }
         if taskState?.phase == .choosing, let pending = taskState?.pendingRequest {
             receiveResponse(pending, source: .user, response: .choice(input))
             return
         }
-        guard !hasActiveTask else { return }
+        guard !hasActiveTask || ObjectRequestIntent.isQuestion(input) else { return }
         guard input.utf16.count <= 500 else {
             message = "Describe one object in a shorter request."
             if let context { speech.speak(message, priority: 4, context: context) }

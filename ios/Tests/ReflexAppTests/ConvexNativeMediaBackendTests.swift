@@ -262,13 +262,36 @@ final class ConvexNativeMediaBackendTests: XCTestCase {
                 "screenModel": try JSONSerialization.jsonObject(with: JSONEncoder().encode(model))]
     }
 
+    func testQuestionClientRequestsDirectAnswerWithoutObjectSelection() async throws {
+        let backend = try makeBackend(MediaTestIdentity())
+        var value = try objectReply()
+        value["status"] = "NOT_FOUND"; value["selectedObjectId"] = NSNull()
+        value["answer"] = "A laptop and a bottle are on the table."
+        var model = try XCTUnwrap(value["screenModel"] as? [String: Any])
+        model["controls"] = []; value["screenModel"] = model
+        let reply = value
+        MediaURLProtocol.handler = { request in
+            let body = try XCTUnwrap(JSONSerialization.jsonObject(with: requestBody(request)) as? [String: Any])
+            let args = try XCTUnwrap((body["args"] as? [[String: Any]])?.first)
+            XCTAssertEqual(args["answerQuestion"] as? Bool, true)
+            XCTAssertEqual(args["query"] as? String, "What's in front of me?")
+            return try mediaResponse(request, value: reply)
+        }
+        let result = try await ConvexObjectClient(backend: backend).answerQuestion(
+            image: Data([1]), query: "What's in front of me?", frameID: "object-frame",
+            capturedAtUTCms: 1234, requestID: "object-request")
+        XCTAssertEqual(result.answer, "A laptop and a bottle are on the table.")
+        XCTAssertNil(result.selectedObjectId)
+        XCTAssertTrue(result.screenModel.controls.isEmpty)
+    }
+
     func testObjectClientForwardsTrimmedQueryAndFrameThroughAuthenticatedAction() async throws {
         let backend = try makeBackend(MediaTestIdentity())
         let value = try objectReply()
         MediaURLProtocol.handler = { request in
             XCTAssertEqual(request.url?.path, "/api/action")
             XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer header.payload.signature")
-            XCTAssertEqual(request.timeoutInterval, 5)
+            XCTAssertEqual(request.timeoutInterval, 60)
             let body = try XCTUnwrap(JSONSerialization.jsonObject(with: requestBody(request)) as? [String: Any])
             XCTAssertEqual(body["path"] as? String, "vision:findObject")
             let args = try XCTUnwrap((body["args"] as? [[String: Any]])?.first)

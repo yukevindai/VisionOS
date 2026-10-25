@@ -16,7 +16,7 @@ export const readScreen = action({
 });
 
 export const findObject = action({
-  args: { imageBase64: v.string(), query: v.string(), frameId: v.string(), capturedAtMs: v.number(), requestId: v.string() },
+  args: { imageBase64: v.string(), query: v.string(), answerQuestion: v.optional(v.boolean()), frameId: v.string(), capturedAtMs: v.number(), requestId: v.string() },
   handler: async (ctx, args): Promise<ObjectVisionResponse> => {
     await ctx.runQuery(api.users.me, {});
     return findVisionObject(args);

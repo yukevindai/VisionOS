@@ -12,6 +12,7 @@ struct GeminiObjectRecognition: Equatable, Sendable {
     let status: Status
     let selectedObjectId: String?
     let screenModel: Targets.ScreenModel
+    var answer: String? = nil
 }
 
 @MainActor
@@ -20,10 +21,16 @@ protocol R3ObjectReading: AnyObject {
                     capturedAtUTCms: Int64, requestID: String) async throws -> GeminiObjectRecognition
 }
 
+@MainActor
+protocol R3QuestionReading: AnyObject {
+    func answerQuestion(image: Data, query: String, frameID: String,
+                        capturedAtUTCms: Int64, requestID: String) async throws -> GeminiObjectRecognition
+}
+
 /// Native client for the proposed authenticated R3 object-reading action.
 /// A returned observation is semantic evidence, never permission to move.
 @MainActor
-final class ConvexObjectClient: R3ObjectReading {
+final class ConvexObjectClient: R3ObjectReading, R3QuestionReading {
     private let backend: ConvexNativeMediaBackend
 
     static func live() throws -> ConvexObjectClient {
@@ -40,4 +47,10 @@ final class ConvexObjectClient: R3ObjectReading {
         try await backend.findObject(image: image, query: query, frameID: frameID,
                                      capturedAtUTCms: capturedAtUTCms, requestID: requestID)
     }
+    func answerQuestion(image: Data, query: String, frameID: String,
+                        capturedAtUTCms: Int64, requestID: String) async throws -> GeminiObjectRecognition {
+        try await backend.findObject(image: image, query: query, frameID: frameID,
+                                     capturedAtUTCms: capturedAtUTCms, requestID: requestID, answerQuestion: true)
+    }
+
 }

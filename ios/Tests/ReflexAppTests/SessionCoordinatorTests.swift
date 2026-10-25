@@ -98,6 +98,28 @@ private final class DelayedEvidence: TargetEvidenceClient {
 }
 
 @MainActor
+private final class DirectAnswerEvidence: TargetEvidenceClient, QuestionAnswering {
+    let base: FixtureEvidence
+    var questions: [String] = []
+    var resolveCount = 0
+    let directAnswer = "SIMULATED: A cup and a book are in front of you."
+    init(clock: any AppClock) { base = FixtureEvidence(clock: clock) }
+    func answer(_ request: RequestContext, question: String) async throws -> String {
+        questions.append(question)
+        return directAnswer
+    }
+    func resolve(_ request: RequestContext, query: String, kind: TaskKind) async throws -> ResolvedTarget {
+        resolveCount += 1
+        return try await base.resolve(request, query: query, kind: kind)
+    }
+    func readScreen(_ request: RequestContext) async throws -> TaskScreen { try await base.readScreen(request) }
+    func readMenu(_ request: RequestContext, query: String) async throws -> MenuContent { try await base.readMenu(request, query: query) }
+    func answerMenu(_ request: RequestContext, question: String, menu: MenuContent) async throws -> String { try await base.answerMenu(request, question: question, menu: menu) }
+    func verify(_ request: RequestContext, action: ActionKind, target: ResolvedTarget) async throws -> VerificationOutcome { .unavailable }
+    func cancel(context: SessionContext) { base.cancel(context: context) }
+}
+
+@MainActor
 private final class DeferredPermissionClient: PermissionClient {
     var state = PermissionState(cameraAuthorization: .notDetermined, microphoneAuthorization: .notDetermined)
     var requestCount = 0
@@ -116,6 +138,7 @@ private final class DeferredPermissionClient: PermissionClient {
 
 @MainActor
 private final class PreviewFixturePerception: PerceptionGuidanceClient, CameraPreviewSource, ObjectTargetPreparing {
+    var supportsOfflineStop = false
     var preparedTargets: [ResolvedTarget] = []
     var preparation: CheckedContinuation<Void, Error>?
     var guideCount = 0
@@ -130,7 +153,11 @@ private final class PreviewFixturePerception: PerceptionGuidanceClient, CameraPr
     var onLocalCommand: ((SessionContext, LocalCommand) -> Void)? { get { base.onLocalCommand } set { base.onLocalCommand = newValue } }
     var onHapticRelease: ((ScheduledHapticRelease) -> Void)? { get { base.onHapticRelease } set { base.onHapticRelease = newValue } }
     init(_ base: FixturePerception) { self.base = base }
-    func start(context: SessionContext, policy: CameraPolicy) async throws -> PerceptionReadiness { try await base.start(context: context, policy: policy) }
+    func start(context: SessionContext, policy: CameraPolicy) async throws -> PerceptionReadiness {
+        let ready = try await base.start(context: context, policy: policy)
+        return .init(camera: ready.camera, audioInput: ready.audioInput,
+                     supportsOfflineStop: supportsOfflineStop, supportsSpeechOnlyGuidance: ready.supportsSpeechOnlyGuidance)
+    }
     func updateContext(_ context: SessionContext) { base.updateContext(context) }
     func reacquire(_ request: RequestContext, target: ResolvedTarget) async throws -> PhysicalEvidence { try await base.reacquire(request, target: target) }
     func guide(_ request: RequestContext, mode: GuidanceMode, target: ResolvedTarget, hand: GuidingHand) async throws -> TaskResponse { guideCount += 1; return try await base.guide(request, mode: mode, target: target, hand: hand) }
@@ -147,18 +174,21 @@ final class SessionCoordinatorTests: XCTestCase {
         let perception: FixturePerception
         let conversation: FixtureConversation
         let speech: FixtureSpeech
+        let probe: PreviewFixturePerception?
     }
     private func makeHarness(evidence: (any TargetEvidenceClient)? = nil, clock: ManualAppClock? = nil,
                              permission: PermissionState = .init(camera: true, microphone: true), simulated: Bool = true,
-                             permissionClient: (any PermissionClient)? = nil, independentPreview: Bool = false) -> Harness {
+                             permissionClient: (any PermissionClient)? = nil, independentPreview: Bool = false, offlineStop: Bool = false) -> Harness {
         let clock = clock ?? ManualAppClock()
         let prefs = UserPreferences(defaults: UserDefaults(suiteName: UUID().uuidString)!)
         let perception = FixturePerception(clock: clock), speech = FixtureSpeech(audible: false), conversation = FixtureConversation()
+        let probe = independentPreview || offlineStop ? PreviewFixturePerception(perception) : nil
+        probe?.supportsOfflineStop = offlineStop
         let session = SessionCoordinator(simulated: simulated, preferences: prefs, diagnostics: Diagnostics(capacity: 8),
             bands: BandService(controller: nil, simulated: simulated, clock: clock), clock: clock,
-            perception: independentPreview ? PreviewFixturePerception(perception) : perception, speech: speech, conversation: conversation,
+            perception: (probe as (any PerceptionGuidanceClient)?) ?? perception, speech: speech, conversation: conversation,
             evidence: evidence ?? FixtureEvidence(clock: clock), permissions: permissionClient ?? FixturePermissionClient(state: permission))
-        return .init(session: session, clock: clock, perception: perception, conversation: conversation, speech: speech)
+        return .init(session: session, clock: clock, perception: perception, conversation: conversation, speech: speech, probe: probe)
     }
     private func settle() async { for _ in 0..<80 { await Task.yield() } }
 
@@ -214,6 +244,59 @@ final class SessionCoordinatorTests: XCTestCase {
         XCTAssertEqual(perception.guideCount, 0)
         XCTAssertNotEqual(session.taskState?.phase, .guiding)
         session.stop(.userEnd)
+    }
+
+    func testSpokenQuestionAnswersWithoutGuidanceOrConfirmation() async {
+        let clock = ManualAppClock()
+        let evidence = DirectAnswerEvidence(clock: clock)
+        let h = makeHarness(evidence: evidence, clock: clock, simulated: false, independentPreview: true)
+        h.session.start(); await settle()
+        h.session.receiveLocalOwnerUtterance("what is in front of me")
+        await settle()
+        XCTAssertEqual(evidence.questions, ["what is in front of me"])
+        XCTAssertEqual(evidence.resolveCount, 0)
+        XCTAssertEqual(h.session.taskState?.result?.status, .answered)
+        XCTAssertEqual(h.session.taskState?.result?.verification, .unverified)
+        XCTAssertNil(h.session.taskState?.confirmation)
+        XCTAssertNil(h.session.taskState?.target)
+        XCTAssertEqual(h.probe?.guideCount, 0)
+        XCTAssertEqual(h.probe?.preparedTargets, [])
+        XCTAssertTrue(h.speech.spoken.contains(evidence.directAnswer))
+        h.session.stop(.userEnd)
+    }
+
+    func testSpokenQuestionReplacesPendingActionConfirmation() async throws {
+        let clock = ManualAppClock()
+        let evidence = DirectAnswerEvidence(clock: clock)
+        let h = makeHarness(evidence: evidence, clock: clock, simulated: false, offlineStop: true)
+        h.session.start(); await settle()
+        h.session.receiveLocalOwnerUtterance("find the cup"); await settle()
+        let oldPrompt = try XCTUnwrap(h.session.taskState?.confirmation)
+        XCTAssertEqual(oldPrompt.purpose, .actionResult)
+        let guideCount = h.probe?.guideCount
+        h.session.receiveLocalOwnerUtterance("where is the book"); await settle()
+        XCTAssertEqual(evidence.questions, ["where is the book"])
+        XCTAssertEqual(h.session.taskState?.result?.status, .answered)
+        XCTAssertNil(h.session.taskState?.confirmation)
+        XCTAssertEqual(h.probe?.guideCount, guideCount)
+        XCTAssertNotEqual(h.session.taskState?.context.taskID, oldPrompt.context.task.taskID)
+        XCTAssertTrue(h.speech.spoken.contains(evidence.directAnswer))
+        h.session.stop(.userEnd)
+    }
+
+    func testQuestionAnswersWithoutBandsOrOfflineStop() async {
+        let clock = ManualAppClock()
+        let evidence = DirectAnswerEvidence(clock: clock)
+        let h = makeHarness(evidence: evidence, clock: clock, simulated: false)
+        h.session.start(); await settle()
+        XCTAssertFalse(h.session.capabilities.offlineStop.usable)
+        h.session.submitTask(.init(id: "blocked-action", kind: .object, query: "find the cup"))
+        XCTAssertNil(h.session.taskState?.request)
+        h.session.receiveLocalOwnerUtterance("how many objects are visible"); await settle()
+        XCTAssertEqual(h.session.taskState?.result?.status, .answered)
+        XCTAssertEqual(evidence.resolveCount, 0)
+        XCTAssertTrue(h.speech.spoken.contains(evidence.directAnswer))
+        h.session.stop(.userEnd)
     }
 
     func testRepeatedStartAndEndAreIdempotent() async {
